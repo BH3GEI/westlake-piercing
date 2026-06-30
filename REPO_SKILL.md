@@ -10,6 +10,12 @@ The repo skill is the contract for the next agent:
 - `.repo-skill/turns/` stores the full user input summary, code delta, and verification notes for each recorded change.
 - `.repo-skill/bin/` and `.repo-skill/src/` contain the local helper tools that an installed skill can expose.
 
+Agent adapters:
+
+- Codex enters through `AGENTS.md`.
+- Claude Code enters through `.claude/skills/westlake-repo/SKILL.md`.
+- Both adapters point back to this file as the single source of repo-skill truth.
+
 Local runner:
 
 ```bash

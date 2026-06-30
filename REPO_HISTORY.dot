@@ -1,11 +1,11 @@
 digraph westlake_repo_history {
   graph [
     format="repo-skill-history-v0",
-    rule="each node records one agent-facing change; commit=self means the commit containing this node"
+    rule="each node records one agent-facing change; commit=self is allowed only for the node introduced by the current commit"
   ];
 
   repo_skill_v0 [
-    commit="self",
+    commit="fb3661c",
     base_commit="b9ede74ac6a19e9e05e09800a4c8757b60ea48d5",
     actor="Yao/Codex",
     title="add repo skill v0",
@@ -15,4 +15,18 @@ digraph westlake_repo_history {
     verify="static runner checks; full replay requires DAYU200 and artifact baseline",
     note=".repo-skill/turns/2026-06-30-repo-skill-v0.md"
   ];
+
+  claude_code_adapter [
+    commit="self",
+    base_commit="fb3661c",
+    actor="Yao/Codex",
+    title="add Claude Code skill adapter",
+    user_input="Add the Claude Code layer so Claude can discover the repo skill without duplicating the main rules.",
+    agent_action="Created .claude/skills/westlake-repo/SKILL.md and linked REPO_SKILL.md as the single source of truth.",
+    code_delta="No runtime adapter behavior changed; added Claude Code discovery metadata and updated repo skill history.",
+    verify="static file checks; full replay still requires DAYU200, hdc, and external artifacts",
+    note=".repo-skill/turns/2026-06-30-claude-code-adapter.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter;
 }
