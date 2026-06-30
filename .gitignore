@@ -17,3 +17,7 @@ boot*.vdex
 !native-libs/libv4force.so
 !native-tls/libtlsjni.so
 !native-tls/tlsjni-extra.dex
+
+# Repo skill runtime output.
+.repo-skill/last-run.json
+.repo-skill/runs/

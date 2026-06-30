@@ -1,0 +1,71 @@
+digraph westlake_repo_skill {
+  graph [
+    skill="westlake-piercing",
+    version="0.1",
+    default_runner=".repo-skill/src/dot_runner.py"
+  ];
+
+  up [
+    type="workflow",
+    steps="doctor_host check_artifacts check_device runbook"
+  ];
+
+  check [
+    type="workflow",
+    steps="doctor_host verify_docs check_artifacts check_device runbook"
+  ];
+
+  sync [
+    type="workflow",
+    steps="sync_skill sync_lock sync_history"
+  ];
+
+  doctor_host [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py host",
+    purpose="check host tools and reference paths"
+  ];
+
+  verify_docs [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py docs",
+    purpose="check that the reproduction docs and lock files are present"
+  ];
+
+  check_artifacts [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py artifacts",
+    purpose="check external binary baseline or rebuild inputs"
+  ];
+
+  check_device [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py device",
+    purpose="check DAYU200/RK3568 hdc reachability"
+  ];
+
+  runbook [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py runbook",
+    purpose="print the next replay documents and validation target"
+  ];
+
+  sync_skill [
+    kind="agent",
+    purpose="update REPO_SKILL.md and .repo-skill/SKILL.md if project knowledge changed"
+  ];
+
+  sync_lock [
+    kind="agent",
+    purpose="update REPO_LOCK.toml if versions, hashes, hardware, tools, or artifacts changed"
+  ];
+
+  sync_history [
+    kind="agent",
+    purpose="append REPO_HISTORY.dot and .repo-skill/turns/<change>.md before commit"
+  ];
+
+  up -> doctor_host -> check_artifacts -> check_device -> runbook;
+  check -> doctor_host -> verify_docs -> check_artifacts -> check_device -> runbook;
+  sync -> sync_skill -> sync_lock -> sync_history;
+}
