@@ -50,6 +50,8 @@ Factory DAYU600 currently does not expose the legacy Westlake substrate:
 
 Detailed first audit: `docs/DAYU600-PORT-AUDIT-2026-07-01.md`.
 
+Build/source gap tracker: `docs/DAYU600-BUILD-GAPS.md`.
+
 ## Safe First Milestone
 
 Do not deploy legacy artifacts yet.

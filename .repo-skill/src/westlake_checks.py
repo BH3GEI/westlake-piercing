@@ -58,6 +58,7 @@ def docs() -> int:
         "docs/REPRODUCTION-GUIDE.md",
         "docs/DAYU600-PORT.md",
         "docs/DAYU600-PORT-AUDIT-2026-07-01.md",
+        "docs/DAYU600-BUILD-GAPS.md",
         "ARTIFACT-INVENTORY.txt",
     ]
     ok = True
@@ -214,9 +215,10 @@ def runbook_dayu600() -> int:
     print("Before deploying anything:")
     print("  1. Read docs/DAYU600-PORT.md")
     print("  2. Read docs/DAYU600-PORT-AUDIT-2026-07-01.md")
-    print("  3. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
-    print("  4. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
-    print("  5. Keep HDC config at hdc_debug")
+    print("  3. Read docs/DAYU600-BUILD-GAPS.md")
+    print("  4. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
+    print("  5. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
+    print("  6. Keep HDC config at hdc_debug")
     return 0
 
 
