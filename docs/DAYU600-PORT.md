@@ -37,6 +37,8 @@ ohos.boot.hardware = uis7885
 const.product.cpu.abilist = arm64-v8a
 const.ohos.fullname = OpenHarmony-6.1.0.31
 /system/bin/appspawn: ELF shared object, 64-bit LSB arm64, musl aarch64
+persist.sys.usb.config = hdc_debug
+SELinux = Permissive
 ```
 
 Factory DAYU600 currently does not expose the legacy Westlake substrate:
@@ -45,6 +47,8 @@ Factory DAYU600 currently does not expose the legacy Westlake substrate:
 /system/android: not present in the first audit
 /system/bin/appspawn-x: not present in the first audit
 ```
+
+Detailed first audit: `docs/DAYU600-PORT-AUDIT-2026-07-01.md`.
 
 ## Safe First Milestone
 

@@ -56,6 +56,8 @@ def docs() -> int:
         "STATUS.md",
         "UNIFIED-CONFIG-REPRODUCE.md",
         "docs/REPRODUCTION-GUIDE.md",
+        "docs/DAYU600-PORT.md",
+        "docs/DAYU600-PORT-AUDIT-2026-07-01.md",
         "ARTIFACT-INVENTORY.txt",
     ]
     ok = True
@@ -145,9 +147,16 @@ def dayu600() -> int:
         "abi": "param get const.product.cpu.abilist",
         "ohos": "param get const.ohos.fullname",
         "api": "param get const.ohos.apiversion",
+        "usb_config": "param get persist.sys.usb.config",
+        "selinux": "getenforce 2>/dev/null || true",
+        "mounts": "mount | head -40",
+        "paths": "for p in /system /system/bin /system/lib /system/lib64 /system/android /vendor /sys_prod /chip_prod /data/local/tmp; do ls -ld $p 2>/dev/null || echo missing:$p; done",
         "appspawn": "file /system/bin/appspawn 2>/dev/null",
+        "appspawn_family": "find /system -maxdepth 4 \\( -name '*appspawn*' -o -name '*spawn*' \\) 2>/dev/null | head -120",
+        "appspawn_cfg": "sed -n '1,90p' /system/etc/init/appspawn.cfg 2>/dev/null",
         "appspawn_x": "ls -l /system/bin/appspawn-x 2>/dev/null || true",
         "android_dir": "ls -ld /system/android /system/android/lib /system/android/lib64 /system/android/framework 2>/dev/null || true",
+        "candidate_libs": "ls -l /system/lib64/platformsdk/libappexecfwk_common.z.so /system/lib64/libgraphic_memory.z.so /system/lib64/libgraphic_utils.z.so /vendor/lib64/hw/android.hardware.graphics.allocator@4.0-impl.so /vendor/lib64/hw/android.hardware.graphics.mapper@4.0-impl.so 2>/dev/null || true",
     }
 
     observed: dict[str, str] = {}
@@ -169,6 +178,9 @@ def dayu600() -> int:
         ok = False
     if "arm64-v8a" not in observed.get("abi", ""):
         print("unexpected ABI; expected arm64-v8a")
+        ok = False
+    if "hdc_debug" not in observed.get("usb_config", ""):
+        print("unexpected USB config; expected hdc_debug to preserve HDC")
         ok = False
     if "64-bit" not in observed.get("appspawn", "") or "arm64" not in observed.get("appspawn", ""):
         print("unexpected appspawn binary; expected 64-bit arm64")
@@ -201,10 +213,10 @@ def runbook_dayu600() -> int:
     print("Legacy DAYU200 artifacts are reference only.")
     print("Before deploying anything:")
     print("  1. Read docs/DAYU600-PORT.md")
-    print("  2. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
-    print("  3. Re-discover /system/android and lib/lib64 load paths on the live board")
-    print("  4. Never overwrite stock /system/bin/appspawn")
-    print("  5. Never disable HDC through persistent USB config")
+    print("  2. Read docs/DAYU600-PORT-AUDIT-2026-07-01.md")
+    print("  3. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
+    print("  4. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
+    print("  5. Keep HDC config at hdc_debug")
     return 0
 
 

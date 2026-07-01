@@ -13,6 +13,7 @@ Reframed the repository skill and lock files around a DAYU600 port track:
 - Added `docs/DAYU600-PORT.md`.
 - Added a repo-local `dayu600-audit` DOT flow.
 - Added non-mutating HDC checks for live DAYU600 architecture, OS, appspawn, appspawn-x, and `/system/android` substrate state.
+- Pulled stock appspawn/config/lib files into a local audit bundle and recorded SHA256 hashes in `docs/DAYU600-PORT-AUDIT-2026-07-01.md`.
 
 ## Code Delta
 
@@ -28,6 +29,7 @@ Changed only repo-skill metadata, documentation, and non-mutating audit helpers:
 - `.repo-skill/src/dot_runner.py`
 - `.repo-skill/src/westlake_checks.py`
 - `docs/DAYU600-PORT.md`
+- `docs/DAYU600-PORT-AUDIT-2026-07-01.md`
 
 ## Verification
 

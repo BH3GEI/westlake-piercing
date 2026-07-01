@@ -46,9 +46,9 @@ digraph westlake_repo_history {
     actor="Yao/Codex",
     title="declare DAYU600 as active port target",
     user_input="Clarify that westlake-piercing must be reproduced on the current DAYU600/uis7885 board, not only on DAYU200/RK3568.",
-    agent_action="Updated repo skill, lock, pipeline, and docs for a DAYU600 port track; added a non-mutating dayu600-audit flow and live HDC audit checks.",
-    code_delta="No runtime adapter behavior changed; added DAYU600 port metadata, docs, and audit helpers.",
-    verify="ran dayu600-audit over HDC; confirmed uis7885 arm64-v8a OpenHarmony 6.1.0.31, stock 64-bit appspawn, no appspawn-x, and no /system/android substrate yet",
+    agent_action="Updated repo skill, lock, pipeline, and docs for a DAYU600 port track; added a non-mutating dayu600-audit flow, live HDC audit checks, and stock baseline hash inventory.",
+    code_delta="No runtime adapter behavior changed; added DAYU600 port metadata, docs, audit helpers, and local stock baseline hash records.",
+    verify="ran dayu600-audit over HDC; confirmed uis7885 arm64-v8a OpenHarmony 6.1.0.31, stock 64-bit appspawn, no appspawn-x, no /system/android substrate, and pulled stock appspawn/config/lib hashes",
     note=".repo-skill/turns/2026-07-01-dayu600-port-target.md"
   ];
 
