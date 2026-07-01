@@ -52,18 +52,21 @@ Detailed first audit: `docs/DAYU600-PORT-AUDIT-2026-07-01.md`.
 
 Build/source gap tracker: `docs/DAYU600-BUILD-GAPS.md`.
 
+First ART smoke test: `docs/DAYU600-SMOKE-2026-07-01.md`.
+
 ## Safe First Milestone
 
 Do not deploy legacy artifacts yet.
 
-First milestone is a non-mutating port audit:
+First milestone is a non-mutating port audit and runtime smoke:
 
 1. Confirm HDC and board properties.
 2. Pull or inventory stock appspawn, graphics, musl, and relevant system libraries.
 3. Identify whether `/system/android` should be created or whether DAYU600 expects a different substrate path.
 4. Decide the aarch64 bootclasspath and boot-image location.
-5. Rebuild the smallest possible aarch64 `appspawn-x` and verify it can start without taking over init.
-6. Only after that, stage Android app runtime jars and libraries.
+5. Run ART runtime candidates only from `/data/local/tmp`.
+6. Rebuild the smallest possible aarch64 `appspawn-x` and verify it can start without taking over init.
+7. Only after that, stage Android app runtime jars and libraries.
 
 ## Hard No
 

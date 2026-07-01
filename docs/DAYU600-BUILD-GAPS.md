@@ -13,6 +13,7 @@ Committed and useful for the port:
 - `native-libs/` and `native-tls/`: small native shim sources and some historical binaries.
 - `config/asx-autostart/`: legacy DAYU200 appspawn-x bringup scripts, useful as reference only.
 - `docs/DAYU600-PORT*.md`: live DAYU600 audit and port track.
+- `docs/DAYU600-SMOKE-2026-07-01.md`: first on-device A2OH ART runtime smoke result.
 
 Not committed but required for a real build:
 
@@ -22,6 +23,7 @@ Not committed but required for a real build:
 - A self-consistent OpenHarmony source/header/sysroot tree for DAYU600 / uis7885 / arm64.
 - AOSP source subtrees and static libs for aarch64 ART / runtime / hwui builds.
 - A baseline ART object cache or a from-zero full ART build path for aarch64.
+- A checked-in or reproducible A2OH `art-latest` source path for the current arm64 runtime candidate.
 - Existing DAYU200 binary baseline, if comparison is needed, but not for deployment.
 
 Checked local Windows paths:
@@ -38,7 +40,9 @@ C:\Users\ufop\westlake-complete  missing
 
 The repo is ready for DAYU600 port tracking and audit, but it is not yet ready to compile `appspawn-x` for DAYU600 from the files currently committed.
 
-The next real build step is to recover or reconstruct the appspawn-x build tree, then retarget it from:
+A2OH `art-latest` provides a stronger immediate runtime lead than the legacy DAYU200 substrate: `build-bionic-arm64/bin/dalvikvm` starts on the DAYU600 board from `/data/local/tmp`, reaches JIT creation and class lookup, then fails in `java.io.File.<clinit>` / `Field.isSynthetic()` recursion. The next ART step is to fix that failure before integrating with appspawn.
+
+The next appspawn build step is to recover or reconstruct the appspawn-x build tree, then retarget it from:
 
 ```text
 arm-linux-ohos / rk3568 / 32-bit arm

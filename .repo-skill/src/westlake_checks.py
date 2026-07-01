@@ -59,6 +59,7 @@ def docs() -> int:
         "docs/DAYU600-PORT.md",
         "docs/DAYU600-PORT-AUDIT-2026-07-01.md",
         "docs/DAYU600-BUILD-GAPS.md",
+        "docs/DAYU600-SMOKE-2026-07-01.md",
         "ARTIFACT-INVENTORY.txt",
     ]
     ok = True
@@ -216,9 +217,11 @@ def runbook_dayu600() -> int:
     print("  1. Read docs/DAYU600-PORT.md")
     print("  2. Read docs/DAYU600-PORT-AUDIT-2026-07-01.md")
     print("  3. Read docs/DAYU600-BUILD-GAPS.md")
-    print("  4. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
-    print("  5. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
-    print("  6. Keep HDC config at hdc_debug")
+    print("  4. Read docs/DAYU600-SMOKE-2026-07-01.md")
+    print("  5. Continue ART smoke tests from /data/local/tmp/westlake-dayu600")
+    print("  6. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
+    print("  7. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
+    print("  8. Keep HDC config at hdc_debug")
     return 0
 
 
@@ -235,7 +238,8 @@ COMMANDS = {
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2 or argv[1] not in COMMANDS:
-        print("usage: westlake_checks.py <host|docs|artifacts|device|runbook>")
+        commands = "|".join(COMMANDS)
+        print(f"usage: westlake_checks.py <{commands}>")
         return 2
     return COMMANDS[argv[1]]()
 

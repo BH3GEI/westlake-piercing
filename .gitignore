@@ -21,3 +21,6 @@ boot*.vdex
 # Repo skill runtime output.
 .repo-skill/last-run.json
 .repo-skill/runs/
+
+# Local device smoke logs and pulled evidence.
+artifacts/
