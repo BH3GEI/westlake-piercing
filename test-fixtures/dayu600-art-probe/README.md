@@ -19,12 +19,12 @@ timeout 25 ./art/dalvikvm-pristine-plus-classfix \
   ProbeMain
 ```
 
-The probe exits with a bitmask:
+On failure, the probe exits with a bitmask:
 
 ```text
 1  properties
 2  reflection-methods
-4  field-isSynthetic missing synthetic field
+4  unused; older probe revisions treated a missing compiler synthetic field as failure
 8  thread ran but did not update value
 16 classloader-basic
 32 field-isSynthetic threw
@@ -38,3 +38,7 @@ The probe exits with a bitmask:
 The normal `-classpath ./art/probe.dex ProbeMain` mode should also be tested
 separately. If it fails while bootclasspath mode passes, the next runtime gap is
 standalone app class loader creation rather than core Java execution.
+
+Current probe revisions only call `Field.isSynthetic()` on fields that the
+compiler actually emits. They do not require a specific synthetic field name,
+because that depends on the Java compiler and D8 output.

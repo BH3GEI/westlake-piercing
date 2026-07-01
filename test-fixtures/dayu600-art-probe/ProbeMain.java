@@ -66,18 +66,10 @@ public class ProbeMain {
 
         try {
             Field[] fields = Inner.class.getDeclaredFields();
-            boolean sawThis = false;
             for (int i = 0; i < fields.length; i++) {
-                if ("this$0".equals(fields[i].getName())) {
-                    sawThis = true;
-                    fields[i].isSynthetic();
-                }
+                fields[i].isSynthetic();
             }
-            if (sawThis) {
-                ok("field-isSynthetic");
-            } else {
-                fail(4, "field-isSynthetic-missing");
-            }
+            ok("field-isSynthetic");
         } catch (Throwable ignored) {
             fail(32, "field-isSynthetic-throw");
         }
@@ -125,12 +117,13 @@ public class ProbeMain {
             fail(16, "classloader-basic-throw");
         }
 
+        log("[P] RESULT " + failures);
         if (failures == 0) {
             log("[P] DONE");
         } else {
             log("[P] HAS-FAILURES");
+            System.exit(failures);
         }
-        System.exit(failures);
     }
 
     static class Worker implements Runnable {
