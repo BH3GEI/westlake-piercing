@@ -28,7 +28,11 @@ The probe exits with a bitmask:
 8  thread ran but did not update value
 16 classloader-basic
 32 field-isSynthetic threw
-64 thread start/join threw
+64 Thread.start threw
+128 Thread.join threw InterruptedException
+256 Thread.sleep threw
+512 Thread.join threw IllegalMonitorStateException
+1024 Thread.join threw another Throwable
 ```
 
 The normal `-classpath ./art/probe.dex ProbeMain` mode should also be tested

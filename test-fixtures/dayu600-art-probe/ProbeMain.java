@@ -85,15 +85,32 @@ public class ProbeMain {
         try {
             final int[] box = new int[] {0};
             Thread t = new Thread(new Worker(box));
-            t.start();
-            t.join(5000);
+            try {
+                t.start();
+            } catch (Throwable ignored) {
+                fail(64, "thread-start-throw");
+            }
+            try {
+                Thread.sleep(100);
+            } catch (Throwable ignored) {
+                fail(256, "thread-sleep-throw");
+            }
+            try {
+                t.join(1);
+            } catch (InterruptedException ignored) {
+                fail(128, "thread-join-interrupted");
+            } catch (IllegalMonitorStateException ignored) {
+                fail(512, "thread-join-illegal-monitor");
+            } catch (Throwable ignored) {
+                fail(1024, "thread-join-throw");
+            }
             if (box[0] == 42) {
                 ok("thread-start-join");
             } else {
                 fail(8, "thread-start-join-value");
             }
         } catch (Throwable ignored) {
-            fail(64, "thread-start-join-throw");
+            fail(64, "thread-start-join-outer-throw");
         }
 
         try {

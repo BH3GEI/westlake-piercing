@@ -1,0 +1,22 @@
+diff --git a/patches/runtime/interpreter/interpreter.cc b/patches/runtime/interpreter/interpreter.cc
+index 00852bb..ece7f0d 100644
+--- a/patches/runtime/interpreter/interpreter.cc
++++ b/patches/runtime/interpreter/interpreter.cc
+@@ -372,6 +372,17 @@ static void InterpreterJni(Thread* self,
+           soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+       // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+       fn(soa.Env(), klass.get(), arg0.get());
++    } else if (shorty == "VLJZ") {
++      // java.lang.Thread.nativeCreate(Thread, long, boolean)
++      using fntype = void(JNIEnv*, jclass, jobject, jlong, jboolean);
++      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
++      ScopedLocalRef<jclass> klass(soa.Env(),
++                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
++      ScopedLocalRef<jobject> arg0(soa.Env(),
++          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
++      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
++      jboolean arg2 = static_cast<jboolean>(args[3]);
++      fn(soa.Env(), klass.get(), arg0.get(), arg1, arg2);
+     } else if (shorty == "IL") {
+       using fntype = jint(JNIEnv*, jclass, jobject);
+       fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
