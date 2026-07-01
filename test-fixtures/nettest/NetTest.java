@@ -2,8 +2,6 @@ package com.nettest;
 import java.net.URL;
 import javax.net.ssl.HttpsURLConnection;
 import java.io.FileWriter;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 public class NetTest implements Runnable {
     public static void run2() { try { new Thread(new NetTest()).start(); } catch (Throwable t) {} }
     public void run() {
@@ -21,9 +19,7 @@ public class NetTest implements Runnable {
             log("OK " + url + " -> HTTP " + code);
             c.disconnect();
         } catch (Throwable t) {
-            StringWriter sw = new StringWriter();
-            t.printStackTrace(new PrintWriter(sw));
-            log("FAIL " + url + " -> " + t.getClass().getName() + ": " + t.getMessage() + "\n" + sw.toString());
+            log("FAIL " + url + " -> " + t.getClass().getName() + ": " + t.getMessage());
         }
     }
     static void log(String s) {

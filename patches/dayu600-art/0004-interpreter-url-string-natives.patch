@@ -1,0 +1,111 @@
+diff --git a/patches/runtime/interpreter/interpreter.cc b/patches/runtime/interpreter/interpreter.cc
+index ece7f0d..cda9b2d 100644
+--- a/patches/runtime/interpreter/interpreter.cc
++++ b/patches/runtime/interpreter/interpreter.cc
+@@ -16,6 +16,7 @@
+ 
+ #include "interpreter.h"
+ 
++#include <algorithm>
+ #include <cstdlib>
+ #include <cstring>
+ #include <limits>
+@@ -54,6 +55,36 @@ ALWAYS_INLINE static ObjPtr<mirror::Object> ObjArg(uint32_t arg)
+   return reinterpret_cast<mirror::Object*>(arg);
+ }
+ 
++static int32_t WestlakeStringLastIndexOf(ObjPtr<mirror::String> haystack,
++                                         ObjPtr<mirror::String> needle,
++                                         int32_t from_index)
++    REQUIRES_SHARED(Locks::mutator_lock_) {
++  const int32_t haystack_len = haystack->GetLength();
++  const int32_t needle_len = needle->GetLength();
++  if (needle_len == 0) {
++    return std::min(from_index, haystack_len);
++  }
++  if (from_index > haystack_len - needle_len) {
++    from_index = haystack_len - needle_len;
++  }
++  if (from_index < 0) {
++    return -1;
++  }
++  for (int32_t i = from_index; i >= 0; --i) {
++    bool match = true;
++    for (int32_t j = 0; j < needle_len; ++j) {
++      if (haystack->CharAt(i + j) != needle->CharAt(j)) {
++        match = false;
++        break;
++      }
++    }
++    if (match) {
++      return i;
++    }
++  }
++  return -1;
++}
++
+ static bool WestlakeTraceTimeZoneBridge() {
+   const char* value = getenv("WESTLAKE_TRACE_TZ");
+   return value != nullptr && value[0] != '\0' && strcmp(value, "0") != 0 &&
+@@ -79,6 +110,47 @@ static void InterpreterJni(Thread* self,
+     result->SetC(receiver->AsString()->CharAt(static_cast<int32_t>(args[0])));
+     return;
+   }
++  if (method->IsStatic() &&
++      shorty == "ZI" &&
++      strcmp(method->GetName(), "isLetterImpl") == 0 &&
++      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/Character;")) {
++    const int32_t ch = static_cast<int32_t>(args[0]);
++    result->SetZ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'));
++    return;
++  }
++  if (method->IsStatic() &&
++      shorty == "ZI" &&
++      strcmp(method->GetName(), "isLetterOrDigitImpl") == 0 &&
++      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/Character;")) {
++    const int32_t ch = static_cast<int32_t>(args[0]);
++    result->SetZ((ch >= 'A' && ch <= 'Z') ||
++                 (ch >= 'a' && ch <= 'z') ||
++                 (ch >= '0' && ch <= '9'));
++    return;
++  }
++  if (!method->IsStatic() &&
++      (shorty == "IL" || shorty == "ILI") &&
++      strcmp(method->GetName(), "lastIndexOf") == 0 &&
++      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/String;")) {
++    if (receiver == nullptr) {
++      ThrowNullPointerExceptionFromInterpreter();
++      result->SetI(-1);
++      return;
++    }
++    ObjPtr<mirror::Object> arg0 = ObjArg(args[0]);
++    if (arg0 == nullptr) {
++      ThrowNullPointerExceptionFromInterpreter();
++      result->SetI(-1);
++      return;
++    }
++    ObjPtr<mirror::String> haystack = receiver->AsString();
++    ObjPtr<mirror::String> needle = arg0->AsString();
++    const int32_t from_index = (shorty == "ILI")
++        ? static_cast<int32_t>(args[1])
++        : haystack->GetLength();
++    result->SetI(WestlakeStringLastIndexOf(haystack, needle, from_index));
++    return;
++  }
+ 
+   // Resolve the native function if it hasn't been registered yet.
+   // The JNI entry point may be the dlsym lookup stub (an assembly routine),
+@@ -1456,6 +1528,14 @@ static void InterpreterJni(Thread* self,
+       ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+       ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+       result->SetI(fn(soa.Env(), rcvr.get(), arg0.get()));
++    } else if (shorty == "ILI") {
++      // int fn(JNIEnv*, jobject, Object, int) - String.lastIndexOf(String, int)
++      using fntype = jint(JNIEnv*, jobject, jobject, jint);
++      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
++      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
++      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
++      result->SetI(fn(soa.Env(), rcvr.get(), arg0.get(), args[1]));
+     } else if (shorty == "LJ") {
+       // Object fn(JNIEnv*, jobject, long) — BinderProxy$ProxyMap.get(long) etc.
+       using fntype = jobject(JNIEnv*, jobject, jlong);
