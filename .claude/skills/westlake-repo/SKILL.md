@@ -1,26 +1,26 @@
 ---
 name: westlake-repo
-description: 在 westlake-piercing 仓库工作时使用，尤其是修改代码、运行检查、更新仓库技能、提交前记录 agent 行为。
+description: Use when working in the westlake-piercing repository, especially for code changes, repo-local checks, repo-skill updates, and pre-commit agent behavior records.
 ---
 
 # Westlake Repo Skill Adapter
 
-先读仓库根目录的 `REPO_SKILL.md`。
+Read `REPO_SKILL.md` at the repository root first.
 
-这是 Claude Code 的薄入口。不要在这里复制完整规则。正文以 `REPO_SKILL.md` 为准。
+This is the Claude Code discovery adapter. Do not duplicate the full rules here; `REPO_SKILL.md` is the source of truth.
 
-这个仓库的协作契约由这些文件组成：
+The repository collaboration contract is carried by:
 
-- `REPO_PIPELINE.dot`：这个仓库怎么启动、测试、部署、验证。
-- `REPO_LOCK.toml`：精确硬件、工具链、依赖版本、artifact hash。
-- `REPO_HISTORY.dot`：每个 commit 里 agent 做了什么。
-- `.repo-skill/turns/`：每轮用户输入、agent 动作、代码变化、验证结果。
+- `REPO_PIPELINE.dot`: startup, checks, deployment, and verification flow.
+- `REPO_LOCK.toml`: exact hardware, toolchain, dependency versions, and artifact hashes.
+- `REPO_HISTORY.dot`: what each agent-facing commit did.
+- `.repo-skill/turns/`: user input, agent actions, code changes, and verification results for each recorded turn.
 
-提交前必须检查：
+Before committing:
 
-- 项目知识变了就更新 `REPO_SKILL.md`。
-- 启动、测试、部署、验证流程变了就更新 `REPO_PIPELINE.dot`。
-- 版本、hash、artifact、硬件要求变了就更新 `REPO_LOCK.toml`。
-- 每次 agent-facing commit 都要更新 `REPO_HISTORY.dot` 和 `.repo-skill/turns/`。
+- Update `REPO_SKILL.md` when project knowledge changes.
+- Update `REPO_PIPELINE.dot` when startup, check, deploy, or verification flow changes.
+- Update `REPO_LOCK.toml` when versions, hashes, artifacts, or hardware requirements change.
+- Update `REPO_HISTORY.dot` and `.repo-skill/turns/` for every agent-facing commit.
 
-缺 DAYU200/RK3568、`hdc`、外部 baseline artifact 时，不准声称完整复现成功。
+Without DAYU200/RK3568, `hdc`, and the external baseline artifacts, do not claim full reproduction success.

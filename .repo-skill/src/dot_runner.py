@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import shlex
 import subprocess
 import sys
@@ -95,10 +96,19 @@ def run_flow(flow: str) -> int:
             status = "fail"
             break
 
+        executable = shlex.split(command)[0]
+        if shutil.which(executable) is None:
+            print(f"missing command: {executable}", flush=True)
+            results.append(StepResult(step_name, kind, "fail", command, 127, 0))
+            status = "fail"
+            break
+
         before = time.time()
         completed = subprocess.run(command, cwd=root, shell=True)
         duration_ms = int((time.time() - before) * 1000)
         step_status = "pass" if completed.returncode == 0 else "fail"
+        if completed.returncode == 9009:
+            print("command failed with 9009; on Windows this usually means the command was not found", flush=True)
         results.append(
             StepResult(step_name, kind, step_status, command, completed.returncode, duration_ms)
         )

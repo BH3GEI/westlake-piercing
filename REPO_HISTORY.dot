@@ -17,7 +17,7 @@ digraph westlake_repo_history {
   ];
 
   claude_code_adapter [
-    commit="self",
+    commit="6113f4b",
     base_commit="fb3661c",
     actor="Yao/Codex",
     title="add Claude Code skill adapter",
@@ -28,5 +28,17 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-06-30-claude-code-adapter.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter;
+  repo_skill_cleanup [
+    commit="self",
+    base_commit="6113f4b",
+    actor="Yao/Codex",
+    title="clean up repo skill metadata",
+    user_input="Inspect BH3GEI/westlake-piercing, especially its built-in repo skill.",
+    agent_action="Added Codex frontmatter to .repo-skill/SKILL.md, rewrote mojibake Claude adapter and turn note, improved missing-command/9009 reporting, and recorded this cleanup turn.",
+    code_delta="No runtime adapter behavior changed; cleaned repository skill metadata, agent-facing history, and runner diagnostics.",
+    verify="static skill checks; repo-local check flow fails honestly on this Windows host before hardware/artifact verification",
+    note=".repo-skill/turns/2026-07-01-repo-skill-cleanup.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup;
 }
