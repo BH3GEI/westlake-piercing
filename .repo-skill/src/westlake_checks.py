@@ -116,6 +116,72 @@ def device() -> int:
     return 0 if completed.returncode == 0 and "westlake-hdc-ok" in completed.stdout else 1
 
 
+def hdc_command() -> str | None:
+    return os.environ.get("HDC") or shutil.which("hdc")
+
+
+def run_hdc_shell(hdc: str, command: str, timeout: int = 8) -> tuple[int, str]:
+    completed = subprocess.run(
+        [hdc, "shell", command],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+    )
+    return completed.returncode, completed.stdout.strip()
+
+
+def dayu600() -> int:
+    hdc = hdc_command()
+    if not hdc:
+        print("missing hdc; set HDC=/path/to/hdc or put hdc on PATH")
+        return 1
+    print(f"using hdc: {hdc}")
+
+    checks = {
+        "kernel": "uname -a",
+        "hardware": "param get ohos.boot.hardware",
+        "abi": "param get const.product.cpu.abilist",
+        "ohos": "param get const.ohos.fullname",
+        "api": "param get const.ohos.apiversion",
+        "appspawn": "file /system/bin/appspawn 2>/dev/null",
+        "appspawn_x": "ls -l /system/bin/appspawn-x 2>/dev/null || true",
+        "android_dir": "ls -ld /system/android /system/android/lib /system/android/lib64 /system/android/framework 2>/dev/null || true",
+    }
+
+    observed: dict[str, str] = {}
+    ok = True
+    for name, command in checks.items():
+        try:
+            rc, output = run_hdc_shell(hdc, command)
+        except Exception as exc:  # noqa: BLE001 - report tool failure plainly.
+            print(f"{name}: hdc check failed: {exc}")
+            return 1
+        observed[name] = output
+        print(f"== {name} ==")
+        print(output or "<empty>")
+        if rc != 0 and name not in {"appspawn_x", "android_dir"}:
+            ok = False
+
+    if "uis7885" not in observed.get("hardware", ""):
+        print("unexpected hardware; expected uis7885")
+        ok = False
+    if "arm64-v8a" not in observed.get("abi", ""):
+        print("unexpected ABI; expected arm64-v8a")
+        ok = False
+    if "64-bit" not in observed.get("appspawn", "") or "arm64" not in observed.get("appspawn", ""):
+        print("unexpected appspawn binary; expected 64-bit arm64")
+        ok = False
+
+    if not observed.get("appspawn_x"):
+        print("note: /system/bin/appspawn-x is absent; DAYU600 port has not deployed the Westlake substrate yet")
+    if not observed.get("android_dir"):
+        print("note: /system/android substrate paths are absent; deployment layout must be designed for DAYU600")
+
+    return 0 if ok else 1
+
+
 def runbook() -> int:
     print("Westlake is not pure clone-and-run.")
     print("Full replay needs DAYU200/RK3568 plus external baseline or rebuilt artifacts.")
@@ -129,12 +195,27 @@ def runbook() -> int:
     return 0
 
 
+def runbook_dayu600() -> int:
+    print("DAYU600 port target:")
+    print("  uis7885 / aarch64 / arm64-v8a / OpenHarmony 6.1.0.31")
+    print("Legacy DAYU200 artifacts are reference only.")
+    print("Before deploying anything:")
+    print("  1. Read docs/DAYU600-PORT.md")
+    print("  2. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
+    print("  3. Re-discover /system/android and lib/lib64 load paths on the live board")
+    print("  4. Never overwrite stock /system/bin/appspawn")
+    print("  5. Never disable HDC through persistent USB config")
+    return 0
+
+
 COMMANDS = {
     "host": host,
     "docs": docs,
     "artifacts": artifacts,
     "device": device,
+    "dayu600": dayu600,
     "runbook": runbook,
+    "runbook-dayu600": runbook_dayu600,
 }
 
 

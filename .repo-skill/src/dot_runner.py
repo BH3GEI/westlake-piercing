@@ -96,8 +96,13 @@ def run_flow(flow: str) -> int:
             status = "fail"
             break
 
-        executable = shlex.split(command)[0]
-        if shutil.which(executable) is None:
+        parts = shlex.split(command)
+        executable = parts[0]
+        if shutil.which(executable) is None and executable == "python3":
+            command = shlex.join([sys.executable, *parts[1:]])
+            executable = sys.executable
+            print(f"python3 not found; using current interpreter: {sys.executable}", flush=True)
+        elif shutil.which(executable) is None:
             print(f"missing command: {executable}", flush=True)
             results.append(StepResult(step_name, kind, "fail", command, 127, 0))
             status = "fail"
@@ -105,6 +110,11 @@ def run_flow(flow: str) -> int:
 
         before = time.time()
         completed = subprocess.run(command, cwd=root, shell=True)
+        if completed.returncode == 9009 and parts[0] == "python3":
+            retry_args = [sys.executable, *parts[1:]]
+            command = shlex.join(retry_args)
+            print(f"python3 failed with 9009; retrying with current interpreter: {sys.executable}", flush=True)
+            completed = subprocess.run(retry_args, cwd=root)
         duration_ms = int((time.time() - before) * 1000)
         step_status = "pass" if completed.returncode == 0 else "fail"
         if completed.returncode == 9009:
@@ -132,9 +142,9 @@ def run_flow(flow: str) -> int:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2 or argv[1] in {"-h", "--help"}:
-        print("usage: dot_runner.py <up|check|sync>", flush=True)
+        print("usage: dot_runner.py <up|check|dayu600-audit|sync>", flush=True)
         return 2
-    return run_flow(argv[1])
+    return run_flow(argv[1].replace("-", "_"))
 
 
 if __name__ == "__main__":

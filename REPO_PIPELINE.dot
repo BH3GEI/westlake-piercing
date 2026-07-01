@@ -15,6 +15,11 @@ digraph westlake_repo_skill {
     steps="doctor_host verify_docs check_artifacts check_device runbook"
   ];
 
+  dayu600_audit [
+    type="workflow",
+    steps="doctor_host verify_docs check_dayu600 runbook_dayu600"
+  ];
+
   sync [
     type="workflow",
     steps="sync_skill sync_lock sync_history"
@@ -44,10 +49,22 @@ digraph westlake_repo_skill {
     purpose="check DAYU200/RK3568 hdc reachability"
   ];
 
+  check_dayu600 [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py dayu600",
+    purpose="check DAYU600/uis7885 hdc reachability and non-mutating substrate facts"
+  ];
+
   runbook [
     kind="cmd",
     cmd="python3 .repo-skill/src/westlake_checks.py runbook",
     purpose="print the next replay documents and validation target"
+  ];
+
+  runbook_dayu600 [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py runbook-dayu600",
+    purpose="print the DAYU600 porting runbook and safety rules"
   ];
 
   sync_skill [
@@ -67,5 +84,6 @@ digraph westlake_repo_skill {
 
   up -> doctor_host -> check_artifacts -> check_device -> runbook;
   check -> doctor_host -> verify_docs -> check_artifacts -> check_device -> runbook;
+  dayu600_audit -> doctor_host -> verify_docs -> check_dayu600 -> runbook_dayu600;
   sync -> sync_skill -> sync_lock -> sync_history;
 }

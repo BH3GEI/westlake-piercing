@@ -1,6 +1,8 @@
 # Westlake Repo Skill
 
-This repository is a source-available, artifact-required reproduction package for running stock Android APKs on OpenHarmony DAYU200/RK3568 through `appspawn-x`.
+This repository is a source-available, artifact-required reproduction package for running stock Android APKs on OpenHarmony through `appspawn-x`.
+
+The original baseline is DAYU200/RK3568/32-bit ARM. The active porting target is now HH-SCDAYU600 / DAYU600 on Unisoc/Spreadtrum uis7885, aarch64 / arm64-v8a, OpenHarmony 6.1.0.31. Treat DAYU200 artifacts as the reference implementation, not as directly deployable binaries for DAYU600.
 
 The repo skill is the contract for the next agent:
 
@@ -21,10 +23,13 @@ Local runner:
 ```bash
 python3 .repo-skill/src/dot_runner.py up
 python3 .repo-skill/src/dot_runner.py check
+python3 .repo-skill/src/dot_runner.py dayu600-audit
 python3 .repo-skill/src/dot_runner.py sync
 ```
 
-The `up` flow is intentionally honest. It checks the host, the external artifact baseline, and the DAYU200/hdc connection before pointing to the app replay docs. If any required part is missing, it fails instead of pretending the repo can fully run from source alone.
+The `up` flow is intentionally honest. It checks the host, the external artifact baseline, and the legacy DAYU200/hdc connection before pointing to the app replay docs. If any required part is missing, it fails instead of pretending the repo can fully run from source alone.
+
+Use `dayu600-audit` before any DAYU600 deployment. It must establish the live board architecture, HDC state, `/system/android` substrate state, and appspawn/appspawn-x availability without flashing or overwriting system files.
 
 Primary read order:
 
@@ -34,5 +39,6 @@ Primary read order:
 4. `STATUS.md`
 5. `UNIFIED-CONFIG-REPRODUCE.md`
 6. `docs/REPRODUCTION-GUIDE.md`
+7. `docs/DAYU600-PORT.md`
 
 When code, artifacts, or deployment steps change, update this repo skill in the same commit.

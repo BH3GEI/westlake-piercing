@@ -10,14 +10,32 @@ locked_at = "2026-06-30"
 
 [project]
 name = "Westlake"
-claim = "Run stock Android APKs on OpenHarmony DAYU200/RK3568 through appspawn-x."
+claim = "Run stock Android APKs on OpenHarmony through appspawn-x; legacy baseline is DAYU200/RK3568, active port target is DAYU600/uis7885."
 reproducibility = "source-available, artifact-required"
 
 [hardware]
-board = "DAYU200 / RK3568"
-userspace = "32-bit arm"
+board = "DAYU600 / uis7885"
+userspace = "64-bit arm64-v8a"
 transport = "hdc"
 full_replay_requires_board = true
+port_status = "audit-started"
+
+[hardware.legacy_dayu200]
+board = "DAYU200 / RK3568"
+userspace = "32-bit arm"
+role = "reference baseline only; binaries are not directly deployable to DAYU600"
+
+[hardware.dayu600_target]
+board = "HH-SCDAYU600 / SCDAYU600 / DAYU600"
+soc = "Unisoc/Spreadtrum uis7885"
+kernel = "5.15.180"
+os = "OpenHarmony-6.1.0.31"
+api = "6.1.0.31(23)"
+abi = "arm64-v8a"
+storage = "UFS"
+hdc_serial = "5ce2dcee00000000000000000923012c"
+normal_usb = ["USB\\VID_18D1&PID_5000", "USB\\VID_2207&PID_5000"]
+screen = "1920x1200"
 
 [host.reference]
 os = "WSL2 Ubuntu or Linux"
