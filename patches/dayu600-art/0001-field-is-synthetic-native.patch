@@ -1,0 +1,74 @@
+﻿diff --git a/patches/runtime/interpreter/unstarted_runtime.cc b/patches/runtime/interpreter/unstarted_runtime.cc
+index 1f30505..47ac67b 100644
+--- a/patches/runtime/interpreter/unstarted_runtime.cc
++++ b/patches/runtime/interpreter/unstarted_runtime.cc
+@@ -2630,6 +2630,21 @@ void UnstartedRuntime::Jni(Thread* self, ArtMethod* method, mirror::Object* rece
+   }
+ 
+   // Class.getDeclaredMethodInternal — essential for enum values() reflection
++  if (strcmp(method_name, "isSynthetic") == 0 &&
++      strcmp(declaring_class, "Ljava/lang/reflect/Field;") == 0) {
++    if (receiver != nullptr) {
++      ObjPtr<mirror::Field> field_obj =
++          ObjPtr<mirror::Field>::DownCast(ObjPtr<mirror::Object>(receiver));
++      ArtField* art_field = field_obj->GetArtField();
++      constexpr uint32_t kSyntheticAccessFlag = 0x00001000u;
++      result->SetZ(art_field != nullptr &&
++                   ((art_field->GetAccessFlags() & kSyntheticAccessFlag) != 0u));
++      return;
++    }
++    result->SetZ(false);
++    return;
++  }
++
+   if (strcmp(method_name, "getDeclaredMethodInternal") == 0 &&
+       strcmp(declaring_class, "Ljava/lang/Class;") == 0) {
+     // Reuse the existing invoke_handlers logic via direct call
+diff --git a/patches/runtime/runtime.cc b/patches/runtime/runtime.cc
+index 9d9c66c..c144f73 100644
+--- a/patches/runtime/runtime.cc
++++ b/patches/runtime/runtime.cc
+@@ -121,6 +121,7 @@
+ #include "mirror/class_loader-inl.h"
+ #include "mirror/emulated_stack_frame.h"
+ #include "mirror/field.h"
++#include "mirror/field-inl.h"
+ #include "mirror/method.h"
+ #include "mirror/method_handle_impl.h"
+ #include "mirror/method_handles_lookup.h"
+@@ -2581,6 +2582,35 @@ bool Runtime::Start() {
+     if (self->IsExceptionPending()) self->ClearException();
+   }
+ 
++  // PATCH: Keep Field.isSynthetic() side-effect free.
++  // The core-libart Java implementation can re-enter reflection while tolerating
++  // a failed java.io.File clinit, producing an endless Field.isSynthetic() stack.
++  // The answer is just ACC_SYNTHETIC (0x1000) on the backing ArtField.
++  {
++    ScopedObjectAccess soa(self);
++    static auto field_is_synthetic = +[](JNIEnv* env, jobject java_field) -> jboolean {
++      ScopedObjectAccess soa(env);
++      ObjPtr<mirror::Field> field = soa.Decode<mirror::Field>(java_field);
++      ArtField* art_field = field != nullptr ? field->GetArtField() : nullptr;
++      constexpr uint32_t kSyntheticAccessFlag = 0x00001000u;
++      return art_field != nullptr &&
++             ((art_field->GetAccessFlags() & kSyntheticAccessFlag) != 0u)
++          ? JNI_TRUE
++          : JNI_FALSE;
++    };
++    ObjPtr<mirror::Class> field_class =
++        class_linker_->FindSystemClass(self, "Ljava/lang/reflect/Field;");
++    if (field_class != nullptr) {
++      ArtMethod* method = field_class->FindClassMethod(
++          "isSynthetic", "()Z", class_linker_->GetImagePointerSize());
++      patch_runtime_native_method(method,
++                                  reinterpret_cast<const void*>(+field_is_synthetic),
++                                  kAccFastNative,
++                                  "Field.isSynthetic()");
++    }
++    if (self->IsExceptionPending()) self->ClearException();
++  }
++
+   // PATCH: Keep BaseDexClassLoader / DexPathList stringification side-effect free.
+   // When class resolution fails, the exception path tries to stringify the loader.
+   // The current standalone DexPathList path can NPE while formatting that message.

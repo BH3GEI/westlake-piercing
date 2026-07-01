@@ -42,6 +42,14 @@ The repo is ready for DAYU600 port tracking and audit, but it is not yet ready t
 
 A2OH `art-latest` provides a stronger immediate runtime lead than the legacy DAYU200 substrate: `build-bionic-arm64/bin/dalvikvm` starts on the DAYU600 board from `/data/local/tmp`, reaches JIT creation and class lookup, then fails in `java.io.File.<clinit>` / `Field.isSynthetic()` recursion. The next ART step is to fix that failure before integrating with appspawn.
 
+Candidate patch:
+
+```text
+patches/dayu600-art/0001-field-is-synthetic-native.patch
+```
+
+It applies to `A2OH/art-latest` and rewrites `Field.isSynthetic()` to a native ArtField access-flag check. Rebuild is blocked on recovering the AOSP/OHOS source and sysroot paths required by the current A2OH makefiles.
+
 The next appspawn build step is to recover or reconstruct the appspawn-x build tree, then retarget it from:
 
 ```text
