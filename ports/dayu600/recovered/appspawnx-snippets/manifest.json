@@ -1,0 +1,56 @@
+[
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__appspawn-x__src__appspawnx_runtime.cpp@882.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__appspawnx_runtime.cpp@882.snippet.cpp",
+        "title":  "16.12 framework/appspawn-x/src/appspawnx_runtime.cpp:882",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__appspawn-x__src__main.cpp@254.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__main.cpp@254.snippet.cpp",
+        "title":  "16.12 framework/appspawn-x/src/main.cpp:254",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__bionic_compat__src__system_properties.cpp@23.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__bionic_compat__src__system_properties.cpp@23.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/bionic_compat/src/system_properties.cpp:23",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__appspawnx_runtime.cpp@258.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__appspawnx_runtime.cpp@258.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/appspawnx_runtime.cpp:258",
+        "lineCount":  24
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__appspawnx_runtime.cpp@671.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__appspawnx_runtime.cpp@671.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/appspawnx_runtime.cpp:671",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__child_main.cpp@39.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__child_main.cpp@39.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/child_main.cpp:39",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__main.cpp@254.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__main.cpp@254.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/main.cpp:254",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__main.cpp@262.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__main.cpp@262.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/main.cpp:262",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__spawn_server.cpp@144.html",
+        "destination":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\appspawnx-snippets\\framework__appspawn-x__src__spawn_server.cpp@144.snippet.cpp",
+        "title":  "p1612 framework/appspawn-x/src/spawn_server.cpp:144",
+        "lineCount":  20
+    }
+]

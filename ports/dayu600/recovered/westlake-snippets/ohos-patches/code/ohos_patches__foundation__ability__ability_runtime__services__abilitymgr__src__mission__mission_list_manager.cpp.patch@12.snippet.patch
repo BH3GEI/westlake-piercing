@@ -1,0 +1,24 @@
+--- a/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp
++++ b/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp
+@@ -166,6 +166,47 @@
+ {
+     HITRACE_METER_NAME(HITRACE_TAG_ABILITY_MANAGER, __PRETTY_FUNCTION__);
+     std::lock_guard guard(managerLock_);
++    // adapter project (2026-05-20 A+B ????: want-marker gated route to
++    // StartAbilityInMission. Adapter-side ATMAdapter.nativeStartAbilityInMission
++    // sets "__android_in_mission_id" on the Want when an Android Activity
++    // should be pushed onto an existing Mission stack.  OH native callers
++    // do not set this marker and fall through to the normal path below.
++    int32_t inMissionId = abilityRequest.want.GetIntParam("__android_in_mission_id", -1);
++    if (inMissionId > 0) {
++        TAG_LOGI(AAFwkTag::ABILITYMGR,
++            "StartAbility: routing to StartAbilityInMission, missionId=%{public}d", inMissionId);
++        return StartAbilityInMission(abilityRequest, inMissionId);
++    }
++    // adapter project 1D (2026-05-25): server-side mission grouping for Android
++    // adapted apps.  Mirrors AOSP ATMS ActivityStarter: caller's-task primary +
++    // bundle-affinity fallback.  Gated by "__android_adapter_app" so OH-native
++    // apps are unaffected.  NOTE: caller holds managerLock_; StartAbilityInMission
++    // and FindMissionByBundle assume the lock is already held (must NOT re-lock).
++    if (abilityRequest.want.GetBoolParam("__android_adapter_app", false)) {
++        constexpr int A_FLAG_NEW_TASK = 0x10000000;       // FLAG_ACTIVITY_NEW_TASK

@@ -1,0 +1,25 @@
++    if (!targetMission) {
++        TAG_LOGE(AAFwkTag::ABILITYMGR,
++            "StartAbilityInMission: Mission %{public}d not found", missionId);
++        return ERR_INVALID_VALUE;
++    }
++
++    // 2026-05-25 1D (P2): FLAG_ACTIVITY_SINGLE_TOP ??if the target ability is
++    // already on top of this mission's stack, deliver onNewIntent to the existing
++    // instance instead of pushing a new one (Android singleTop semantics).
++    constexpr int A_FLAG_SINGLE_TOP = 0x20000000;  // FLAG_ACTIVITY_SINGLE_TOP
++    int32_t androidFlags = abilityRequest.want.GetIntParam("__android_launch_flags", 0);
++    auto stackTop = targetMission->GetAbilityRecord();
++    if ((androidFlags & A_FLAG_SINGLE_TOP) && stackTop &&
++        stackTop->GetElementName().GetBundleName() == abilityRequest.abilityInfo.bundleName &&
++        stackTop->GetElementName().GetAbilityName() == abilityRequest.abilityInfo.name) {
++        TAG_LOGI(AAFwkTag::ABILITYMGR,
++            "StartAbilityInMission: SINGLE_TOP, top is target -> onNewIntent");
++        stackTop->SetWant(abilityRequest.want);
++        stackTop->SetIsNewWant(true);
++        if (!stackTop->IsAbilityState(AbilityState::FOREGROUND)) {
++#ifdef SUPPORT_SCREEN
++            auto callerForTop = GetAbilityRecordByTokenInner(abilityRequest.callerToken);
++            std::shared_ptr<StartOptions> startOptionsTop = nullptr;
++            stackTop->ProcessForegroundAbility(false, abilityRequest, startOptionsTop, callerForTop,
++                static_cast<uint32_t>(WindowStateChangeReason::ABILITY_CALL));

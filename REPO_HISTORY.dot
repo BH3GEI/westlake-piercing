@@ -41,7 +41,7 @@ digraph westlake_repo_history {
   ];
 
   dayu600_port_target [
-    commit="self",
+    commit="pending",
     base_commit="f926081",
     actor="Yao/Codex",
     title="declare DAYU600 as active port target",
@@ -52,5 +52,17 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-01-dayu600-port-target.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target;
+  dayu600_2048_appspawn_child [
+    commit="self",
+    base_commit="pending",
+    actor="Yao/Codex",
+    title="run real 2048 APK inside DAYU600 app child",
+    user_input="Run the attached 2048 APK on the OpenHarmony DAYU600 board using the A2OH/westlake-piercing port, not a rewritten clone.",
+    agent_action="Added DAYU600 APK/framework/AppSpawnX fixtures, patched the aarch64 ART runtime for the standalone String.valueOf(int)/Integer.toString(int) path, added the embedded no-exit AppSpawnX path, deployed the probe runtime under /data/local/tmp, and joined aa start to a temporary AppSpawnX app-child route without replacing stock appspawn.",
+    code_delta="Added reproducible DAYU600 2048 probe scripts and repo-skill flow entries; no /system binary replacement and no legacy 32-bit DAYU200 artifacts deployed.",
+    verify="real com.digiplex.game.MainActivity.onCreate, privateR, gameStateJson, and gameMoveJson return RC:0 under standalone ART; temporary AppSpawnX app-child route runs embedded ART and onCreateNullTrace RC:0 inside m.digiplex.game while OHOS reaches AbilityTransitionDone",
+    note=".repo-skill/turns/2026-07-02-dayu600-2048-appspawn-child.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child;
 }

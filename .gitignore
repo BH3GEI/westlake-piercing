@@ -24,3 +24,10 @@ boot*.vdex
 
 # Local device smoke logs and pulled evidence.
 artifacts/
+
+# Rebuildable DAYU600 fixture outputs.
+test-fixtures/dayu600-*/out/
+ports/dayu600/out/
+ports/dayu600/device-libs/
+entry-hap/dayu600-*/out/
+entry-hap/dayu600-*/*.hap

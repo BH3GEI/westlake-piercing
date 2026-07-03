@@ -19,12 +19,28 @@ Current local entrypoint:
 python .repo-skill/src/dot_runner.py up
 python .repo-skill/src/dot_runner.py check
 python .repo-skill/src/dot_runner.py dayu600-audit
+python .repo-skill/src/dot_runner.py dayu600-2048
 python .repo-skill/src/dot_runner.py sync
 ```
+
+For temporary launcher-style DAYU600 testing:
+
+```powershell
+python .repo-skill/src/westlake_checks.py dayu600-2048-keepalive
+```
+
+This leaves the `/data/local/tmp` AppSpawnX prototype alive so later
+launcher/`aa start` requests can reach `com.digiplex.game`. It is still a
+temporary non-`/system` setup and does not provide visible Android UI rendering.
 
 Do not treat `up` as a normal app bootstrap. Westlake needs hardware and external artifacts. The runner should fail clearly when those are missing.
 
 Do not deploy legacy DAYU200/RK3568 32-bit artifacts to DAYU600. Use `dayu600-audit` first, then rebuild or replace architecture-specific components for `arm64-v8a`.
+
+Use `dayu600-2048` to replay the current DAYU600 real-APK milestone. It runs the
+stock 2048 APK through the standalone ART probe and the temporary AppSpawnX
+app-child route. Treat a passing result as proof of APK/runtime/request-chain
+progress, not as proof of visible Android UI rendering.
 
 Before changing code or handing work to another agent, read:
 
@@ -34,3 +50,5 @@ Before changing code or handing work to another agent, read:
 4. `STATUS.md`
 5. `UNIFIED-CONFIG-REPRODUCE.md`
 6. `docs/REPRODUCTION-GUIDE.md`
+7. `docs/DAYU600-PORT.md`
+8. `docs/DAYU600-APK-2048-2026-07-02.md`

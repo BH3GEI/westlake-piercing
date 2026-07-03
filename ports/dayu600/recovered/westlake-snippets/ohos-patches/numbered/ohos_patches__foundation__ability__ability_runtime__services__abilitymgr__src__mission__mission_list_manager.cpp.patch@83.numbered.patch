@@ -1,0 +1,29 @@
+// recovered from: C:\Users\ufop\Downloads\192.168.8.17_8000\19.53_RunTime_AonB\??\16.12\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@83.html
+// title: 16.12 ohos_patches/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp.patch:83
+// summary: MissionListManager::StartAbilityInMission</span><br><span>??? FLAG_ACTIVITY_SINGLE_TOP ??????????????mission ????????? SetWant + SetIsNewWant ?????????????????? A
+
+   71: +    if (!targetMission) {
+   72: +        TAG_LOGE(AAFwkTag::ABILITYMGR,
+   73: +            "StartAbilityInMission: Mission %{public}d not found", missionId);
+   74: +        return ERR_INVALID_VALUE;
+   75: +    }
+   76: +
+   77: +    // 2026-05-25 1D (P2): FLAG_ACTIVITY_SINGLE_TOP ??if the target ability is
+   78: +    // already on top of this mission's stack, deliver onNewIntent to the existing
+   79: +    // instance instead of pushing a new one (Android singleTop semantics).
+   80: +    constexpr int A_FLAG_SINGLE_TOP = 0x20000000;  // FLAG_ACTIVITY_SINGLE_TOP
+   81: +    int32_t androidFlags = abilityRequest.want.GetIntParam("__android_launch_flags", 0);
+   82: +    auto stackTop = targetMission->GetAbilityRecord();
+   83: +    if ((androidFlags & A_FLAG_SINGLE_TOP) && stackTop &&
+   84: +        stackTop->GetElementName().GetBundleName() == abilityRequest.abilityInfo.bundleName &&
+   85: +        stackTop->GetElementName().GetAbilityName() == abilityRequest.abilityInfo.name) {
+   86: +        TAG_LOGI(AAFwkTag::ABILITYMGR,
+   87: +            "StartAbilityInMission: SINGLE_TOP, top is target -> onNewIntent");
+   88: +        stackTop->SetWant(abilityRequest.want);
+   89: +        stackTop->SetIsNewWant(true);
+   90: +        if (!stackTop->IsAbilityState(AbilityState::FOREGROUND)) {
+   91: +#ifdef SUPPORT_SCREEN
+   92: +            auto callerForTop = GetAbilityRecordByTokenInner(abilityRequest.callerToken);
+   93: +            std::shared_ptr<StartOptions> startOptionsTop = nullptr;
+   94: +            stackTop->ProcessForegroundAbility(false, abilityRequest, startOptionsTop, callerForTop,
+   95: +                static_cast<uint32_t>(WindowStateChangeReason::ABILITY_CALL));

@@ -54,6 +54,21 @@ Build/source gap tracker: `docs/DAYU600-BUILD-GAPS.md`.
 
 First ART smoke test: `docs/DAYU600-SMOKE-2026-07-01.md`.
 
+First real APK lifecycle probe: `docs/DAYU600-APK-2048-2026-07-02.md`.
+
+Current handoff snapshot: `docs/DAYU600-HANDOFF-2026-07-03.md`.
+
+Current 2048 status:
+
+```text
+stock com.digiplex.game MainActivity/onCreate: RC:0
+stock com.digiplex.game gameStateJson/gameMoveJson: RC:0
+temporary AppSpawnX app-child route: embedded APK probe returns RC:0 in m.digiplex.game, aa start reaches AbilityTransitionDone
+visible Android UI: not yet; ViewRoot/Surface adapter still missing
+latest visible symptom: app opens to a white/blank screen because Android
+graphics is not attached to the OHOS window yet
+```
+
 ## Safe First Milestone
 
 Do not deploy legacy artifacts yet.
@@ -67,6 +82,11 @@ First milestone is a non-mutating port audit and runtime smoke:
 5. Run ART runtime candidates only from `/data/local/tmp`.
 6. Rebuild the smallest possible aarch64 `appspawn-x` and verify it can start without taking over init.
 7. Only after that, stage Android app runtime jars and libraries.
+
+The runtime smoke and a temporary AppSpawnX app-child route have now passed from
+`/data/local/tmp`. The next milestone is not another APK install; it is the
+visible UI adapter path where Android framework/runtime code runs in the OHOS
+app child and attaches Android drawing to an OHOS window surface.
 
 ## Hard No
 
