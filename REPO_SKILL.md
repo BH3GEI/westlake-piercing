@@ -24,12 +24,31 @@ Local runner:
 python3 .repo-skill/src/dot_runner.py up
 python3 .repo-skill/src/dot_runner.py check
 python3 .repo-skill/src/dot_runner.py dayu600-audit
+python3 .repo-skill/src/dot_runner.py dayu600-2048
 python3 .repo-skill/src/dot_runner.py sync
 ```
+
+For temporary launcher-style DAYU600 testing, run:
+
+```bash
+python3 .repo-skill/src/westlake_checks.py dayu600-2048-keepalive
+```
+
+This leaves the `/data/local/tmp` AppSpawnX prototype alive so later
+launcher/`aa start` requests can reach `com.digiplex.game`. It is still a
+temporary non-`/system` setup and does not provide visible Android UI rendering.
 
 The `up` flow is intentionally honest. It checks the host, the external artifact baseline, and the legacy DAYU200/hdc connection before pointing to the app replay docs. If any required part is missing, it fails instead of pretending the repo can fully run from source alone.
 
 Use `dayu600-audit` before any DAYU600 deployment. It must establish the live board architecture, HDC state, `/system/android` substrate state, and appspawn/appspawn-x availability without flashing or overwriting system files.
+
+Use `dayu600-2048` to reproduce the current DAYU600 APK milestone: the real
+`com.digiplex.game` 2048 APK `MainActivity` and game model return RC:0 under the
+standalone aarch64 ART probe, and the temporary AppSpawnX app-child route runs
+the same real APK probe inside the OHOS `com.digiplex.game` child process while
+AMS reaches `AbilityTransitionDone`. This is not yet visible Android UI; the next hard gap is
+the aarch64 adapter path that runs Android runtime/framework code inside the
+OHOS app child and attaches Android `ViewRoot` / `Surface` rendering.
 
 Primary read order:
 
@@ -40,5 +59,6 @@ Primary read order:
 5. `UNIFIED-CONFIG-REPRODUCE.md`
 6. `docs/REPRODUCTION-GUIDE.md`
 7. `docs/DAYU600-PORT.md`
+8. `docs/DAYU600-APK-2048-2026-07-02.md`
 
 When code, artifacts, or deployment steps change, update this repo skill in the same commit.

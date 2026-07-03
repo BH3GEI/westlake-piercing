@@ -18,7 +18,7 @@ board = "DAYU600 / uis7885"
 userspace = "64-bit arm64-v8a"
 transport = "hdc"
 full_replay_requires_board = true
-port_status = "audit-started"
+port_status = "DAYU600 2048 APK real MainActivity headless RC0; temporary AppSpawnX app-child route runs embedded ART/real APK probe RC0 inside m.digiplex.game and reaches OHOS AbilityTransitionDone; visible Android UI adapter still missing"
 
 [hardware.legacy_dayu200]
 board = "DAYU200 / RK3568"
@@ -59,6 +59,12 @@ version = "2.5.1"
 version_code = 66
 target_sdk = 33
 status = "renders; D-pad and touch interactive; 9/10 pages crash-free"
+
+[apps.dayu600_2048_probe]
+package = "com.digiplex.game"
+apk = "C:/Users/ufop/Downloads/2048-2-9.apk"
+deployed_apk_path = "/data/app/el1/bundle/public/com.digiplex.game/android/base.apk"
+status = "stock APK real MainActivity/onCreate, privateR, gameStateJson, and gameMoveJson run RC0 under the DAYU600 standalone aarch64 ART probe; temporary AppSpawnX app-child route runs onCreateNullTrace RC0 inside m.digiplex.game; visible Android UI still requires the DAYU600 ViewRoot/Surface adapter."
 
 [artifacts.policy]
 large_binaries_committed = false
@@ -101,6 +107,21 @@ appspawn_x = "3abe3bde"
 boot_framework_oat = "290e4499"
 fontconfig = "425290bd"
 catalog_base_apk = "a9df5518"
+
+[artifacts.dayu600_2048_probe]
+libwestlake_art_sha256 = "a3ed8c5825c81fee1d2e754db5213ba2090a44fa1c49c7ac592643d38a6f236b"
+dalvikvm_dayu600_monitorfix_sha256 = "43a281a110d1e816710ca5352bac2918984c0a0d5d5d65b57583091ff0648cbc"
+stringfactory_jar_sha256 = "51497318f0f895c04bb5ed3d7c814a63b8d784a566b9d7ecb0a9c553a547f772"
+framework_shim_dex_sha256 = "d2283148a56a408d501e0fb5735e4dcf5530bd3d3f091813578307b8f331f398"
+androidx_overlay_stub_dex_sha256 = "8e51e3f68bd44a5fbe9d3124226647b253a40e5bf4903a7854da72aa47708c77"
+apk_probe_dex_sha256 = "f4f44753cb4d9397c9473c49e71585d4a3ae04280f071b169efac1c0d08f7224"
+embedded_art_probe_sha256 = "6ef47d46cb8d46f1340a244fd1792862464f78b9cf817bba779fbe3ea136128f"
+appspawn_exec_probe_sha256 = "645059805ff521b961fb63a23c98e48ce3e39772eed89736bc1ce6140d129098"
+appspawn_x_proto_sha256 = "4cbbfc7d7376d95194e6cc3017599b6598ac115a2326af695db433c23ebf7593"
+base_apk_md5 = "4104719da9affd4c5c06d791c554158e"
+base_apk_sha256 = "b92fadb1b854901aec7354edbcfb9d9983c2bb2e006d809adf53ed93c06dfc2c"
+remote_root = "/data/local/tmp/westlake-dayu600"
+verified_date = "2026-07-02"
 
 [verification]
 primary_status_doc = "STATUS.md"

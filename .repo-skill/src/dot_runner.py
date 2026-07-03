@@ -142,7 +142,7 @@ def run_flow(flow: str) -> int:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2 or argv[1] in {"-h", "--help"}:
-        print("usage: dot_runner.py <up|check|dayu600-audit|sync>", flush=True)
+        print("usage: dot_runner.py <up|check|dayu600-audit|dayu600-2048|sync>", flush=True)
         return 2
     return run_flow(argv[1].replace("-", "_"))
 

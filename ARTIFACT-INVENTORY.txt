@@ -56,6 +56,32 @@ config/hm_symbol_config_next.json                                  minimal cold-
 notes/selinux-permissive.md                                        autonomous-demo SELinux enforcing->permissive
 notes/device-safety.md                                             brick/device-loss footguns (usb.config, critical service, mock battery)
 
+================================================================================
+DAYU600 2048 APK probe (com.digiplex.game) - see docs/DAYU600-APK-2048-2026-07-02.md
+================================================================================
+These artifacts are not committed; they are staged on the DAYU600 only under
+/data/local/tmp/westlake-dayu600 and are rebuild/probe outputs for the aarch64
+port.
+
+a3ed8c5825c81fee1d2e754db5213ba2090a44fa1c49c7ac592643d38a6f236b  libwestlake_art.so
+43a281a110d1e816710ca5352bac2918984c0a0d5d5d65b57583091ff0648cbc  dalvikvm-dayu600-monitorfix
+51497318f0f895c04bb5ed3d7c814a63b8d784a566b9d7ecb0a9c553a547f772  stringfactory.jar
+d2283148a56a408d501e0fb5735e4dcf5530bd3d3f091813578307b8f331f398  dayu600-framework-shim.dex
+8e51e3f68bd44a5fbe9d3124226647b253a40e5bf4903a7854da72aa47708c77  dayu600-androidx-overlay-stub.dex
+f4f44753cb4d9397c9473c49e71585d4a3ae04280f071b169efac1c0d08f7224  dayu600-apk-probe.dex
+6ef47d46cb8d46f1340a244fd1792862464f78b9cf817bba779fbe3ea136128f  libwestlake_embedded_art_dlopen_probe.so
+645059805ff521b961fb63a23c98e48ce3e39772eed89736bc1ce6140d129098  libwestlake_appspawn_exec_probe.so
+4cbbfc7d7376d95194e6cc3017599b6598ac115a2326af695db433c23ebf7593  appspawn-x-proto
+4104719da9affd4c5c06d791c554158e                                  com.digiplex.game base.apk md5
+b92fadb1b854901aec7354edbcfb9d9983c2bb2e006d809adf53ed93c06dfc2c  com.digiplex.game base.apk sha256
+
+Verified 2026-07-02:
+- real MainActivity.onCreate(Bundle) probe RC:0
+- real game model gameStateJson/gameMoveJson RC:0
+- temporary AppSpawnX app-child route runs embedded ART/real onCreateNullTrace RC:0 inside m.digiplex.game
+- OHOS AbilityTransitionDone succeeds and WindowManager focuses game0
+- visible Android ViewRoot/Surface adapter still missing
+
 NOTE on md5 reconciliation: the SAME BCP jar shows competing md5s across sessions
 per feature (e.g. ohaf 300581d1->4690cae1; framework.jar f5fd86ef->e6f9e1a3; arb
 d5d39a05->6e32a253->c026e80c; libart 2813065e->ba40f173; boot-framework.oat

@@ -20,6 +20,11 @@ digraph westlake_repo_skill {
     steps="doctor_host verify_docs check_dayu600 runbook_dayu600"
   ];
 
+  dayu600_2048 [
+    type="workflow",
+    steps="verify_docs check_dayu600 run_dayu600_2048_headless run_dayu600_2048_appspawn"
+  ];
+
   sync [
     type="workflow",
     steps="sync_skill sync_lock sync_history"
@@ -67,6 +72,18 @@ digraph westlake_repo_skill {
     purpose="print the DAYU600 porting runbook and safety rules"
   ];
 
+  run_dayu600_2048_headless [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py dayu600-2048-headless",
+    purpose="run the real 2048 APK MainActivity and game-model probe under standalone DAYU600 ART"
+  ];
+
+  run_dayu600_2048_appspawn [
+    kind="cmd",
+    cmd="python3 .repo-skill/src/westlake_checks.py dayu600-2048-appspawn",
+    purpose="run the real 2048 APK onCreate probe inside the temporary AppSpawnX app child"
+  ];
+
   sync_skill [
     kind="agent",
     purpose="update REPO_SKILL.md and .repo-skill/SKILL.md if project knowledge changed"
@@ -85,5 +102,6 @@ digraph westlake_repo_skill {
   up -> doctor_host -> check_artifacts -> check_device -> runbook;
   check -> doctor_host -> verify_docs -> check_artifacts -> check_device -> runbook;
   dayu600_audit -> doctor_host -> verify_docs -> check_dayu600 -> runbook_dayu600;
+  dayu600_2048 -> verify_docs -> check_dayu600 -> run_dayu600_2048_headless -> run_dayu600_2048_appspawn;
   sync -> sync_skill -> sync_lock -> sync_history;
 }

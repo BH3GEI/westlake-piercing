@@ -60,6 +60,7 @@ def docs() -> int:
         "docs/DAYU600-PORT-AUDIT-2026-07-01.md",
         "docs/DAYU600-BUILD-GAPS.md",
         "docs/DAYU600-SMOKE-2026-07-01.md",
+        "docs/DAYU600-APK-2048-2026-07-02.md",
         "ARTIFACT-INVENTORY.txt",
     ]
     ok = True
@@ -121,7 +122,19 @@ def device() -> int:
 
 
 def hdc_command() -> str | None:
-    return os.environ.get("HDC") or shutil.which("hdc")
+    explicit = os.environ.get("HDC")
+    if explicit:
+        return explicit
+
+    on_path = shutil.which("hdc")
+    if on_path:
+        return on_path
+
+    known_windows_path = Path.home() / "Desktop" / "dayu600_search" / "HarmonyDevTools_v1.0.4" / "toolchains" / "hdc.exe"
+    if known_windows_path.exists():
+        return str(known_windows_path)
+
+    return None
 
 
 def run_hdc_shell(hdc: str, command: str, timeout: int = 8) -> tuple[int, str]:
@@ -218,11 +231,64 @@ def runbook_dayu600() -> int:
     print("  2. Read docs/DAYU600-PORT-AUDIT-2026-07-01.md")
     print("  3. Read docs/DAYU600-BUILD-GAPS.md")
     print("  4. Read docs/DAYU600-SMOKE-2026-07-01.md")
-    print("  5. Continue ART smoke tests from /data/local/tmp/westlake-dayu600")
-    print("  6. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
-    print("  7. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
-    print("  8. Keep HDC config at hdc_debug")
+    print("  5. Read docs/DAYU600-APK-2048-2026-07-02.md")
+    print("  6. Re-run the 2048 APK probes with: python .repo-skill/src/dot_runner.py dayu600_2048")
+    print("  7. Continue ART smoke tests from /data/local/tmp/westlake-dayu600")
+    print("  8. Rebuild or replace every 32-bit ARM runtime artifact for aarch64")
+    print("  9. Use a separate /system/bin/appspawn-x; never overwrite stock /system/bin/appspawn")
+    print("  10. Keep HDC config at hdc_debug")
     return 0
+
+
+def run_powershell_script(rel: str, args: list[str]) -> int:
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        print("missing PowerShell; cannot run DAYU600 Windows probe scripts")
+        return 1
+
+    script = ROOT / rel
+    if not script.exists():
+        print(f"missing script: {rel}")
+        return 1
+
+    completed = subprocess.run(
+        [powershell, "-ExecutionPolicy", "Bypass", "-File", str(script), *args],
+        cwd=ROOT,
+    )
+    return completed.returncode
+
+
+def dayu600_2048_headless() -> int:
+    print("Running stock 2048 APK through the DAYU600 standalone aarch64 ART probe.")
+    return run_powershell_script(
+        "test-fixtures/dayu600-apk-probe/run-2048-headless.ps1",
+        ["-SkipBuild", "-SkipUpload"],
+    )
+
+
+def dayu600_2048_appspawn() -> int:
+    print("Running stock 2048 APK inside the DAYU600 AppSpawnX app child.")
+    print("This uses /data/local/tmp only and does not replace stock /system/bin/appspawn.")
+    return run_powershell_script(
+        "test-fixtures/dayu600-appspawn-probe/run-appspawnx-2048-ams-exec-probe.ps1",
+        ["-SkipBuild", "-Stage", "onCreateNullTrace"],
+    )
+
+
+def dayu600_2048_keepalive() -> int:
+    print("Starting the temporary DAYU600 AppSpawnX receiver and leaving it alive.")
+    print("This lets later launcher/aa-start requests reach the real 2048 APK app child.")
+    return run_powershell_script(
+        "test-fixtures/dayu600-appspawn-probe/run-appspawnx-2048-ams-exec-probe.ps1",
+        ["-SkipBuild", "-Stage", "onCreateManual", "-KeepAlive"],
+    )
+
+
+def dayu600_2048() -> int:
+    rc = dayu600_2048_headless()
+    if rc != 0:
+        return rc
+    return dayu600_2048_appspawn()
 
 
 COMMANDS = {
@@ -231,6 +297,10 @@ COMMANDS = {
     "artifacts": artifacts,
     "device": device,
     "dayu600": dayu600,
+    "dayu600-2048": dayu600_2048,
+    "dayu600-2048-headless": dayu600_2048_headless,
+    "dayu600-2048-appspawn": dayu600_2048_appspawn,
+    "dayu600-2048-keepalive": dayu600_2048_keepalive,
     "runbook": runbook,
     "runbook-dayu600": runbook_dayu600,
 }

@@ -1,0 +1,20 @@
+// Preferred path (when running as init service):
+//   init cfg ?????? "socket" ??? init ??fork ??bind+listen+labeled??/td></tr><tr><td class=ln>134</td><td class=cd>//   fd ????? env `OHOS_SOCKET_<socketName>` ?????????????????????/td></tr><tr><td class=ln>135</td><td class=cd>//   ?????OH ??? appspawn ?????????????????Enforcing ?????/td></tr><tr><td class=ln>136</td><td class=cd>//   ??ppspawn ??? policy ?????unlink dev_unix_file sock_file;
+//    ??? factory policy.31 ??? "AppSpawnX" ??name-based type_transition,
+//    ??? bind ?????socket label ??dev_unix_file ??? appspawn_socket,
+//    ?????avc denied????/td></tr><tr><td class=ln>140</td><td class=cd>//
+// Fallback path (standalone / unit test):
+//   env ??? ???????? socket+unlink+bind+listen ?????ermissive ????????/td></tr><tr><td class=ln>143</td><td class=cd>// ---------------------------------------------------------------------------
+int SpawnServer::createListenSocket() {
+    std::string envKey = "OHOS_SOCKET_" + socketName_;
+    const char* fdStr = getenv(envKey.c_str());
+    if (fdStr != nullptr && *fdStr != '\0') {
+        int fd = atoi(fdStr);
+        if (fd >= 0) {
+            listenFd_ = fd;
+            LOGI("Using init-provided socket: env=%s fd=%d path=%s",
+                 envKey.c_str(), fd, socketPath_.c_str());
+            // init ??bind+listen+label; ??? unlink/bind/listen/chmod,
+            // ??? Enforcing ?????policy ??(avc denied unlink dev_unix_file)
+            return 0;
+        }

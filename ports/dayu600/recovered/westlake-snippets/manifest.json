@@ -1,0 +1,1262 @@
+[
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@132.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@132.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@132.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/activity/IntentWantConverter.java:132",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@173.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@173.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__activity__IntentWantConverter.java@173.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/activity/IntentWantConverter.java:173",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/AbilitySchedulerBridge.java:178",
+        "summary":  "onScheduleConnectAbility\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??service token ???????????????OH connect/command ???????????? scheduleCreateService????????scheduleB",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__include__mission__mission.h@95.html",
+        "category":  "ohos-patches",
+        "extension":  "h",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\code\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__include__mission__mission.h@95.snippet.h",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\numbered\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__include__mission__mission.h@95.numbered.h",
+        "title":  "p1612 ohos_patches/foundation/ability/ability_runtime/services/abilitymgr/include/mission/mission.h:95",
+        "summary":  "Mission::GetAbilityRecord\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??OH ?????? Mission ?? Ability???????????abilityStack_?????? GetAbilityRecord() ???????????????????????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_input_bridge.cpp@696.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_input_bridge.cpp@696.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_input_bridge.cpp@696.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_input_bridge.cpp:696",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_window_manager_client.cpp@335.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@335.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@335.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_window_manager_client.cpp:335",
+        "summary":  "OHWindowManagerClient::createSession\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e?????ability token ??????????????property-\u003eSetTokenState(true)??? WMS stub ?????????????????remote ob",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_window_manager_client.cpp@552.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@552.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@552.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_window_manager_client.cpp:552",
+        "summary":  "hideWindow/showWindow\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSessionEntry.wmsShown ??????????????relayout ?????? show/hide ??????????????AddWindow/RemoveWindow IP",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@509.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@509.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@509.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/AbilitySchedulerBridge.java:509",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__broadcast__BroadcastEventConverter.java@123.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__broadcast__BroadcastEventConverter.java@123.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__broadcast__BroadcastEventConverter.java@123.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/broadcast/BroadcastEventConverter.java:123",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@103.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@103.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@103.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityManagerAdapter.java:103",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@810.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@810.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@810.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityManagerAdapter.java:810",
+        "summary":  "registerReceiverWithFeature\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eAtomicInteger ??? subscriptionId??oncurrentHashMap ??? Binder-\u003e????????\u003efilter???????? ID ?????Com",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__WindowCallbackBridge.java@27.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__WindowCallbackBridge.java@27.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__WindowCallbackBridge.java@27.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/WindowCallbackBridge.java:27",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@295.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@295.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@295.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/AppSchedulerBridge.java:295",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/AppSchedulerBridge.java:62",
+        "summary":  "nativeOnScheduleLaunchAbility\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH ??????????????Activity ???????????????ClientTransaction/LaunchActivityItem/ResumeActivityItem ???",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__bridge__callback__CommonEventReceiverBridge.java@69.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__CommonEventReceiverBridge.java@69.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__CommonEventReceiverBridge.java@69.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/bridge/callback/CommonEventReceiverBridge.java:69",
+        "summary":  "onCommonEventReceived\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH IPC ??????????????IIntentReceiver.performReceive oneway ????????????????Android ??????/Receiver ???",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_input_bridge.cpp@457.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_input_bridge.cpp@457.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_input_bridge.cpp@457.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_input_bridge.cpp:457",
+        "summary":  "OHInputBridge::monitorOHInputEvents\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e?????? OH input fd ????????detached monitor thread???????????? sessions_ ??pollfd ????????poll ?????? ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__package-manager__java__PermissionMapper.java@101.html",
+        "category":  "package-manager",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__java__PermissionMapper.java@101.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__java__PermissionMapper.java@101.numbered.java",
+        "title":  "p1612 framework/package-manager/java/PermissionMapper.java:101",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__package-manager__jni__apk_installer.cpp@560.html",
+        "category":  "package-manager",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__jni__apk_installer.cpp@560.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__jni__apk_installer.cpp@560.numbered.cpp",
+        "title":  "p1612 framework/package-manager/jni/apk_installer.cpp:560",
+        "summary":  "ApkInstaller::CreateDataDirs\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??Android ?????? cache/code_cache/databases/files ??????????? chmod/chown ?????uid/gid??????????????? ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__package-manager__jni__apk_signature_verifier.cpp@183.html",
+        "category":  "package-manager",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__jni__apk_signature_verifier.cpp@183.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__jni__apk_signature_verifier.cpp@183.numbered.cpp",
+        "title":  "p1612 framework/package-manager/jni/apk_signature_verifier.cpp:183",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__package-manager__java__PackageInfoBuilder.java@239.html",
+        "category":  "package-manager",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__java__PackageInfoBuilder.java@239.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__java__PackageInfoBuilder.java@239.numbered.java",
+        "title":  "p1612 framework/package-manager/java/PackageInfoBuilder.java:239",
+        "summary":  "buildExtensionInfos\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH extensionAbilityInfos ??? type ???????????SERVICE/DATASHARE ?????Android ServiceInfo/Provide",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__core__java__OhTokenRegistry.java@121.html",
+        "category":  "core",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\code\\framework__core__java__OhTokenRegistry.java@121.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\numbered\\framework__core__java__OhTokenRegistry.java@121.numbered.java",
+        "title":  "p1612 framework/core/java/OhTokenRegistry.java:121",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__core__java__ServiceInterceptor.java@111.html",
+        "category":  "core",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\code\\framework__core__java__ServiceInterceptor.java@111.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\numbered\\framework__core__java__ServiceInterceptor.java@111.numbered.java",
+        "title":  "p1612 framework/core/java/ServiceInterceptor.java:111",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__hwui-shim__jni__oh_hardwarebuffer_shim.c@38.html",
+        "category":  "hwui-shim",
+        "extension":  "c",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\hwui-shim\\code\\framework__hwui-shim__jni__oh_hardwarebuffer_shim.c@38.snippet.c",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\hwui-shim\\numbered\\framework__hwui-shim__jni__oh_hardwarebuffer_shim.c@38.numbered.c",
+        "title":  "p1612 framework/hwui-shim/jni/oh_hardwarebuffer_shim.c:38",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__surface__jni__oh_graphic_buffer_producer.cpp@113.html",
+        "category":  "surface",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_graphic_buffer_producer.cpp@113.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_graphic_buffer_producer.cpp@113.numbered.cpp",
+        "title":  "p1612 framework/surface/jni/oh_graphic_buffer_producer.cpp:113",
+        "summary":  "OHGraphicBufferProducer::dequeueBuffer\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??OH BufferHandle ??dmabuf fd ??? dup ???????????????????????? OH sync_file fence ??? fd ?????? Androi",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__display_manager_adapter_jni.cpp@45.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__display_manager_adapter_jni.cpp@45.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__display_manager_adapter_jni.cpp@45.numbered.cpp",
+        "title":  "p1612 framework/window/jni/display_manager_adapter_jni.cpp:45",
+        "summary":  "getDisplayInfo\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??????????????OH Display::GetDisplayInfoWithCache()?????setContentView/Choreographer ????????Bind",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_anativewindow_shim.cpp@201.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_anativewindow_shim.cpp@201.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_anativewindow_shim.cpp@201.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_anativewindow_shim.cpp:201",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__jni__oh_anativewindow_shim.cpp@254.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_anativewindow_shim.cpp@254.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_anativewindow_shim.cpp@254.numbered.cpp",
+        "title":  "p1612 framework/window/jni/oh_anativewindow_shim.cpp:254",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__window__java__InputEventBridge.java@62.html",
+        "category":  "window",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__java__InputEventBridge.java@62.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__java__InputEventBridge.java@62.numbered.java",
+        "title":  "p1612 framework/window/java/InputEventBridge.java:62",
+        "summary":  "resolveDispatchMethod\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? dispatchInputEvent ??? Method ???????????getDeclaredMethod/setAccessible???????????????????? Metho",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__surface__jni__oh_graphic_buffer_producer.cpp@208.html",
+        "category":  "surface",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_graphic_buffer_producer.cpp@208.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_graphic_buffer_producer.cpp@208.numbered.cpp",
+        "title":  "p1612 framework/surface/jni/oh_graphic_buffer_producer.cpp:208",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__surface__jni__oh_graphic_buffer_producer.h@39.html",
+        "category":  "surface",
+        "extension":  "h",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_graphic_buffer_producer.h@39.snippet.h",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_graphic_buffer_producer.h@39.numbered.h",
+        "title":  "p1612 framework/surface/jni/oh_graphic_buffer_producer.h:39",
+        "summary":  "BufferSlot\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??slot ????????OH SurfaceBuffer ??sptr??????????????? dup ?????dmabuf fd?????queue/cancel/disconnec",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__surface__jni__oh_surface_bridge.cpp@75.html",
+        "category":  "surface",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_surface_bridge.cpp@75.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_surface_bridge.cpp@75.numbered.cpp",
+        "title":  "p1612 framework/surface/jni/oh_surface_bridge.cpp:75",
+        "summary":  "createSurface\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSurfaceBridge ?????RSSurfaceNode???????sessionId ??WMS ?????????????????? hwui buffer feed ?????? RS ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@828.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@828.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityManagerAdapter.java@828.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityManagerAdapter.java:828",
+        "summary":  "registerReceiverWithFeature\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??????????????requiredPermission ?????? nativeSubscribeCommonEvent??? Android ????????????????????OH CE",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@238.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@238.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@238.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:238",
+        "summary":  "nativeGetSurfaceHandle\u003c/span\u003e\u003cbr\u003e\u003cspan\u003erelayout ?????sessionId/???/??? get-or-create OHGraphicBufferProducer handle??? Surface ?????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@295.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@295.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@295.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:295",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:332",
+        "summary":  "finishDrawing\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eAndroid finishDrawing ????????? native ??? RSUIDirector ????????? OH session drawing-completed??? ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:185",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@357.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@357.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@357.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageManagerAdapter.java:357",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@47.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@47.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@47.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageManagerAdapter.java:47",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ServiceConnectionRegistry.java@85.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ServiceConnectionRegistry.java@85.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ServiceConnectionRegistry.java@85.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ServiceConnectionRegistry.java:85",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@61.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@61.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@61.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:61",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/LifecycleAdapter.java:83",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/packagemanager/PermissionMapper.java:101",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/com/android/internal/os/AppSpawnXInit.java:196",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__LifecycleAdapter.java@175.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__LifecycleAdapter.java@175.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__LifecycleAdapter.java@175.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/LifecycleAdapter.java:175",
+        "summary":  "dispatchAndroidLifecycle\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??OH lifecycle callback ?????Android lifecycle item??????????????? scheduleTransaction???????????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__core__OHEnvironment.java@32.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__core__OHEnvironment.java@32.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__core__OHEnvironment.java@32.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/core/OHEnvironment.java:32",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__core__OHEnvironment.java@70.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__core__OHEnvironment.java@70.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__core__OHEnvironment.java@70.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/core/OHEnvironment.java:70",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/core/ServiceInterceptor.java:34",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@110.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@110.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageManagerAdapter.java@110.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageManagerAdapter.java:110",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@60.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@60.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@60.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderBridge.java:60",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@106.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@106.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@106.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderRegistry.java:106",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderRegistry.java:124",
+        "summary":  "acquireProvider\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??authority ???????????ProviderInfo/ContentProviderHolder?????ContentProviderBridge ??? holder.",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@225.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@225.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderBridge.java@225.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderBridge.java:225",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityManagerAdapterV2.java@43.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityManagerAdapterV2.java@43.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityManagerAdapterV2.java@43.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityManagerAdapterV2.java:43",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@933.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@933.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@933.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityTaskManagerAdapter.java:933",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ActivityTaskManagerAdapter.java:941",
+        "summary":  "FLAG_ACTIVITY_SINGLE_TOP\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSINGLE_TOP ?????Ability ???????????deliverOnNewIntent ???????????nativeStartAbilityInMission/??????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@132.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@132.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@132.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderRegistry.java:132",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@143.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@143.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@143.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageInfoBuilder.java:143",
+        "summary":  "buildActivityInfo\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH ability/extension ??visible ????????? Android Activity/Service/Provider ??exported ????????f",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@170.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@170.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@170.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageInfoBuilder.java:170",
+        "summary":  "buildExtensionInfos\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??OH extensionAbilityInfos ??SERVICE/DATASHARE ??????????????Android ServiceInfo ??ProviderInf",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@54.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@54.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__PackageInfoBuilder.java@54.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/PackageInfoBuilder.java:54",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__InputEventBridge.java@59.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__InputEventBridge.java@59.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__InputEventBridge.java@59.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/InputEventBridge.java:59",
+        "summary":  "createInputChannelPair\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e???????????Android InputChannel pair??ava ??? server ????????native InputPublisher??H ???????????? f",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@46.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@46.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@46.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/ContentProviderRegistry.java:46",
+        "summary":  "mOhBridges\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??content provider authority ??? ContentProviderBridge??cquireProvider ???????????eleaseAll ???",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__IActivityManagerBridge.java@913.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__IActivityManagerBridge.java@913.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__IActivityManagerBridge.java@913.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/IActivityManagerBridge.java:913",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1613\\adapted-hanbing-java__adapter__client__InputEventBridge.java@35.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__InputEventBridge.java@35.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__InputEventBridge.java@35.numbered.java",
+        "title":  "p1613 adapted-hanbing-java/adapter/client/InputEventBridge.java:35",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_window_manager_client.cpp@706.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@706.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@706.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_window_manager_client.cpp:706",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@12.html",
+        "category":  "ohos-patches",
+        "extension":  "patch",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\code\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@12.snippet.patch",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\numbered\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@12.numbered.patch",
+        "title":  "16.12 ohos_patches/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp.patch:12",
+        "summary":  "",
+        "lineCount":  24
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@83.html",
+        "category":  "ohos-patches",
+        "extension":  "patch",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\code\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@83.snippet.patch",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\ohos-patches\\numbered\\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@83.numbered.patch",
+        "title":  "16.12 ohos_patches/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp.patch:83",
+        "summary":  "MissionListManager::StartAbilityInMission\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? FLAG_ACTIVITY_SINGLE_TOP ??????????????mission ????????? SetWant + SetIsNewWant ?????????????????? A",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_window_manager_client.cpp@552.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@552.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@552.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_window_manager_client.cpp:552",
+        "summary":  "hideWindow/showWindow\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSessionEntry.wmsShown ??????????????relayout ?????? show/hide ??????????????AddWindow/RemoveWindow IP",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_input_bridge.cpp@696.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_input_bridge.cpp@696.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_input_bridge.cpp@696.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_input_bridge.cpp:696",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_window_manager_client.cpp@335.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@335.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@335.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_window_manager_client.cpp:335",
+        "summary":  "OHWindowManagerClient::createSession\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e?????ability token ??????????????property-\u003eSetTokenState(true)??? WMS stub ?????????????????remote ob",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_window_manager_client.cpp@421.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_window_manager_client.cpp@421.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_window_manager_client.cpp@421.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_window_manager_client.cpp:421",
+        "summary":  "OHWindowManagerClient::createSession\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eCreate/AddWindow ?????? NEED_AVOID ??WMS ????????leash bounds??ddWindow ?????? FLAGS ?????? rect d",
+        "lineCount":  24
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@178.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/bridge/callback/AbilitySchedulerBridge.java:178",
+        "summary":  "onScheduleConnectAbility\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??service token ???????????????OH connect/command ???????????? scheduleCreateService????????scheduleB",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ContentProviderRegistry.java@124.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/ContentProviderRegistry.java:124",
+        "summary":  "acquireProvider\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??authority ???????????ProviderInfo/ContentProviderHolder?????ContentProviderBridge ??? holder.",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__WindowManagerAgentBridge.java@55.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowManagerAgentBridge.java@55.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowManagerAgentBridge.java@55.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/WindowManagerAgentBridge.java:55",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@185.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:185",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@941.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/ActivityTaskManagerAdapter.java:941",
+        "summary":  "FLAG_ACTIVITY_SINGLE_TOP\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSINGLE_TOP ?????Ability ???????????deliverOnNewIntent ???????????nativeStartAbilityInMission/??????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@561.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@561.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AbilitySchedulerBridge.java@561.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/bridge/callback/AbilitySchedulerBridge.java:561",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__bridge__callback__AppSchedulerBridge.java@62.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/bridge/callback/AppSchedulerBridge.java:62",
+        "summary":  "nativeOnScheduleLaunchAbility\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH ????????? Java ?????Binder token??ntent??ctivityInfo??aunchActivityItem ??ResumeActivityIte",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@912.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@912.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__ActivityTaskManagerAdapter.java@912.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/ActivityTaskManagerAdapter.java:912",
+        "summary":  "bridgeStartActivityWithStack\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??OH Mission/Ability ?????? Android task flag??EW_TASK+MULTIPLE_TASK ?????Mission?????Mission ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_anativewindow_shim.cpp@692.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_anativewindow_shim.cpp@692.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_anativewindow_shim.cpp@692.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_anativewindow_shim.cpp:692",
+        "summary":  "oh_anw_try_acquire\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? AdapterAnw ?????NDK acquire/release ??????????????????????????? AOSP common.incRef/decRef ???????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__android-runtime__src__android_view_InputEventReceiver.cpp@419.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_view_InputEventReceiver.cpp@419.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_view_InputEventReceiver.cpp@419.numbered.cpp",
+        "title":  "16.12 framework/android-runtime/src/android_view_InputEventReceiver.cpp:419",
+        "summary":  "workerLoop\u003c/span\u003e\u003cbr\u003e\u003cspan\u003enative worker poll/recv InputChannel fd ?????MotionEvent?????? InputEventBridge.dispatchOnMai",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.numbered.cpp",
+        "title":  "16.12 framework/android-runtime/src/android_view_SurfaceControl.cpp:160",
+        "summary":  "as_sc\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSurfaceControl/Transaction ??nativeObject ?????magic ???????????????????? magic?????????????as_sc/as_t",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__appspawn-x__src__appspawnx_runtime.cpp@882.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__appspawnx_runtime.cpp@882.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__appspawnx_runtime.cpp@882.numbered.cpp",
+        "title":  "16.12 framework/appspawn-x/src/appspawnx_runtime.cpp:882",
+        "summary":  "WorkerState\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? 8MB stack ??pthread ??? startVm+preload??? mutex/condvar ????????? ready/rc?????worker ?????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.numbered.cpp",
+        "title":  "16.12 framework/android-runtime/src/android_graphics_compat_shim.cpp:830",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__activity__java__ActivityClientControllerAdapter.java@186.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__ActivityClientControllerAdapter.java@186.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__ActivityClientControllerAdapter.java@186.numbered.java",
+        "title":  "16.12 framework/activity/java/ActivityClientControllerAdapter.java:186",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__activity__java__AppSchedulerBridge.java@60.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__AppSchedulerBridge.java@60.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__AppSchedulerBridge.java@60.numbered.java",
+        "title":  "16.12 framework/activity/java/AppSchedulerBridge.java:60",
+        "summary":  "notifyForegroundDeferred\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? ScheduleForegroundApplication ????????IPC ????????ApplicationForegrounded ????????? main loope",
+        "lineCount":  19
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__activity__java__LifecycleAdapter.java@277.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__LifecycleAdapter.java@277.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__LifecycleAdapter.java@277.numbered.java",
+        "title":  "16.12 framework/activity/java/LifecycleAdapter.java:277",
+        "summary":  "dispatchByActivityToken\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH binder ????????Runnable ??Handler(Looper.getMainLooper)????????? schedule ClientTransaction ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__appspawn-x__src__main.cpp@254.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__main.cpp@254.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__main.cpp@254.numbered.cpp",
+        "title":  "16.12 framework/appspawn-x/src/main.cpp:254",
+        "summary":  "server.setSpawnHandler\u003c/span\u003e\u003cbr\u003e\u003cspan\u003efork ?????zygotePreFork ???/??? ART daemon ??????????? DAC/SELinux/AccessToken ?????? postForkChild",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__surface__jni__oh_graphic_buffer_producer.h@39.html",
+        "category":  "surface",
+        "extension":  "h",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_graphic_buffer_producer.h@39.snippet.h",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_graphic_buffer_producer.h@39.numbered.h",
+        "title":  "16.12 framework/surface/jni/oh_graphic_buffer_producer.h:39",
+        "summary":  "BufferSlot\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??slot ????????OH SurfaceBuffer ??sptr??????????????? dup ?????dmabuf fd?????queue/cancel/disconnec",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__surface__jni__oh_surface_bridge.cpp@75.html",
+        "category":  "surface",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\code\\framework__surface__jni__oh_surface_bridge.cpp@75.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\surface\\numbered\\framework__surface__jni__oh_surface_bridge.cpp@75.numbered.cpp",
+        "title":  "16.12 framework/surface/jni/oh_surface_bridge.cpp:75",
+        "summary":  "createSurface\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSurfaceBridge ?????RSSurfaceNode???????sessionId ??WMS ?????????????????? hwui buffer feed ?????? RS ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__window__jni__oh_anativewindow_shim.cpp@201.html",
+        "category":  "window",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\code\\framework__window__jni__oh_anativewindow_shim.cpp@201.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\window\\numbered\\framework__window__jni__oh_anativewindow_shim.cpp@201.numbered.cpp",
+        "title":  "16.12 framework/window/jni/oh_anativewindow_shim.cpp:201",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__package-manager__jni__apk_installer.cpp@291.html",
+        "category":  "package-manager",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__jni__apk_installer.cpp@291.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__jni__apk_installer.cpp@291.numbered.cpp",
+        "title":  "16.12 framework/package-manager/jni/apk_installer.cpp:291",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__contentprovider__java__ContentProviderRegistry.java@132.html",
+        "category":  "contentprovider",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\code\\framework__contentprovider__java__ContentProviderRegistry.java@132.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\numbered\\framework__contentprovider__java__ContentProviderRegistry.java@132.numbered.java",
+        "title":  "16.12 framework/contentprovider/java/ContentProviderRegistry.java:132",
+        "summary":  "ContentProviderRegistry.acquireProvider\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??????????OH DataShare bridge ??? ProviderInfo + ApplicationInfo?????uid??rocessName??ackageNam",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__core__java__OhTokenRegistry.java@121.html",
+        "category":  "core",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\code\\framework__core__java__OhTokenRegistry.java@121.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\numbered\\framework__core__java__OhTokenRegistry.java@121.numbered.java",
+        "title":  "16.12 framework/core/java/OhTokenRegistry.java:121",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.12\\framework__package-manager__java__PermissionMapper.java@101.html",
+        "category":  "package-manager",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\code\\framework__package-manager__java__PermissionMapper.java@101.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\package-manager\\numbered\\framework__package-manager__java__PermissionMapper.java@101.numbered.java",
+        "title":  "16.12 framework/package-manager/java/PermissionMapper.java:101",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__client__WindowSessionAdapter.java@332.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/client/WindowSessionAdapter.java:332",
+        "summary":  "finishDrawing\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eAndroid finishDrawing ????????? native ??? RSUIDirector ????????? OH session drawing-completed??? ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__appspawnx_runtime.cpp@671.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__appspawnx_runtime.cpp@671.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__appspawnx_runtime.cpp@671.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/appspawnx_runtime.cpp:671",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__child_main.cpp@39.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__child_main.cpp@39.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__child_main.cpp@39.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/child_main.cpp:39",
+        "summary":  "ChildMain::run\u003c/span\u003e\u003cbr\u003e\u003cspan\u003efork ????????AccessToken??AC??andbox??ELinux??RT post-fork ????????????????root/appspawn ????????????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__main.cpp@254.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__main.cpp@254.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__main.cpp@254.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/main.cpp:254",
+        "summary":  "server.setSpawnHandler\u003c/span\u003e\u003cbr\u003e\u003cspan\u003efork ?????zygotePreFork ???/??? ART daemon ??????????? DAC/SELinux/AccessToken ?????? postForkChild",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__appspawnx_runtime.cpp@258.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__appspawnx_runtime.cpp@258.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__appspawnx_runtime.cpp@258.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/appspawnx_runtime.cpp:258",
+        "summary":  "AppSpawnXRuntime::registerNativeMethods\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e?????? liboh_android_runtime ??AndroidRuntime::startReg?????????????????? Binder/Parcel/Log/AssetM",
+        "lineCount":  24
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_view_SurfaceControl.cpp@160.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_view_SurfaceControl.cpp:160",
+        "summary":  "as_sc\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eSurfaceControl/Transaction ??nativeObject ?????magic ???????????????????? magic?????????????as_sc/as_t",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__libcore_util_NativeAllocationRegistry_guard.cpp@109.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__libcore_util_NativeAllocationRegistry_guard.cpp@109.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__libcore_util_NativeAllocationRegistry_guard.cpp@109.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/libcore_util_NativeAllocationRegistry_guard.cpp:109",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__bionic_compat__src__system_properties.cpp@23.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__bionic_compat__src__system_properties.cpp@23.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__bionic_compat__src__system_properties.cpp@23.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/bionic_compat/src/system_properties.cpp:23",
+        "summary":  "find_or_create_cache_entry\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??256 ?????prop_info ?????Android system property ??name/value/serial?????STL ?????????????????bio",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__main.cpp@262.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__main.cpp@262.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__main.cpp@262.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/main.cpp:262",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__contentprovider__jni__oh_datashare_client.cpp@268.html",
+        "category":  "contentprovider",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\code\\framework__contentprovider__jni__oh_datashare_client.cpp@268.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\numbered\\framework__contentprovider__jni__oh_datashare_client.cpp@268.numbered.cpp",
+        "title":  "p1612 framework/contentprovider/jni/oh_datashare_client.cpp:268",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__contentprovider__jni__oh_datashare_client.cpp@520.html",
+        "category":  "contentprovider",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\code\\framework__contentprovider__jni__oh_datashare_client.cpp@520.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\numbered\\framework__contentprovider__jni__oh_datashare_client.cpp@520.numbered.cpp",
+        "title":  "p1612 framework/contentprovider/jni/oh_datashare_client.cpp:520",
+        "summary":  "OHDataShareClientManager::createClient\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??shared_ptr ?????DataShareClient ?????????????? Java?????? manager map ?????shared_ptr??estroyClie",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__core__java__OHServiceManager.java@85.html",
+        "category":  "core",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\code\\framework__core__java__OHServiceManager.java@85.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\core\\numbered\\framework__core__java__OHServiceManager.java@85.numbered.java",
+        "title":  "p1612 framework/core/java/OHServiceManager.java:85",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__contentprovider__java__ContentProviderRegistry.java@132.html",
+        "category":  "contentprovider",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\code\\framework__contentprovider__java__ContentProviderRegistry.java@132.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\numbered\\framework__contentprovider__java__ContentProviderRegistry.java@132.numbered.java",
+        "title":  "p1612 framework/contentprovider/java/ContentProviderRegistry.java:132",
+        "summary":  "ContentProviderRegistry.acquireProvider\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??????????OH DataShare bridge ??? ProviderInfo + ApplicationInfo?????uid??rocessName??ackageNam",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__appspawn-x__src__spawn_server.cpp@144.html",
+        "category":  "appspawn-x",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\code\\framework__appspawn-x__src__spawn_server.cpp@144.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\appspawn-x\\numbered\\framework__appspawn-x__src__spawn_server.cpp@144.numbered.cpp",
+        "title":  "p1612 framework/appspawn-x/src/spawn_server.cpp:144",
+        "summary":  "SpawnServer::createListenSocket\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e?????? init ??? bind/listen/label ??`OHOS_SOCKET_\u003cname\u003e` fd??? socket ????????OH init/SELinux ???",
+        "lineCount":  20
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__broadcast__jni__common_event_subscriber_adapter.cpp@29.html",
+        "category":  "other",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\other\\code\\framework__broadcast__jni__common_event_subscriber_adapter.cpp@29.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\other\\numbered\\framework__broadcast__jni__common_event_subscriber_adapter.cpp@29.numbered.cpp",
+        "title":  "p1612 framework/broadcast/jni/common_event_subscriber_adapter.cpp:29",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__contentprovider__java__ContentProviderRegistry.java@109.html",
+        "category":  "contentprovider",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\code\\framework__contentprovider__java__ContentProviderRegistry.java@109.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\contentprovider\\numbered\\framework__contentprovider__java__ContentProviderRegistry.java@109.numbered.java",
+        "title":  "p1612 framework/contentprovider/java/ContentProviderRegistry.java:109",
+        "summary":  "acquireProvider\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? authority ???????????Android provider???????????? OH DataShare bridge???????????ContentProviderHo",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_os_MessageQueue.cpp@44.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_os_MessageQueue.cpp@44.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_os_MessageQueue.cpp@44.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_os_MessageQueue.cpp:44",
+        "summary":  "NativeMQ\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??epoll_create1 ??? eventfd??ativePollOnce ?????Looper??ativeWake ??? eventfd ????????drain cou",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@90.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@90.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@90.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/packagemanager/PermissionMapper.java:90",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@196.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/com/android/internal/os/AppSpawnXInit.java:196",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@238.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@238.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__com__android__internal__os__AppSpawnXInit.java@238.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/com/android/internal/os/AppSpawnXInit.java:238",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__packagemanager__PermissionMapper.java@101.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/packagemanager/PermissionMapper.java:101",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__core__ServiceInterceptor.java@34.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/core/ServiceInterceptor.java:34",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__LifecycleAdapter.java@122.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__LifecycleAdapter.java@122.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__LifecycleAdapter.java@122.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/LifecycleAdapter.java:122",
+        "summary":  "mapAndroidToOH\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??Android CREATED/STARTED ?????OH INACTIVE??? PAUSED ?????OH FOREGROUND??? STOPPED ?????BACKGRO",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\16.13\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.html",
+        "category":  "java-adapter",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\code\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\java-adapter\\numbered\\adapted-hanbing-java__adapter__LifecycleAdapter.java@83.numbered.java",
+        "title":  "16.13 adapted-hanbing-java/adapter/LifecycleAdapter.java:83",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__activity__java__AppSchedulerBridge.java@60.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__AppSchedulerBridge.java@60.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__AppSchedulerBridge.java@60.numbered.java",
+        "title":  "p1612 framework/activity/java/AppSchedulerBridge.java:60",
+        "summary":  "notifyForegroundDeferred\u003c/span\u003e\u003cbr\u003e\u003cspan\u003e??? ScheduleForegroundApplication ????????IPC ????????ApplicationForegrounded ????????? main loope",
+        "lineCount":  19
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_graphics_compat_shim.cpp@677.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_graphics_compat_shim.cpp@677.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_graphics_compat_shim.cpp@677.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_graphics_compat_shim.cpp:677",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_graphics_compat_shim.cpp@830.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_graphics_compat_shim.cpp:830",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_os_Binder.cpp@57.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_os_Binder.cpp@57.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_os_Binder.cpp@57.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_os_Binder.cpp:57",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__android_graphics_compat_shim.cpp@387.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__android_graphics_compat_shim.cpp@387.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__android_graphics_compat_shim.cpp@387.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/android_graphics_compat_shim.cpp:387",
+        "summary":  "",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__activity__java__LifecycleAdapter.java@277.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__LifecycleAdapter.java@277.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__LifecycleAdapter.java@277.numbered.java",
+        "title":  "p1612 framework/activity/java/LifecycleAdapter.java:277",
+        "summary":  "dispatchByActivityToken\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH binder ????????Runnable ??Handler(Looper.getMainLooper)????????? schedule ClientTransaction ",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__activity__java__OhConfigurationConverter.java@156.html",
+        "category":  "activity",
+        "extension":  "java",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\code\\framework__activity__java__OhConfigurationConverter.java@156.snippet.java",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\activity\\numbered\\framework__activity__java__OhConfigurationConverter.java@156.numbered.java",
+        "title":  "p1612 framework/activity/java/OhConfigurationConverter.java:156",
+        "summary":  "parseLocale\u003c/span\u003e\u003cbr\u003e\u003cspan\u003eOH locale ?????? BCP-47 ???????????????????JVM ??? Locale ??Locale.US?????Android Configuration ??????",
+        "lineCount":  25
+    },
+    {
+        "source":  "C:\\Users\\ufop\\Downloads\\192.168.8.17_8000\\19.53_RunTime_AonB\\??\\p1612\\framework__android-runtime__src__AndroidRuntime.cpp@365.html",
+        "category":  "android-runtime",
+        "extension":  "cpp",
+        "code":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\code\\framework__android-runtime__src__AndroidRuntime.cpp@365.snippet.cpp",
+        "numbered":  "C:\\Users\\ufop\\westlake-piercing\\ports\\dayu600\\recovered\\westlake-snippets\\android-runtime\\numbered\\framework__android-runtime__src__AndroidRuntime.cpp@365.numbered.cpp",
+        "title":  "p1612 framework/android-runtime/src/AndroidRuntime.cpp:365",
+        "summary":  "",
+        "lineCount":  25
+    }
+]

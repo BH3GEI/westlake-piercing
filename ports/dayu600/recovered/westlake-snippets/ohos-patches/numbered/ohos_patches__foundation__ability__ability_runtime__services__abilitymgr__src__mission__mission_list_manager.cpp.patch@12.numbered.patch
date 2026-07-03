@@ -1,0 +1,27 @@
+// recovered from: C:\Users\ufop\Downloads\192.168.8.17_8000\19.53_RunTime_AonB\??\16.12\ohos_patches__foundation__ability__ability_runtime__services__abilitymgr__src__mission__mission_list_manager.cpp.patch@12.html
+// title: 16.12 ohos_patches/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp.patch:12
+
+    1: --- a/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp
+    2: +++ b/foundation/ability/ability_runtime/services/abilitymgr/src/mission/mission_list_manager.cpp
+    3: @@ -166,6 +166,47 @@
+    4:  {
+    5:      HITRACE_METER_NAME(HITRACE_TAG_ABILITY_MANAGER, __PRETTY_FUNCTION__);
+    6:      std::lock_guard guard(managerLock_);
+    7: +    // adapter project (2026-05-20 A+B ????: want-marker gated route to
+    8: +    // StartAbilityInMission. Adapter-side ATMAdapter.nativeStartAbilityInMission
+    9: +    // sets "__android_in_mission_id" on the Want when an Android Activity
+   10: +    // should be pushed onto an existing Mission stack.  OH native callers
+   11: +    // do not set this marker and fall through to the normal path below.
+   12: +    int32_t inMissionId = abilityRequest.want.GetIntParam("__android_in_mission_id", -1);
+   13: +    if (inMissionId > 0) {
+   14: +        TAG_LOGI(AAFwkTag::ABILITYMGR,
+   15: +            "StartAbility: routing to StartAbilityInMission, missionId=%{public}d", inMissionId);
+   16: +        return StartAbilityInMission(abilityRequest, inMissionId);
+   17: +    }
+   18: +    // adapter project 1D (2026-05-25): server-side mission grouping for Android
+   19: +    // adapted apps.  Mirrors AOSP ATMS ActivityStarter: caller's-task primary +
+   20: +    // bundle-affinity fallback.  Gated by "__android_adapter_app" so OH-native
+   21: +    // apps are unaffected.  NOTE: caller holds managerLock_; StartAbilityInMission
+   22: +    // and FindMissionByBundle assume the lock is already held (must NOT re-lock).
+   23: +    if (abilityRequest.want.GetBoolParam("__android_adapter_app", false)) {
+   24: +        constexpr int A_FLAG_NEW_TASK = 0x10000000;       // FLAG_ACTIVITY_NEW_TASK
