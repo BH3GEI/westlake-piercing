@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <android/hardware_buffer.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,5 +1,9 @@
 #pragma once
 
+// bionic's log/log.h chain pulls in <inttypes.h>; several hwui sources rely
+// on PRIu32/PRId64 leaking in from the log headers.
+#include <inttypes.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

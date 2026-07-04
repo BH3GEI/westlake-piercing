@@ -528,6 +528,22 @@ void register_hwui_if_present(JNIEnv* env) {
         return;
     }
 
+    // Preferred: hwui's own aggregate registrar (apex/jni_runtime.cpp) — the
+    // full gRegJNI table (Canvas/Bitmap/Paint/RenderNode/ThreadedRenderer/…)
+    // in dependency order. C linkage in AOSP 15.
+    HwuiRegFn all = reinterpret_cast<HwuiRegFn>(dlsym(hwui, "register_android_graphics_classes"));
+    if (all) {
+        int rc = all(env);
+        clear_exception(env, "register_android_graphics_classes");
+        logf(rc == 0 ? "I" : "W", "hwui aggregate registration rc=%d", rc);
+        if (rc == 0) {
+            return;
+        }
+        log_line("W", "aggregate registration failed; falling back to per-item list");
+    } else {
+        log_line("I", "register_android_graphics_classes not found; per-item fallback");
+    }
+
     int ok = 0;
     for (const HwuiReg& item : g_hwui_reg_fns) {
         HwuiRegFn fn = reinterpret_cast<HwuiRegFn>(dlsym(hwui, item.sym));
@@ -607,9 +623,5 @@ extern "C" WL_VIS int westlake_android_runtime_startReg(JNIEnv* env) {
     return android::AndroidRuntime::startReg(env);
 }
 
-extern "C" WL_VIS int westlake_android_runtime_startReg_aosp(JNIEnv* env)
-    __asm__("_ZN7android14AndroidRuntime8startRegEP7_JNIEnv");
-
-extern "C" WL_VIS int westlake_android_runtime_startReg_aosp(JNIEnv* env) {
-    return android::AndroidRuntime::startReg(env);
-}
+// AndroidRuntime::startReg itself is WL_VIS: the AOSP-mangled symbol
+// _ZN7android14AndroidRuntime8startRegEP7_JNIEnv is already exported.

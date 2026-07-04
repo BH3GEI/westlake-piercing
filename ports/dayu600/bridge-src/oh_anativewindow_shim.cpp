@@ -65,22 +65,25 @@ struct android_native_base_t {
     void (*decRef)(android_native_base_t* base) = nullptr;
 };
 
+// Field order MUST match ports/dayu600/include/android/native_window.h — the
+// header OUR libhwui.so was compiled against. There the function pointers begin
+// immediately after `common` (there is NO flags/minSwapInterval/xdpi/ydpi/oem
+// block), which puts `query` at offset 88. hwui dereferences window->query at
+// that fixed offset (CanvasContext::setBufferCount, getNextFrameSize); any
+// divergence makes it read a bogus pointer and crash. Keep the three
+// *_DEPRECATED slots so the live pointers land at the exact same offsets.
 struct ANativeWindow {
     android_native_base_t common;
-    uint32_t flags = 0;
-    int minSwapInterval = 0;
-    int maxSwapInterval = 1;
-    float xdpi = 0.0f;
-    float ydpi = 0.0f;
-    intptr_t oem[4] = {};
-
-    int (*setSwapInterval)(ANativeWindow* window, int interval) = nullptr;
-    int (*dequeueBuffer)(ANativeWindow* window, ANativeWindowBuffer** buffer, int* fenceFd) = nullptr;
-    int (*lockBuffer)(ANativeWindow* window, ANativeWindowBuffer* buffer) = nullptr;
-    int (*queueBuffer)(ANativeWindow* window, ANativeWindowBuffer* buffer, int fenceFd) = nullptr;
-    int (*query)(ANativeWindow* window, int what, int* value) = nullptr;
-    int (*perform)(ANativeWindow* window, int operation, ...) = nullptr;
-    int (*cancelBuffer)(ANativeWindow* window, ANativeWindowBuffer* buffer, int fenceFd) = nullptr;
+    int (*setSwapInterval)(ANativeWindow*, int) = nullptr;
+    int (*dequeueBuffer_DEPRECATED)(ANativeWindow*, ANativeWindowBuffer**) = nullptr;
+    int (*lockBuffer_DEPRECATED)(ANativeWindow*, ANativeWindowBuffer*) = nullptr;
+    int (*queueBuffer_DEPRECATED)(ANativeWindow*, ANativeWindowBuffer*) = nullptr;
+    int (*query)(ANativeWindow*, int, int*) = nullptr;
+    int (*perform)(ANativeWindow*, int, ...) = nullptr;
+    int (*cancelBuffer_DEPRECATED)(ANativeWindow*, ANativeWindowBuffer*) = nullptr;
+    int (*dequeueBuffer)(ANativeWindow*, ANativeWindowBuffer**, int*) = nullptr;
+    int (*queueBuffer)(ANativeWindow*, ANativeWindowBuffer*, int) = nullptr;
+    int (*cancelBuffer)(ANativeWindow*, ANativeWindowBuffer*, int) = nullptr;
 };
 
 struct WrappedANativeWindow {
@@ -193,7 +196,7 @@ int query_window(ANativeWindow* window, int what, int* value)
             *value = wrapped->format;
             return 0;
         case NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS:
-            *value = 1;
+            *value = 2;
             return 0;
         case NATIVE_WINDOW_QUEUES_TO_WINDOW_COMPOSER:
             *value = 1;
@@ -293,13 +296,23 @@ ANativeWindow* oh_anw_wrap(OHNativeWindow* oh)
     wrapped->window.common.incRef = base_inc;
     wrapped->window.common.decRef = base_dec;
     wrapped->window.setSwapInterval = set_swap_interval;
-    wrapped->window.dequeueBuffer = dequeue_buffer;
-    wrapped->window.lockBuffer = lock_buffer;
-    wrapped->window.queueBuffer = queue_buffer;
+    wrapped->window.lockBuffer_DEPRECATED = lock_buffer;
     wrapped->window.query = query_window;
     wrapped->window.perform = perform_window;
+    wrapped->window.dequeueBuffer = dequeue_buffer;
+    wrapped->window.queueBuffer = queue_buffer;
     wrapped->window.cancelBuffer = cancel_buffer;
     wrapped->oh = oh;
+    // Seed the wrapper's geometry from the real producer so window->query(WIDTH/
+    // HEIGHT) reports the true size (the harness set 1200x1920 on the OH window).
+    // GET_BUFFER_GEOMETRY == 1, out params (int32_t* height, int32_t* width).
+    resolve_handle_opt();
+    if (g_handleOpt) {
+        int32_t oh_h = 0, oh_w = 0;
+        g_handleOpt(oh, 1, &oh_h, &oh_w);
+        if (oh_w > 0) wrapped->width = oh_w;
+        if (oh_h > 0) wrapped->height = oh_h;
+    }
     apply_oh_format_usage(wrapped);
     __android_log_print(ANDROID_LOG_INFO, "OH_ANWShim",
                         "oh_anw_wrap aosp=%p oh=%p", &wrapped->window, oh);

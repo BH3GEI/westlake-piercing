@@ -48,7 +48,8 @@ struct Res_png_9patch {
     void fileToDevice() {}
     void deviceToFile() {}
 
-    static Res_png_9patch* deserialize(Res_png_9patch* patch) {
+    static Res_png_9patch* deserialize(void* data) {
+        Res_png_9patch* patch = reinterpret_cast<Res_png_9patch*>(data);
         if (patch != nullptr) {
             patch->wasDeserialized = -1;
         }

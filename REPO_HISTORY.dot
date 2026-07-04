@@ -64,5 +64,17 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-02-dayu600-2048-appspawn-child.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child;
+  dayu600_hwui_gate1_2 [
+    commit="self",
+    base_commit="pending",
+    actor="Yao/Claude",
+    title="build libhwui.so + prove hwui renders on the DAYU600 panel",
+    user_input="Drive the DAYU600 port toward running an Android game visibly on the board; build the real Android graphics stack and prove it renders.",
+    agent_action="Built libhwui.so from AOSP 15 for aarch64-linux-ohos against the board's m133 Skia (gate 1); wrote a native RenderProxy harness + 5 interposer/shim TUs that make hwui's own pipeline render on the panel (gate 2, snapshot-verified); bisected gate 3 to a register_android_graphics_classes lifecycle-timeout in the embedded-ART child.",
+    code_delta="Added the DAYU600 hwui build chain (scripts/, support-src/, include stubs), the gfx-smoke/ harness + interposers (fake libandroid, ANativeWindow shim, EGL + Skia interposers), and DAYU600-HWUI-BRINGUP.md; no /system writes; large outputs gitignored.",
+    verify="gate 1: libhwui.so ELF64/AArch64 with full register_android_graphics_* exports; gate 2: on-device snapshot shows hwui-drawn green bg + red rect at exact recorded coords; gate 3: on-device A/B bisection + sysfreeze LIFECYCLE_TIMEOUT faultlog",
+    note=".repo-skill/turns/2026-07-04-dayu600-hwui-gate1-2.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2;
 }

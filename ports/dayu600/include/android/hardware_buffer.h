@@ -32,6 +32,7 @@ enum {
     AHARDWAREBUFFER_FORMAT_R5G6B5_UNORM = 4,
     AHARDWAREBUFFER_FORMAT_R16G16B16A16_FLOAT = 0x16,
     AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM = 0x2b,
+    AHARDWAREBUFFER_FORMAT_R10G10B10A10_UNORM = 0x3b,
     AHARDWAREBUFFER_FORMAT_R8_UNORM = 0x38,
 };
 
@@ -48,6 +49,7 @@ ANDROID_API int AHardwareBuffer_allocate(const AHardwareBuffer_Desc* desc,
                                          AHardwareBuffer** outBuffer);
 ANDROID_API void AHardwareBuffer_acquire(AHardwareBuffer* buffer);
 ANDROID_API void AHardwareBuffer_release(AHardwareBuffer* buffer);
+ANDROID_API int32_t AHardwareBuffer_getDataSpace(const AHardwareBuffer* buffer);
 ANDROID_API void AHardwareBuffer_describe(const AHardwareBuffer* buffer,
                                           AHardwareBuffer_Desc* outDesc);
 ANDROID_API int AHardwareBuffer_lock(AHardwareBuffer* buffer, uint64_t usage, int32_t fence,

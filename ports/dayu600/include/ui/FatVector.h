@@ -12,6 +12,8 @@ public:
     using value_type = T;
     using iterator = typename std::vector<T>::iterator;
     using const_iterator = typename std::vector<T>::const_iterator;
+    using reverse_iterator = typename std::vector<T>::reverse_iterator;
+    using const_reverse_iterator = typename std::vector<T>::const_reverse_iterator;
 
     FatVector() = default;
     explicit FatVector(size_t size) : mStorage(size) {}
@@ -36,6 +38,10 @@ public:
     const_iterator begin() const { return mStorage.begin(); }
     iterator end() { return mStorage.end(); }
     const_iterator end() const { return mStorage.end(); }
+    reverse_iterator rbegin() { return mStorage.rbegin(); }
+    const_reverse_iterator rbegin() const { return mStorage.rbegin(); }
+    reverse_iterator rend() { return mStorage.rend(); }
+    const_reverse_iterator rend() const { return mStorage.rend(); }
 
     void clear() { mStorage.clear(); }
     void reserve(size_t size) { mStorage.reserve(size); }
@@ -44,6 +50,7 @@ public:
 
     void push_back(const T& value) { mStorage.push_back(value); }
     void push_back(T&& value) { mStorage.push_back(std::move(value)); }
+    void pop_back() { mStorage.pop_back(); }
 
     template <typename... Args>
     T& emplace_back(Args&&... args) {

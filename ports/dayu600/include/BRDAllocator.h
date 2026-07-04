@@ -1,19 +1,7 @@
 #pragma once
 
-#include <SkBitmap.h>
-#include <SkCodec.h>
-
-namespace android {
-namespace skia {
-
-class BRDAllocator : public SkBitmap::Allocator {
-public:
-    virtual ~BRDAllocator() = default;
-
-    virtual SkCodec::ZeroInitialized zeroInit() const {
-        return SkCodec::kNo_ZeroInitialized;
-    }
-};
-
-}  // namespace skia
-}  // namespace android
+// Wrapper around the real OpenHarmony Skia m133 BRDAllocator so hwui jni
+// sources and skia client_utils agree on a single definition (the local copy
+// used to redefine the class and broke jni/BitmapRegionDecoder.cpp).
+// Requires -I<skia>/m133 on the include path.
+#include "client_utils/android/BRDAllocator.h"

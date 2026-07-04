@@ -2,10 +2,23 @@
 
 #include <android/performance_hint.h>
 
-enum SessionTag {
-    SESSION_TAG_UNKNOWN = 0,
-    SESSION_TAG_SURFACEFLINGER = 1,
-    SESSION_TAG_HWUI = 2,
+enum class SessionTag : int32_t {
+    OTHER = 0,
+    SURFACEFLINGER = 1,
+    HWUI = 2,
+    GAME = 3,
+    APP = 4,
+};
+
+enum class SessionHint : int32_t {
+    CPU_LOAD_UP = 0,
+    CPU_LOAD_DOWN = 1,
+    CPU_LOAD_RESET = 2,
+    CPU_LOAD_RESUME = 3,
+    POWER_EFFICIENCY = 4,
+    GPU_LOAD_UP = 5,
+    GPU_LOAD_DOWN = 6,
+    GPU_LOAD_RESET = 7,
 };
 
 APerformanceHintSession* APerformanceHint_createSessionInternal(

@@ -1,5 +1,9 @@
 #pragma once
 
+// hwui relies on bionic headers leaking <stdio.h> (dprintf etc.); mirror
+// that on OHOS musl.
+#include <stdio.h>
+
 #ifndef ANDROID_API
 #define ANDROID_API __attribute__((visibility("default")))
 #endif

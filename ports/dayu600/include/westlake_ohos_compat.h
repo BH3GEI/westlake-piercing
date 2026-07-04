@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert.h>
 #include <locale.h>
 #include <stdlib.h>
 
