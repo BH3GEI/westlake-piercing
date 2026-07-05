@@ -2,7 +2,6 @@ package android.os;
 
 public class Handler {
     public Handler() {
-        android.app.Activity.westlakeFindViewStatus = 32;
     }
 
     public boolean post(Runnable r) {
