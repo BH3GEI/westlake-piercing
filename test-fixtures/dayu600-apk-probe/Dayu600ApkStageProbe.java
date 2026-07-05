@@ -927,8 +927,55 @@ public final class Dayu600ApkStageProbe {
                 writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
                 ClassLoader uloader = new dalvik.system.PathClassLoader(apkF.getAbsolutePath(),
                         Dayu600ApkStageProbe.class.getClassLoader());
-                Class<?> uAppCls = Class.forName("com.uptodown.UptodownApp", false, uloader);
-                ulog.append("appCls=OK ");
+                // Multi-dex diagnostic: 'a.a' lives in classes.dex, UptodownApp in classes4.dex.
+                try { Class.forName("a.a", false, uloader); ulog.append("dex1=OK "); }
+                catch (Throwable d1) { ulog.append("dex1=").append(d1.getClass().getSimpleName()).append(' '); }
+                Class<?> uAppCls;
+                try {
+                    uAppCls = Class.forName("com.uptodown.UptodownApp", false, uloader);
+                    ulog.append("appCls=OK ");
+                } catch (ClassNotFoundException multidexMiss) {
+                    // Fallback: runtime may only load classes.dex from an APK — use extracted
+                    // per-dex files pushed next to the APK (test-uptodown.classesN.dex).
+                    // Per-dex diagnostic loaders first, with suppressed-exception dumps.
+                    String c4 = apkPath("test-uptodown.classes4.dex");
+                    ClassLoader l4 = new dalvik.system.PathClassLoader(c4,
+                            Dayu600ApkStageProbe.class.getClassLoader());
+                    try {
+                        uAppCls = Class.forName("com.uptodown.UptodownApp", false, l4);
+                        ulog.append("appCls=OK(c4-only) ");
+                        uloader = l4;
+                    } catch (Throwable c4t) {
+                        ulog.append("c4=").append(c4t.getClass().getSimpleName());
+                        for (Throwable sup : c4t.getSuppressed())
+                            ulog.append(" sup:").append(sup);
+                        Throwable cz = c4t.getCause();
+                        while (cz != null) {
+                            ulog.append(" cause:").append(cz);
+                            for (Throwable sup : cz.getSuppressed()) ulog.append(" sup:").append(sup);
+                            cz = cz.getCause();
+                        }
+                        ulog.append(' ');
+                        // What does the dex actually expose? Enumerate its entries.
+                        try {
+                            @SuppressWarnings("deprecation")
+                            dalvik.system.DexFile df4 = new dalvik.system.DexFile(c4);
+                            java.util.Enumeration<String> en = df4.entries();
+                            int total = 0; boolean hasApp = false; StringBuilder first = new StringBuilder();
+                            while (en.hasMoreElements()) {
+                                String cn = en.nextElement(); total++;
+                                if (total <= 3) first.append(cn).append(' ');
+                                if ("com.uptodown.UptodownApp".equals(cn)) hasApp = true;
+                            }
+                            ulog.append("c4entries=").append(total).append(" hasApp=").append(hasApp)
+                                .append(" first=[").append(first).append("] ");
+                        } catch (Throwable et) {
+                            ulog.append("c4entries=FAIL:").append(et).append(' ');
+                        }
+                        writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                        throw c4t;
+                    }
+                }
                 Class<?> uMainCls = Class.forName("com.uptodown.activities.MainActivity", false, uloader);
                 ulog.append("mainCls=OK ");
                 writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
