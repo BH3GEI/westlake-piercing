@@ -738,9 +738,54 @@ public final class Dayu600ApkStageProbe {
                     String at = vst.length > 0 ? (vst[0].getMethodName() + ":" + vst[0].getLineNumber()) : "?";
                     valStr += " VAL_FAIL:" + vc.getClass().getSimpleName() + ":" + vc.getMessage() + "@" + at;
                 }
+                // Parse a REAL LAYOUT resource (AppCompat abc_*.xml) -> View class tag names.
+                String layoutTest = "n/a";
+                try {
+                    java.lang.reflect.Method getId2 = android.content.res.AssetManager.class.getDeclaredMethod(
+                            "getResourceIdentifier", String.class, String.class, String.class);
+                    getId2.setAccessible(true);
+                    String[] cands = {"abc_screen_simple", "abc_action_bar_title_item", "abc_alert_dialog_material",
+                            "support_simple_spinner_dropdown_item", "abc_screen_content_include", "notification_template_part_time"};
+                    int layoutId = 0; String lname = null;
+                    for (String c : cands) {
+                        int id = ((Number) getId2.invoke(am, c, "layout", "com.digiplex.game")).intValue();
+                        if (id != 0) { layoutId = id; lname = c; break; }
+                    }
+                    if (layoutId != 0) {
+                        java.lang.reflect.Method nGV = android.content.res.AssetManager.class.getDeclaredMethod(
+                                "nativeGetResourceValue", long.class, int.class, short.class, android.util.TypedValue.class, boolean.class);
+                        nGV.setAccessible(true);
+                        java.lang.reflect.Field mObjF2 = android.content.res.AssetManager.class.getDeclaredField("mObject");
+                        mObjF2.setAccessible(true);
+                        long amP = mObjF2.getLong(am);
+                        android.util.TypedValue lv = new android.util.TypedValue();
+                        nGV.invoke(null, amP, layoutId, (short) 0, lv, true);
+                        String lpath = lv.string != null ? lv.string.toString() : null;
+                        java.lang.reflect.Method oXBA = android.content.res.AssetManager.class.getDeclaredMethod(
+                                "openXmlBlockAsset", int.class, String.class);
+                        oXBA.setAccessible(true);
+                        Object lblk = oXBA.invoke(am, lv.assetCookie, lpath);
+                        Object lp = lblk.getClass().getMethod("newParser", int.class).invoke(lblk, 0);
+                        org.xmlpull.v1.XmlPullParser lx = (org.xmlpull.v1.XmlPullParser) lp;
+                        StringBuilder tags = new StringBuilder();
+                        int le, lc = 0;
+                        while ((le = lx.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && lc < 40) {
+                            if (le == org.xmlpull.v1.XmlPullParser.START_TAG && tags.length() < 150) tags.append(lx.getName()).append(' ');
+                            lc++;
+                        }
+                        layoutTest = lname + "(0x" + Integer.toHexString(layoutId) + ") viewTags=[" + tags + "]";
+                    } else {
+                        layoutTest = "no AppCompat layout resource found";
+                    }
+                } catch (Throwable lt2) {
+                    Throwable lc2 = (lt2 instanceof java.lang.reflect.InvocationTargetException
+                            && lt2.getCause() != null) ? lt2.getCause() : lt2;
+                    layoutTest = "LAYOUT_FAIL:" + lc2.getClass().getSimpleName() + ":" + lc2.getMessage();
+                }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
                         + " apkPtr=" + apkPtr
                         + " resValue(0x7f010000)=[" + valStr + "]"
+                        + " LAYOUT=[" + layoutTest + "]"
                         + " realResourceNames=[" + names + "]");
             } catch (Throwable t) {
                 Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException
