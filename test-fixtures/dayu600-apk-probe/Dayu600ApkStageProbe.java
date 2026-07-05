@@ -686,7 +686,19 @@ public final class Dayu600ApkStageProbe {
                                     attrs = ((Number) nGetAttr.invoke(null, state)).intValue();
                                 }
                             }
-                            valStr += " XMLPARSE[events=" + events + " firstTagNameIdx=" + firstTag + " attrCount=" + attrs + "]";
+                            // Resolve the first tag name index -> real string via the XML StringBlock.
+                            String firstTagName = null;
+                            if (firstTag >= 0) {
+                                java.lang.reflect.Method nGSB = xbCls.getDeclaredMethod("nativeGetStringBlock", long.class);
+                                nGSB.setAccessible(true);
+                                long strBlk = ((Number) nGSB.invoke(null, xmlTree)).longValue();
+                                Class<?> sbCls = Class.forName("android.content.res.StringBlock");
+                                java.lang.reflect.Method sbStr = sbCls.getDeclaredMethod("nativeGetString", long.class, int.class);
+                                sbStr.setAccessible(true);
+                                Object nm = sbStr.invoke(null, strBlk, firstTag);
+                                firstTagName = nm != null ? nm.toString() : null;
+                            }
+                            valStr += " XMLPARSE[events=" + events + " firstTagName=" + firstTagName + " attrCount=" + attrs + "]";
                         }
                     }
                 } catch (Throwable vt) {

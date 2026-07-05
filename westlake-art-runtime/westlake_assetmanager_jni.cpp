@@ -263,6 +263,36 @@ static const JNINativeMethod kXmlBlock[] = {
   {"nativeGetSourceResId", "(J)I", (void*)XmlBlock_nativeGetSourceResId},
 };
 
+// ---- StringBlock (resolves ResStringPool indices -> Java Strings; obj = ResStringPool*) ----
+static jint StringBlock_nativeGetSize(JNIEnv*, jclass, jlong obj) {
+  ResStringPool* pool = reinterpret_cast<ResStringPool*>(obj);
+  return pool ? static_cast<jint>(pool->size()) : 0;
+}
+static jstring StringBlock_nativeGetString(JNIEnv* env, jclass, jlong obj, jint idx) {
+  ResStringPool* pool = reinterpret_cast<ResStringPool*>(obj);
+  if (!pool) return nullptr;
+  auto s8 = pool->string8At(idx);
+  if (s8.has_value()) return env->NewStringUTF(std::string(s8->data(), s8->size()).c_str());
+  auto s16 = pool->stringAt(idx);
+  if (!s16.has_value()) return nullptr;
+  std::string out;  // UTF-16 -> UTF-8
+  for (size_t i = 0; i < s16->size(); i++) {
+    char16_t c = (*s16)[i];
+    if (c < 0x80) { out.push_back(static_cast<char>(c)); }
+    else if (c < 0x800) { out.push_back(0xC0 | (c >> 6)); out.push_back(0x80 | (c & 0x3f)); }
+    else { out.push_back(0xE0 | (c >> 12)); out.push_back(0x80 | ((c >> 6) & 0x3f)); out.push_back(0x80 | (c & 0x3f)); }
+  }
+  return env->NewStringUTF(out.c_str());
+}
+static jobject StringBlock_nativeGetStyle(JNIEnv*, jclass, jlong, jint) { return nullptr; }
+static void StringBlock_nativeDestroy(JNIEnv*, jclass, jlong) { /* not owned: ResXMLTree owns pool */ }
+static const JNINativeMethod kStringBlock[] = {
+  {"nativeGetSize", "(J)I", (void*)StringBlock_nativeGetSize},
+  {"nativeGetString", "(JI)Ljava/lang/String;", (void*)StringBlock_nativeGetString},
+  {"nativeGetStyle", "(JI)[I", (void*)StringBlock_nativeGetStyle},
+  {"nativeDestroy", "(J)V", (void*)StringBlock_nativeDestroy},
+};
+
 static const JNINativeMethod kApkAssets[] = {
   {"nativeLoad", "(ILjava/lang/String;ILandroid/content/res/loader/AssetsProvider;)J", (void*)ApkAssets_nativeLoad},
   {"nativeDestroy", "(J)V", (void*)ApkAssets_nativeDestroy},
@@ -288,6 +318,9 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
   jclass xb = env->FindClass("android/content/res/XmlBlock");
   if (xb) env->RegisterNatives(xb, kXmlBlock, 20);
-  LOGI("registered AssetManager(%d)/ApkAssets(%d)/XmlBlock(%d) natives", am != nullptr, ak != nullptr, xb != nullptr);
+  jclass sb = env->FindClass("android/content/res/StringBlock");
+  if (sb) env->RegisterNatives(sb, kStringBlock, 4);
+  LOGI("registered AssetManager(%d)/ApkAssets(%d)/XmlBlock(%d)/StringBlock(%d) natives",
+       am != nullptr, ak != nullptr, xb != nullptr, sb != nullptr);
   return JNI_VERSION_1_6;
 }
