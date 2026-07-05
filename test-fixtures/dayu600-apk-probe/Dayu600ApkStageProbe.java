@@ -700,6 +700,29 @@ public final class Dayu600ApkStageProbe {
                             }
                             valStr += " XMLPARSE[events=" + events + " firstTagName=" + firstTagName + " attrCount=" + attrs + "]";
                         }
+                        // FULL framework path: openXmlBlockAsset -> XmlBlock (nativeGetStringBlock +
+                        // new StringBlock) -> newParser -> XmlResourceParser (uses all my natives).
+                        try {
+                            java.lang.reflect.Method openXBA = android.content.res.AssetManager.class
+                                    .getDeclaredMethod("openXmlBlockAsset", int.class, String.class);
+                            openXBA.setAccessible(true);
+                            Object xblock = openXBA.invoke(am, tval.assetCookie, xmlPath);
+                            java.lang.reflect.Method newParser = xblock.getClass().getMethod("newParser", int.class);
+                            Object parser = newParser.invoke(xblock, 0);
+                            org.xmlpull.v1.XmlPullParser xpp = (org.xmlpull.v1.XmlPullParser) parser;
+                            int fwEvents = 0; String fwTag = null; int fe;
+                            while ((fe = xpp.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && fwEvents < 60) {
+                                fwEvents++;
+                                if (fe == org.xmlpull.v1.XmlPullParser.START_TAG && fwTag == null) fwTag = xpp.getName();
+                            }
+                            valStr += " FRAMEWORK_getLayout[events=" + fwEvents + " tag=" + fwTag + "]";
+                        } catch (Throwable ft) {
+                            Throwable fc = (ft instanceof java.lang.reflect.InvocationTargetException
+                                    && ft.getCause() != null) ? ft.getCause() : ft;
+                            StackTraceElement[] fst = fc.getStackTrace();
+                            String fat = fst.length > 0 ? (fst[0].getMethodName() + ":" + fst[0].getLineNumber()) : "?";
+                            valStr += " FRAMEWORK_FAIL:" + fc.getClass().getSimpleName() + ":" + fc.getMessage() + "@" + fat;
+                        }
                     }
                 } catch (Throwable vt) {
                     Throwable vc = (vt instanceof java.lang.reflect.InvocationTargetException
