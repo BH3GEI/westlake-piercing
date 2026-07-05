@@ -115,6 +115,11 @@ ApkAssetsPtr ApkAssets::LoadImpl(std::unique_ptr<AssetsProvider> assets,
   bool resources_asset_exists = false;
   auto resources_asset = assets->Open(kResourcesArsc, Asset::AccessMode::ACCESS_BUFFER,
                                       &resources_asset_exists);
+  {
+    FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/nativeload.txt", "a");
+    if (df) { fprintf(df, "  [WL] Open(resources.arsc) => %s exists=%d\n",
+                      resources_asset ? "OK" : "NULL", (int)resources_asset_exists); fclose(df); }
+  }
   if (resources_asset == nullptr && resources_asset_exists) {
     LOG(ERROR) << "Failed to open '" << kResourcesArsc << "' in APK '" << assets->GetDebugName()
                << "'.";
@@ -138,6 +143,10 @@ ApkAssetsPtr ApkAssets::LoadImpl(std::unique_ptr<Asset> resources_asset,
   if (resources_asset != nullptr) {
     const auto data = resources_asset->getIncFsBuffer(true /* aligned */);
     const size_t length = resources_asset->getLength();
+    {
+      FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/nativeload.txt", "a");
+      if (df) { fprintf(df, "  [WL] arsc getIncFsBuffer_valid=%d length=%zu\n", data ? 1 : 0, length); fclose(df); }
+    }
     if (!data || length == 0) {
       LOG(ERROR) << "Failed to read resources table in APK '" << assets->GetDebugName() << "'.";
       return {};
@@ -149,6 +158,10 @@ ApkAssetsPtr ApkAssets::LoadImpl(std::unique_ptr<Asset> resources_asset,
     loaded_arsc = LoadedArsc::CreateEmpty();
   }
 
+  {
+    FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/nativeload.txt", "a");
+    if (df) { fprintf(df, "  [WL] LoadedArsc::Load => %s\n", loaded_arsc ? "OK" : "NULL"); fclose(df); }
+  }
   if (loaded_arsc == nullptr) {
     LOG(ERROR) << "Failed to load resources table in APK '" << assets->GetDebugName() << "'.";
     return {};

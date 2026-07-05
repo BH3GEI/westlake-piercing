@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstring>
 // [DAYU600] minimal IncFsFileMap — plain mmap via android::FileMap (no incremental-fs verify).
 #include "util/map_ptr.h"
 #include <utils/FileMap.h>
@@ -12,8 +14,19 @@ bool IncFsFileMap::Create(int fd, off64_t offset, size_t length, const char* fil
 bool IncFsFileMap::Create(int fd, off64_t offset, size_t length, const char* file_name, bool verify) {
   (void)verify; fd_ = fd; start_block_offset_ = offset;
   map_.reset(new android::FileMap());
-  if (!map_->create(file_name, fd, offset, length, true)) { map_.reset(); return false; }
+  bool okc = map_->create(file_name, fd, offset, length, true);
+  if (!okc) { map_.reset(); return false; }
   start_block_ptr_ = reinterpret_cast<const uint8_t*>(map_->getDataPtr());
+  {
+    FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/nativeload.txt", "a");
+    if (df && file_name && (strstr(file_name, "2048") || strstr(file_name, "resources"))) {
+      const uint8_t* d = start_block_ptr_;
+      fprintf(df, "  [WL] IncFsMap::Create name=%s fd=%d offset=%lld len=%zu dataLen=%zu bytes=%02x %02x %02x %02x\n",
+              file_name, fd, (long long)offset, length, map_->getDataLength(),
+              d?d[0]:0, d?d[1]:0, d?d[2]:0, d?d[3]:0);
+    }
+    if (df) fclose(df);
+  }
   return true;
 }
 bool IncFsFileMap::CreateForceVerification(int fd, off64_t o, size_t l, const char* n, bool v) {
