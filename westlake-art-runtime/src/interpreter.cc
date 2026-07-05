@@ -1,0 +1,2502 @@
+/*
+ * Copyright (C) 2012 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "interpreter.h"
+#include "nth_caller_visitor.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
+#include <string_view>
+
+
+
+#include "common_dex_operations.h"
+#include "common_throws.h"
+#include "dex/dex_file_types.h"
+#include "handle_scope.h"
+#include "interpreter_common.h"
+#include "interpreter_switch_impl.h"
+#include "jit/jit.h"
+#include "jit/jit_code_cache.h"
+#include "jvalue-inl.h"
+#include "mirror/class-inl.h"
+#include "mirror/method_handles_lookup.h"
+#include "mirror/object-inl.h"
+#include "mirror/string-inl.h"
+#include "nativehelper/scoped_local_ref.h"
+#include "scoped_thread_state_change-inl.h"
+#include "shadow_frame-inl.h"
+#include "stack.h"
+#include "thread-inl.h"
+#include "unstarted_runtime.h"
+#include "entrypoints/runtime_asm_entrypoints.h"
+#include "jni/java_vm_ext.h"
+#include "jni/jni_env_ext.h"
+
+namespace art HIDDEN {
+namespace interpreter {
+
+ALWAYS_INLINE static ObjPtr<mirror::Object> ObjArg(uint32_t arg)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  return reinterpret_cast<mirror::Object*>(arg);
+}
+
+static int32_t WestlakeStringLastIndexOf(ObjPtr<mirror::String> haystack,
+                                         ObjPtr<mirror::String> needle,
+                                         int32_t from_index)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  const int32_t haystack_len = haystack->GetLength();
+  const int32_t needle_len = needle->GetLength();
+  if (needle_len == 0) {
+    return std::min(from_index, haystack_len);
+  }
+  if (from_index > haystack_len - needle_len) {
+    from_index = haystack_len - needle_len;
+  }
+  if (from_index < 0) {
+    return -1;
+  }
+  for (int32_t i = from_index; i >= 0; --i) {
+    bool match = true;
+    for (int32_t j = 0; j < needle_len; ++j) {
+      if (haystack->CharAt(i + j) != needle->CharAt(j)) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static bool WestlakeTraceTimeZoneBridge() {
+  const char* value = getenv("WESTLAKE_TRACE_TZ");
+  return value != nullptr && value[0] != '\0' && strcmp(value, "0") != 0 &&
+         strcmp(value, "false") != 0 && strcmp(value, "FALSE") != 0;
+}
+
+static void InterpreterJni(Thread* self,
+                           ArtMethod* method,
+                           std::string_view shorty,
+                           ObjPtr<mirror::Object> receiver,
+                           uint32_t* args,
+                           JValue* result)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  // [DAYU600] Core java.lang.Math/StrictMath/System natives are not registered in standalone
+  // mode (their JNI entry is the UnsatisfiedLinkError trampoline). Implement inline so
+  // ColorSpace/FontVariationAxis clinit + app code that needs them succeed.
+  if (method->IsStatic()) {
+    const char* dmn = method->GetName();
+    ObjPtr<mirror::Class> ddc = method->GetDeclaringClass();
+    if (ddc->DescriptorEquals("Ljava/lang/Math;") ||
+        ddc->DescriptorEquals("Ljava/lang/StrictMath;")) {
+      if (shorty == "DDD") {
+        double a = *reinterpret_cast<double*>(&args[0]);
+        double b = *reinterpret_cast<double*>(&args[2]);
+        if (strcmp(dmn, "pow") == 0) { result->SetD(std::pow(a, b)); return; }
+        if (strcmp(dmn, "atan2") == 0) { result->SetD(std::atan2(a, b)); return; }
+        if (strcmp(dmn, "hypot") == 0) { result->SetD(std::hypot(a, b)); return; }
+        if (strcmp(dmn, "IEEEremainder") == 0) { result->SetD(std::remainder(a, b)); return; }
+      } else if (shorty == "DD") {
+        double a = *reinterpret_cast<double*>(&args[0]);
+        if (strcmp(dmn, "sqrt") == 0) { result->SetD(std::sqrt(a)); return; }
+        if (strcmp(dmn, "cbrt") == 0) { result->SetD(std::cbrt(a)); return; }
+        if (strcmp(dmn, "exp") == 0) { result->SetD(std::exp(a)); return; }
+        if (strcmp(dmn, "expm1") == 0) { result->SetD(std::expm1(a)); return; }
+        if (strcmp(dmn, "log") == 0) { result->SetD(std::log(a)); return; }
+        if (strcmp(dmn, "log10") == 0) { result->SetD(std::log10(a)); return; }
+        if (strcmp(dmn, "log1p") == 0) { result->SetD(std::log1p(a)); return; }
+        if (strcmp(dmn, "sin") == 0) { result->SetD(std::sin(a)); return; }
+        if (strcmp(dmn, "cos") == 0) { result->SetD(std::cos(a)); return; }
+        if (strcmp(dmn, "tan") == 0) { result->SetD(std::tan(a)); return; }
+        if (strcmp(dmn, "asin") == 0) { result->SetD(std::asin(a)); return; }
+        if (strcmp(dmn, "acos") == 0) { result->SetD(std::acos(a)); return; }
+        if (strcmp(dmn, "atan") == 0) { result->SetD(std::atan(a)); return; }
+        if (strcmp(dmn, "sinh") == 0) { result->SetD(std::sinh(a)); return; }
+        if (strcmp(dmn, "cosh") == 0) { result->SetD(std::cosh(a)); return; }
+        if (strcmp(dmn, "tanh") == 0) { result->SetD(std::tanh(a)); return; }
+        if (strcmp(dmn, "rint") == 0) { result->SetD(std::rint(a)); return; }
+      }
+    } else if (ddc->DescriptorEquals("Ljava/lang/System;") && shorty == "J") {
+      struct timespec dts;
+      if (strcmp(dmn, "currentTimeMillis") == 0) {
+        clock_gettime(CLOCK_REALTIME, &dts);
+        result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000 + dts.tv_nsec / 1000000);
+        return;
+      }
+      if (strcmp(dmn, "nanoTime") == 0) {
+        clock_gettime(CLOCK_MONOTONIC, &dts);
+        result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000000000LL + dts.tv_nsec);
+        return;
+      }
+    }
+  }
+  if (!method->IsStatic() &&
+      shorty == "CI" &&
+      strcmp(method->GetName(), "charAt") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/String;")) {
+    if (receiver == nullptr) {
+      ThrowNullPointerExceptionFromInterpreter();
+      result->SetJ(0);
+      return;
+    }
+    result->SetC(receiver->AsString()->CharAt(static_cast<int32_t>(args[0])));
+    return;
+  }
+  if (method->IsStatic() &&
+      shorty == "ZI" &&
+      strcmp(method->GetName(), "isLetterImpl") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/Character;")) {
+    const int32_t ch = static_cast<int32_t>(args[0]);
+    result->SetZ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'));
+    return;
+  }
+  if (method->IsStatic() &&
+      shorty == "ZI" &&
+      strcmp(method->GetName(), "isLetterOrDigitImpl") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/Character;")) {
+    const int32_t ch = static_cast<int32_t>(args[0]);
+    result->SetZ((ch >= 'A' && ch <= 'Z') ||
+                 (ch >= 'a' && ch <= 'z') ||
+                 (ch >= '0' && ch <= '9'));
+    return;
+  }
+  if (!method->IsStatic() &&
+      (shorty == "IL" || shorty == "ILI") &&
+      strcmp(method->GetName(), "lastIndexOf") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/String;")) {
+    if (receiver == nullptr) {
+      ThrowNullPointerExceptionFromInterpreter();
+      result->SetI(-1);
+      return;
+    }
+    ObjPtr<mirror::Object> arg0 = ObjArg(args[0]);
+    if (arg0 == nullptr) {
+      ThrowNullPointerExceptionFromInterpreter();
+      result->SetI(-1);
+      return;
+    }
+    ObjPtr<mirror::String> haystack = receiver->AsString();
+    ObjPtr<mirror::String> needle = arg0->AsString();
+    const int32_t from_index = (shorty == "ILI")
+        ? static_cast<int32_t>(args[1])
+        : haystack->GetLength();
+    result->SetI(WestlakeStringLastIndexOf(haystack, needle, from_index));
+    return;
+  }
+
+  // Resolve the native function if it hasn't been registered yet.
+  // The JNI entry point may be the dlsym lookup stub (an assembly routine),
+  // which can't be called as a C function. We must resolve to the actual native.
+  {
+    const void* jni_entry = method->GetEntryPointFromJni();
+    const void* dlsym_stub = GetJniDlsymLookupStub();
+    const void* dlsym_critical_stub = GetJniDlsymLookupCriticalStub();
+    static constexpr uintptr_t kPFCutStaleNativeEntry = 0xfffffffffffffb17ULL;
+    if (reinterpret_cast<uintptr_t>(jni_entry) == kPFCutStaleNativeEntry) {
+      method->SetEntryPointFromJniPtrSize(nullptr, kRuntimePointerSize);
+      jni_entry = nullptr;
+    }
+    if (jni_entry == dlsym_stub || jni_entry == dlsym_critical_stub || jni_entry == nullptr) {
+      // Need to resolve the native method via JNI name lookup
+      JavaVMExt* vm = down_cast<JNIEnvExt*>(self->GetJniEnv())->GetVm();
+      std::string error_msg;
+      const void* native_code = vm->FindCodeForNativeMethod(method, &error_msg, /*can_suspend=*/true);
+      if (native_code == nullptr) {
+        // Native method not found — throw UnsatisfiedLinkError
+        self->ThrowNewException("Ljava/lang/UnsatisfiedLinkError;", error_msg.c_str());
+        return;
+      }
+      // Register the resolved native code
+      Runtime::Current()->GetClassLinker()->RegisterNative(self, method, native_code);
+    }
+    jni_entry = method->GetEntryPointFromJni();
+    if (jni_entry == dlsym_stub ||
+        jni_entry == dlsym_critical_stub ||
+        jni_entry == nullptr ||
+        reinterpret_cast<uintptr_t>(jni_entry) == kPFCutStaleNativeEntry) {
+      method->SetEntryPointFromJniPtrSize(nullptr, kRuntimePointerSize);
+      self->ThrowNewExceptionF("Ljava/lang/UnsatisfiedLinkError;",
+                               "unresolved or stale native entry for %s",
+                               method->PrettyMethod().c_str());
+      return;
+    }
+  }
+
+  // @CriticalNative dispatch: raw C call, no JNIEnv/jclass
+  // Check: method has @CriticalNative flag AND was resolved from libandroid_runtime
+  // (not our manual patches which use JNI calling convention)
+  if (method->IsCriticalNative()) {
+    // Only use CriticalNative if the function was registered from an external .so
+    // (libandroid_runtime.so). Our manual patches use JNI calling convention.
+    // Heuristic: check if the name starts with "android.os.Parcel.native" or similar
+    // known @CriticalNative methods from the framework.
+    // Only dispatch as @CriticalNative for methods on android.os.Parcel
+    // (the only class where we know the registration used @CriticalNative
+    // calling convention from libandroid_runtime.so)
+    std::string cls_desc;
+    const char* desc = method->GetDeclaringClass()->GetDescriptor(&cls_desc);
+    bool isParcelCritical = (desc != nullptr &&
+        (strcmp(desc, "Landroid/os/Parcel;") == 0 ||
+         strcmp(desc, "Landroid/graphics/Canvas;") == 0 ||
+         strstr(desc, "android/graphics/") != nullptr ||
+         strcmp(desc, "Landroid/view/Surface;") == 0 ||
+         strcmp(desc, "Landroid/graphics/RecordingCanvas;") == 0));
+    if (!isParcelCritical) {
+      // Not a known @CriticalNative — use regular JNI dispatch
+      goto regular_jni;
+    }
+    const void* fn = method->GetEntryPointFromJni();
+    // @CriticalNative shorty patterns — direct C call with raw args
+    if (shorty == "IJ") {
+      result->SetI(reinterpret_cast<jint(*)(jlong)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0])));
+    } else if (shorty == "LJ") {
+      ScopedObjectAccessUnchecked soa(self);
+      jobject r = reinterpret_cast<jobject(*)(jlong)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]));
+      result->SetL(soa.Decode<mirror::Object>(r));
+    } else if (shorty == "JJ") {
+      result->SetJ(reinterpret_cast<jlong(*)(jlong)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0])));
+    } else if (shorty == "VJ") {
+      reinterpret_cast<void(*)(jlong)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]));
+    } else if (shorty == "VJII") {
+      // void fn(long, int, int) — Canvas.nativeDrawColor(ptr, color, blendMode)
+      reinterpret_cast<void(*)(jlong, jint, jint)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]), args[2], args[3]);
+    } else if (shorty == "VJI") {
+      reinterpret_cast<void(*)(jlong, jint)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]), args[2]);
+    } else if (shorty == "VJL") {
+      ScopedObjectAccessUnchecked soa(self);
+      ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(
+          reinterpret_cast<StackReference<mirror::Object>*>(&args[2])->AsMirrorPtr()));
+      reinterpret_cast<void(*)(jlong, jobject)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]), a1.get());
+    } else if (shorty == "VJJ") {
+      reinterpret_cast<void(*)(jlong, jlong)>(const_cast<void*>(fn))(
+          *reinterpret_cast<jlong*>(&args[0]), *reinterpret_cast<jlong*>(&args[2]));
+    } else if (shorty == "J") {
+      result->SetJ(reinterpret_cast<jlong(*)()>(const_cast<void*>(fn))());
+    } else {
+      LOG(WARNING) << "InterpreterJni: unhandled @CriticalNative shorty '" << shorty
+                   << "' for " << method->PrettyMethod();
+    }
+    return;
+  }
+
+  // Regular JNI dispatch (JNIEnv + jclass/jobject)
+  regular_jni:
+  const bool trace_tz_native =
+      WestlakeTraceTimeZoneBridge() &&
+      method->GetDeclaringClassDescriptor() != nullptr &&
+      strcmp(method->GetDeclaringClassDescriptor(), "Ljava/util/TimeZone;") == 0 &&
+      (strcmp(method->GetName(), "getDefault") == 0 ||
+       strcmp(method->GetName(), "getDefaultRef") == 0);
+  if (trace_tz_native) {
+    fprintf(stderr,
+            "[WESTLAKE-TZ-JNI] before SOA method=%s shorty=%.*s quick=%p jni=%p self=%p env=%p\n",
+            method->PrettyMethod().c_str(),
+            static_cast<int>(shorty.size()),
+            shorty.data(),
+            method->GetEntryPointFromQuickCompiledCode(),
+            method->GetEntryPointFromJni(),
+            self,
+            self != nullptr ? self->GetJniEnv() : nullptr);
+    fflush(stderr);
+  }
+  ScopedObjectAccessUnchecked soa(self);
+  if (trace_tz_native) {
+    fprintf(stderr,
+            "[WESTLAKE-TZ-JNI] after SOA env=%p method=%s\n",
+            soa.Env(),
+            method->PrettyMethod().c_str());
+    fflush(stderr);
+  }
+  if (method->IsStatic()) {
+    if (shorty == "L") {
+      using fntype = jobject(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      if (trace_tz_native) {
+        fprintf(stderr,
+                "[WESTLAKE-TZ-JNI] static L before klass local fn=%p env=%p declaring=%p\n",
+                reinterpret_cast<void*>(fn),
+                soa.Env(),
+                method->GetDeclaringClass().Ptr());
+        fflush(stderr);
+      }
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      if (trace_tz_native) {
+        fprintf(stderr,
+                "[WESTLAKE-TZ-JNI] static L before call klass=%p fn=%p env=%p\n",
+                klass.get(),
+                reinterpret_cast<void*>(fn),
+                soa.Env());
+        fflush(stderr);
+      }
+      jobject jresult;
+      {
+        // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+        jresult = fn(soa.Env(), klass.get());
+      }
+      if (trace_tz_native) {
+        fprintf(stderr, "[WESTLAKE-TZ-JNI] static L after call result=%p\n", jresult);
+        fflush(stderr);
+      }
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+      if (trace_tz_native) {
+        fprintf(stderr, "[WESTLAKE-TZ-JNI] static L after decode\n");
+        fflush(stderr);
+      }
+    } else if (shorty == "V") {
+      using fntype = void(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get());
+    } else if (shorty == "VI") {
+      using fntype = void(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), args[0]);
+    } else if (shorty == "J") {
+      using fntype = jlong(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetJ(fn(soa.Env(), klass.get()));
+    } else if (shorty == "ZI") {
+      using fntype = jboolean(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), klass.get(), args[0]));
+    } else if (shorty == "JL") {
+      using fntype = jlong(JNIEnv*, jclass, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetJ(fn(soa.Env(), klass.get(), arg0.get()));
+    } else if (shorty == "VLL") {
+      using fntype = void(JNIEnv*, jclass, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[1])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), arg0.get(), arg1.get());
+    } else if (shorty == "IF") {
+      using fntype = jint(JNIEnv*, jclass, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), klass.get(), *reinterpret_cast<float*>(&args[0])));
+    } else if (shorty == "JD") {
+      using fntype = jlong(JNIEnv*, jclass, jdouble);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetJ(fn(soa.Env(), klass.get(), *reinterpret_cast<double*>(&args[0])));
+    } else if (shorty == "DJ") {
+      using fntype = jdouble(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetD(fn(soa.Env(), klass.get(), *reinterpret_cast<jlong*>(&args[0])));
+    } else if (shorty == "DD") {
+      // double fn(JNIEnv*, jclass, double) — Math.ceil, Math.floor, Math.sqrt, etc.
+      using fntype = jdouble(JNIEnv*, jclass, jdouble);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jdouble arg0 = *reinterpret_cast<jdouble*>(&args[0]);
+      result->SetD(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "DDD") {
+      // double fn(JNIEnv*, jclass, double, double) — Math.max, Math.min, Math.pow
+      using fntype = jdouble(JNIEnv*, jclass, jdouble, jdouble);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jdouble arg0 = *reinterpret_cast<jdouble*>(&args[0]);
+      jdouble arg1 = *reinterpret_cast<jdouble*>(&args[2]); // double takes 2 slots
+      result->SetD(fn(soa.Env(), klass.get(), arg0, arg1));
+    } else if (shorty == "FI") {
+      using fntype = jfloat(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetF(fn(soa.Env(), klass.get(), args[0]));
+    } else if (shorty == "FJ") {
+      using fntype = jfloat(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetF(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "LLIII") {
+      using fntype = jobject(JNIEnv*, jclass, jobject, jint, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), klass.get(), arg0.get(), args[1], args[2], args[3]));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "VII") {
+      using fntype = void(JNIEnv*, jclass, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), args[0], args[1]);
+    } else if (shorty == "VL") {
+      using fntype = void(JNIEnv*, jclass, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), arg0.get());
+    } else if (shorty == "VLJZ") {
+      // java.lang.Thread.nativeCreate(Thread, long, boolean)
+      using fntype = void(JNIEnv*, jclass, jobject, jlong, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      jboolean arg2 = static_cast<jboolean>(args[3]);
+      fn(soa.Env(), klass.get(), arg0.get(), arg1, arg2);
+    } else if (shorty == "IL") {
+      using fntype = jint(JNIEnv*, jclass, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), klass.get(), arg0.get()));
+    } else if (shorty == "Z") {
+      using fntype = jboolean(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), klass.get()));
+    } else if (shorty == "BI") {
+      using fntype = jbyte(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetB(fn(soa.Env(), klass.get(), args[0]));
+    } else if (shorty == "II") {
+      using fntype = jint(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), klass.get(), args[0]));
+    } else if (shorty == "LI") {
+      using fntype = jobject(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jobject jresult;
+      {
+        jresult = fn(soa.Env(), klass.get(), args[0]);
+      }
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "LL") {
+      using fntype = jobject(JNIEnv*, jclass, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jobject jresult;
+      {
+        // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+        jresult = fn(soa.Env(), klass.get(), arg0.get());
+      }
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "IIZ") {
+      using fntype = jint(JNIEnv*, jclass, jint, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), klass.get(), args[0], args[1]));
+    } else if (shorty == "ILI") {
+      using fntype = jint(JNIEnv*, jclass, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(const_cast<void*>(
+          method->GetEntryPointFromJni()));
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), klass.get(), arg0.get(), args[1]));
+    } else if (shorty == "SIZ") {
+      using fntype = jshort(JNIEnv*, jclass, jint, jboolean);
+      fntype* const fn =
+          reinterpret_cast<fntype*>(const_cast<void*>(method->GetEntryPointFromJni()));
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetS(fn(soa.Env(), klass.get(), args[0], args[1]));
+    } else if (shorty == "VIZ") {
+      using fntype = void(JNIEnv*, jclass, jint, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), args[0], args[1]);
+    } else if (shorty == "ZLL") {
+      using fntype = jboolean(JNIEnv*, jclass, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), klass.get(), arg0.get(), arg1.get()));
+    } else if (shorty == "ZILL") {
+      using fntype = jboolean(JNIEnv*, jclass, jint, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), klass.get(), args[0], arg1.get(), arg2.get()));
+    } else if (shorty == "VILII") {
+      using fntype = void(JNIEnv*, jclass, jint, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), args[0], arg1.get(), args[2], args[3]);
+    } else if (shorty == "VLILII") {
+      using fntype = void(JNIEnv*, jclass, jobject, jint, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), klass.get(), arg0.get(), args[1], arg2.get(), args[3], args[4]);
+    } else if (shorty == "JI") {
+      using fntype = jlong(JNIEnv*, jclass, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      result->SetJ(fn(soa.Env(), klass.get(), args[0]));
+    } else if (shorty == "JIII") {
+      // long fn(JNIEnv*, jclass, int, int, int) — OHBridge.bitmapCreate
+      using fntype = jlong(JNIEnv*, jclass, jint, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      result->SetJ(fn(soa.Env(), klass.get(), args[0], args[1], args[2]));
+    } else if (shorty == "JJII") {
+      // long fn(JNIEnv*, jclass, long, int, int) — OHBridge.surfaceCreate
+      using fntype = jlong(JNIEnv*, jclass, jlong, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      const int pending_before = soa.Env()->ExceptionCheck() ? 1 : 0;
+      fprintf(stderr,
+              "[PF202N] interpreter JJII entry fn=%p handle=%lld a2=%d a3=%d pending_before=%d\n",
+              reinterpret_cast<void*>(fn),
+              static_cast<long long>(arg0),
+              static_cast<int>(args[2]),
+              static_cast<int>(args[3]),
+              pending_before);
+      fflush(stderr);
+      const jlong native_result = fn(soa.Env(), klass.get(), arg0, args[2], args[3]);
+      const int pending_after = soa.Env()->ExceptionCheck() ? 1 : 0;
+      fprintf(stderr,
+              "[PF202N] interpreter JJII return result=%lld pending_after=%d\n",
+              static_cast<long long>(native_result),
+              pending_after);
+      fflush(stderr);
+      result->SetJ(native_result);
+    } else if (shorty == "VJF") {
+      // void fn(JNIEnv*, jclass, long, float) — OHBridge.fontSetSize / penSetWidth
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0, *reinterpret_cast<jfloat*>(&args[2]));
+    } else if (shorty == "VJZ") {
+      // void fn(JNIEnv*, jclass, long, boolean) — OHBridge.penSetAntiAlias
+      using fntype = void(JNIEnv*, jclass, jlong, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0, static_cast<jboolean>(args[2]));
+    } else if (shorty == "VCLL") {
+      // void System.log(char, String, Throwable)
+      using fntype = void(JNIEnv*, jclass, jchar, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      fn(soa.Env(), klass.get(), args[0], arg1.get(), arg2.get());
+    } else if (shorty == "LL") {
+      // static Object method(Object)
+      using fntype = jobject(JNIEnv*, jclass, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jobject jresult = fn(soa.Env(), klass.get(), arg0.get());
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "LLL") {
+      // Object method(Object, Object) — e.g. SystemProperties.native_get(String, String)
+      using fntype = jobject(JNIEnv*, jclass, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      jobject jresult = fn(soa.Env(), klass.get(), arg0.get(), arg1.get());
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "LLZL") {
+      // Class classForName(String, boolean, ClassLoader)
+      using fntype = jobject(JNIEnv*, jclass, jobject, jboolean, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      jobject jresult = fn(soa.Env(), klass.get(), arg0.get(), args[1], arg2.get());
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "ZLI") {
+      // boolean fn(JNIEnv*, jclass, String, int) — e.g. Log.isLoggable
+      using fntype = jboolean(JNIEnv*, jclass, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetZ(fn(soa.Env(), klass.get(), arg0.get(), args[1]));
+    } else if (shorty == "ILLI") {
+      // int fn(JNIEnv*, jclass, int, String, String, int) — e.g. Log.println_native
+      using fntype = jint(JNIEnv*, jclass, jint, jint, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      result->SetI(fn(soa.Env(), klass.get(), args[0], args[1],
+                       soa.AddLocalReference<jobject>(ObjArg(args[2])),
+                       soa.AddLocalReference<jobject>(ObjArg(args[3]))));
+    } else if (shorty == "IILL") {
+      // int fn(JNIEnv*, jclass, int, int, String, String) — Log.println_native variant
+      using fntype = jint(JNIEnv*, jclass, jint, jint, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      ScopedLocalRef<jobject> arg3(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      result->SetI(fn(soa.Env(), klass.get(), args[0], args[1], arg2.get(), arg3.get()));
+    } else if (shorty == "ZLZ") {
+      // boolean fn(JNIEnv*, jclass, String, boolean) — SystemProperties.native_get_boolean
+      using fntype = jboolean(JNIEnv*, jclass, jobject, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetZ(fn(soa.Env(), klass.get(), arg0.get(), args[1]));
+    } else if (shorty == "ILI") {
+      // int fn(JNIEnv*, jclass, String, int) — SystemProperties.native_get_int
+      using fntype = jint(JNIEnv*, jclass, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetI(fn(soa.Env(), klass.get(), arg0.get(), args[1]));
+    } else if (shorty == "JLJ") {
+      // long fn(JNIEnv*, jclass, String, long) — SystemProperties.native_get_long
+      using fntype = jlong(JNIEnv*, jclass, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      result->SetJ(fn(soa.Env(), klass.get(), arg0.get(), arg1));
+    } else if (shorty == "LLLL") {
+      // Object fn(JNIEnv*, jclass, Object, Object, Object) — Runtime.nativeLoad
+      using fntype = jobject(JNIEnv*, jclass, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      ScopedLocalRef<jobject> jresult(soa.Env(),
+                                      fn(soa.Env(), klass.get(), arg0.get(), arg1.get(), arg2.get()));
+      result->SetL(soa.Decode<mirror::Object>(jresult.get()));
+    } else if (shorty == "LLII") {
+      // Object fn(JNIEnv*, jclass, Object, int, int) — StringFactory.newStringFromUtf8Bytes etc.
+      using fntype = jobject(JNIEnv*, jclass, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> jresult(soa.Env(), fn(soa.Env(), klass.get(), arg0.get(), args[1], args[2]));
+      result->SetL(soa.Decode<mirror::Object>(jresult.get()));
+    } else if (shorty == "JJ") {
+      // long fn(JNIEnv*, jclass, long) — e.g. ApkAssets.nativeGetStringBlock(long)
+      using fntype = jlong(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetJ(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "JILIL") {
+      // long fn(JNIEnv*, jclass, int, String, int, Object) — ApkAssets.nativeLoad
+      using fntype = jlong(JNIEnv*, jclass, jint, jobject, jint, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg3(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      result->SetJ(fn(soa.Env(), klass.get(), args[0], arg1.get(), args[2], arg3.get()));
+    } else if (shorty == "I") {
+      // int fn(JNIEnv*, jclass) — VMRuntime.getNotifyNativeInterval etc.
+      using fntype = jint(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      result->SetI(fn(soa.Env(), klass.get()));
+    } else if (shorty == "VJ") {
+      // void fn(JNIEnv*, jclass, long) — Parcel.nativeFreeBuffer, nativeDestroy etc.
+      using fntype = void(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0);
+    } else if (shorty == "VJJI") {
+      // void fn(JNIEnv*, jclass, long, long, int) — SC.nativeSetLayer/nativeSetLayerStack
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong a0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong a1 = *reinterpret_cast<jlong*>(&args[2]);
+      fn(soa.Env(), klass.get(), a0, a1, args[4]);
+    } else if (shorty == "VJJII") {
+      // void fn(JNIEnv*, jclass, long, long, int, int) — SC.nativeSetFlags
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong a0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong a1 = *reinterpret_cast<jlong*>(&args[2]);
+      fn(soa.Env(), klass.get(), a0, a1, args[4], args[5]);
+    } else if (shorty == "VJJLLJ") {
+      // void fn(JNIEnv*, jclass, long, long, Object, Object, long) — SC.nativeSetGeometry
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong a0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong a1 = *reinterpret_cast<jlong*>(&args[2]);
+      ScopedLocalRef<jobject> a2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[4])));
+      ScopedLocalRef<jobject> a3(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[5])));
+      jlong a4 = *reinterpret_cast<jlong*>(&args[6]);
+      fn(soa.Env(), klass.get(), a0, a1, a2.get(), a3.get(), a4);
+    } else if (shorty == "VJZZ") {
+      // void fn(JNIEnv*, jclass, long, boolean, boolean) — SC.nativeApplyTransaction
+      using fntype = void(JNIEnv*, jclass, jlong, jboolean, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong a0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), a0, (jboolean)args[2], (jboolean)args[3]);
+    } else if (shorty == "VLJI") {
+      // void fn(JNIEnv*, jclass, Object, long, int) — Thread.sleep
+      using fntype = void(JNIEnv*, jclass, jobject, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> a0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong a1 = *reinterpret_cast<jlong*>(&args[1]);
+      fn(soa.Env(), klass.get(), a0.get(), a1, args[3]);
+    } else if (shorty == "VJII") {
+      // void fn(JNIEnv*, jclass, long, int, int) — Canvas.nDrawColor etc.
+      using fntype = void(JNIEnv*, jclass, jlong, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0, args[2], args[3]);
+    } else if (shorty == "VJL") {
+      // void fn(JNIEnv*, jclass, long, Object) — Parcel.nativeMarkForBinder etc.
+      using fntype = void(JNIEnv*, jclass, jlong, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      fn(soa.Env(), klass.get(), arg0, arg1.get());
+    } else if (shorty == "IJL") {
+      // int fn(JNIEnv*, jclass, long, Object) — Parcel.nativeReadInt etc.
+      using fntype = jint(JNIEnv*, jclass, jlong, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      result->SetI(fn(soa.Env(), klass.get(), arg0, arg1.get()));
+    } else if (shorty == "IJ") {
+      // int fn(JNIEnv*, jclass, long) — Parcel.nativeReadInt(long)
+      using fntype = jint(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetI(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "LJ") {
+      // Object fn(JNIEnv*, jclass, long) — Parcel.nativeReadString etc.
+      using fntype = jobject(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), klass.get(), arg0));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "LLI") {
+      // Object fn(JNIEnv*, jclass, Object, int) — Array.createObjectArray etc.
+      using fntype = jobject(JNIEnv*, jclass, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), klass.get(), arg0.get(), args[1]));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "LIIL") {
+      // Object fn(JNIEnv*, jclass, int, int, Object) — StringFactory.newStringFromChars
+      using fntype = jobject(JNIEnv*, jclass, jint, jint, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), klass.get(), args[0], args[1], arg2.get()));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "VLLJ") {
+      // void fn(JNIEnv*, jclass, Object, Object, long) — McdLoader.nativeSetApkAssets etc.
+      using fntype = void(JNIEnv*, jclass, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      jlong arg2 = *reinterpret_cast<jlong*>(&args[2]);
+      fn(soa.Env(), klass.get(), arg0.get(), arg1.get(), arg2);
+    } else if (shorty == "VJI") {
+      // void fn(JNIEnv*, jclass, long, int) — Parcel.nativeWriteInt etc.
+      using fntype = void(JNIEnv*, jclass, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0, args[2]);
+    } else if (shorty == "VJJ") {
+      // void fn(JNIEnv*, jclass, long, long) — NativeAllocationRegistry.applyFreeFunction
+      using fntype = void(JNIEnv*, jclass, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[2]);
+      fn(soa.Env(), klass.get(), arg0, arg1);
+    } else if (shorty == "VJFF") {
+      // void fn(JNIEnv*, jclass, long, float, float) — OHBridge.canvasTranslate / canvasScale
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]));
+    } else if (shorty == "VJFFF") {
+      // void fn(JNIEnv*, jclass, long, float, float, float) — OHBridge.canvasRotate
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]));
+    } else if (shorty == "VJFFFF") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, float) — OHBridge.canvasClipRect
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]));
+    } else if (shorty == "VJFFFFJ") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, float, long) — OHBridge.canvasDrawLine
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jfloat, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg5 = *reinterpret_cast<jlong*>(&args[6]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]),
+         arg5);
+    } else if (shorty == "VJFFFJJ") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, long, long) — OHBridge.canvasDrawCircle
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg4 = *reinterpret_cast<jlong*>(&args[5]);
+      jlong arg5 = *reinterpret_cast<jlong*>(&args[7]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         arg4,
+         arg5);
+    } else if (shorty == "VJJFF") {
+      // void fn(JNIEnv*, jclass, long, long, float, float) — OHBridge.canvasDrawBitmap
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jfloat, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[2]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         arg1,
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]));
+    } else if (shorty == "VJJJJ") {
+      // void fn(JNIEnv*, jclass, long, long, long, long) — OHBridge.canvasDrawPath
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[2]);
+      jlong arg2 = *reinterpret_cast<jlong*>(&args[4]);
+      jlong arg3 = *reinterpret_cast<jlong*>(&args[6]);
+      fn(soa.Env(), klass.get(), arg0, arg1, arg2, arg3);
+    } else if (shorty == "VJFFFFJJ") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, float, long, long) — OHBridge.canvasDrawRect / canvasDrawOval
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jfloat, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg5 = *reinterpret_cast<jlong*>(&args[6]);
+      jlong arg6 = *reinterpret_cast<jlong*>(&args[8]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]),
+         arg5,
+         arg6);
+    } else if (shorty == "VJFFFFFFJJ") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, float, float, float, long, long) — OHBridge.canvasDrawRoundRect
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jfloat, jfloat, jfloat, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg7 = *reinterpret_cast<jlong*>(&args[8]);
+      jlong arg8 = *reinterpret_cast<jlong*>(&args[10]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]),
+         *reinterpret_cast<jfloat*>(&args[6]),
+         *reinterpret_cast<jfloat*>(&args[7]),
+         arg7,
+         arg8);
+    } else if (shorty == "VJFFFFFFZJJ") {
+      // void fn(JNIEnv*, jclass, long, float, float, float, float, float, float, boolean, long, long) — OHBridge.canvasDrawArc
+      using fntype = void(JNIEnv*, jclass, jlong, jfloat, jfloat, jfloat, jfloat, jfloat, jfloat, jboolean, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg8 = *reinterpret_cast<jlong*>(&args[9]);
+      jlong arg9 = *reinterpret_cast<jlong*>(&args[11]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         *reinterpret_cast<jfloat*>(&args[2]),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         *reinterpret_cast<jfloat*>(&args[5]),
+         *reinterpret_cast<jfloat*>(&args[6]),
+         *reinterpret_cast<jfloat*>(&args[7]),
+         static_cast<jboolean>(args[8]),
+         arg8,
+         arg9);
+    } else if (shorty == "JJLL") {
+      // long fn(JNIEnv*, jclass, long, Object, Object) — Surface.nativeLockCanvas
+      using fntype = jlong(JNIEnv*, jclass, jlong, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      ScopedLocalRef<jobject> a2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      result->SetJ(fn(soa.Env(), klass.get(), arg0, a1.get(), a2.get()));
+    } else if (shorty == "JLLIIIIJL") {
+      // long fn(JNIEnv*, jclass, Object, Object, int, int, int, int, long, Object)
+      // SurfaceControl.nativeCreate(Session, name, w, h, format, flags, parentPtr, metadata)
+      using fntype = jlong(JNIEnv*, jclass, jobject, jobject, jint, jint, jint, jint, jlong, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(), soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> a0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      jlong a5 = *reinterpret_cast<jlong*>(&args[6]); // after 4 ints + 2 obj slots = offset 6
+      ScopedLocalRef<jobject> a6(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[8])));
+      result->SetJ(fn(soa.Env(), klass.get(), a0.get(), a1.get(), args[2], args[3], args[4], args[5], a5, a6.get()));
+    } else if (shorty == "VJLZZ") {
+      // void fn(JNIEnv*, jclass, long, Object[], boolean, boolean) — AssetManager.nativeSetApkAssets
+      using fntype = void(JNIEnv*, jclass, jlong, jobjectArray, jboolean, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2]))); // after long (2 slots)
+      fn(soa.Env(), klass.get(), arg0, (jobjectArray)arg1.get(), (jboolean)args[3], (jboolean)args[4]);
+    } else if (shorty == "VJIIL") {
+      using fntype = void(JNIEnv*, jclass, jlong, jint, jint, jbyteArray);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg3(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[4])));
+      fn(soa.Env(), klass.get(), arg0, args[2], args[3], reinterpret_cast<jbyteArray>(arg3.get()));
+    } else if (shorty == "VJLFFII") {
+      // void fn(JNIEnv*, jclass, long, Object, float, float, int, int) — OHBridge.canvasDrawImage
+      using fntype = void(JNIEnv*, jclass, jlong, jbyteArray, jfloat, jfloat, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         reinterpret_cast<jbyteArray>(arg1.get()),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         args[5],
+         args[6]);
+    } else if (shorty == "VJLFFJJJ") {
+      // void fn(JNIEnv*, jclass, long, Object, float, float, long, long, long) — OHBridge.canvasDrawText
+      using fntype = void(JNIEnv*, jclass, jlong, jstring, jfloat, jfloat, jlong, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      jlong arg4 = *reinterpret_cast<jlong*>(&args[5]);
+      jlong arg5 = *reinterpret_cast<jlong*>(&args[7]);
+      jlong arg6 = *reinterpret_cast<jlong*>(&args[9]);
+      fn(soa.Env(),
+         klass.get(),
+         arg0,
+         reinterpret_cast<jstring>(arg1.get()),
+         *reinterpret_cast<jfloat*>(&args[3]),
+         *reinterpret_cast<jfloat*>(&args[4]),
+         arg4,
+         arg5,
+         arg6);
+    } else if (shorty == "VLLL") {
+      // void fn(JNIEnv*, jclass, Object, Object, Object)
+      using fntype = void(JNIEnv*, jclass, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg2(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      fn(soa.Env(), klass.get(), arg0.get(), arg1.get(), arg2.get());
+    } else if (shorty == "J") {
+      // long fn(JNIEnv*, jclass) — System.currentTimeMillis / nanoTime
+      using fntype = jlong(JNIEnv*, jclass);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      result->SetJ(fn(soa.Env(), klass.get()));
+    } else if (shorty == "ZJ") {
+      // boolean fn(JNIEnv*, jclass, long) — Trace.nativeIsTagEnabled
+      using fntype = jboolean(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetZ(fn(soa.Env(), klass.get(), arg0));
+    } else {
+      LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
+      // [DAYU600] Return a type-correct default instead of leaving garbage in the
+      // result register — garbage returns from unhandled framework natives drive
+      // deep recursion / SIGSEGV on the real AssetManager/Resources path.
+      switch (shorty[0]) {
+        case 'L': result->SetL(nullptr); break;
+        case 'Z': case 'B': case 'C': case 'S': case 'I': result->SetI(0); break;
+        case 'J': result->SetJ(0); break;
+        case 'F': result->SetF(0); break;
+        case 'D': result->SetD(0); break;
+        default: break;  // 'V'
+      }
+    }
+  } else {
+    if (shorty == "VI") {
+      // void method(int) — e.g. Runtime.halt(int)
+      using fntype = void(JNIEnv*, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      fn(soa.Env(), rcvr.get(), args[0]);
+    } else if (shorty == "VL") {
+      // void method(Object) — e.g. Thread.setName(String)
+      using fntype = void(JNIEnv*, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      fn(soa.Env(), rcvr.get(), arg0.get());
+    } else if (shorty == "L") {
+      using fntype = jobject(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      static int l_count = 0;
+      if (fn == nullptr || ++l_count <= 20) {
+        fprintf(stderr, "[InterpJni] L: fn=%p rcvr=%p for %s\n",
+                (void*)fn, receiver.Ptr(), method->PrettyMethod().c_str());
+        fflush(stderr);
+      }
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      jobject jresult;
+      {
+        // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+        jresult = fn(soa.Env(), rcvr.get());
+      }
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "LLL" && !method->IsStatic()) {
+      // Object method(Object, Object) — non-static
+      using fntype = jobject(JNIEnv*, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      jobject jresult = fn(soa.Env(), rcvr.get(), arg0.get(), arg1.get());
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "JLL" && !method->IsStatic()) {
+      // long method(Object, Object) -- Unsafe.objectFieldOffset(Class, String).
+      using fntype = jlong(JNIEnv*, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      result->SetJ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1.get()));
+    } else if (shorty == "V") {
+      using fntype = void(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), rcvr.get());
+    } else if (shorty == "LL") {
+      using fntype = jobject(JNIEnv*, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jobject jresult;
+      {
+        // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+        jresult = fn(soa.Env(), rcvr.get(), arg0.get());
+      }
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+    } else if (shorty == "CI") {
+      using fntype = jchar(JNIEnv*, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+          soa.AddLocalReference<jobject>(receiver));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetC(fn(soa.Env(), rcvr.get(), args[0]));
+    } else if (shorty == "LZ") {
+      // Object getDeclaredMethodsUnchecked(boolean)
+      using fntype = jobject(JNIEnv*, jobject, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      jobject jresult = fn(soa.Env(), rcvr.get(), args[0]);
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "I" && !method->IsStatic()) {
+      using fntype = jint(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+          soa.AddLocalReference<jobject>(receiver));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), rcvr.get()));
+    } else if (shorty == "VLI") {
+      using fntype = void(JNIEnv*, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+          soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      fn(soa.Env(), rcvr.get(), arg0.get(), args[1]);
+    } else if (shorty == "III") {
+      using fntype = jint(JNIEnv*, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetI(fn(soa.Env(), rcvr.get(), args[0], args[1]));
+    } else if (shorty == "ZL") {
+      using fntype = jboolean(JNIEnv*, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get()));
+    } else if (shorty == "ZLI") {
+      // boolean fn(JNIEnv*, jobject, Object, int) — UnixFileSystem.checkAccess / hasBooleanAttributes
+      using fntype = jboolean(JNIEnv*, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get(), args[1]));
+    } else if (shorty == "JL") {
+      // long fn(JNIEnv*, jobject, Object) — UnixFileSystem.getLength / getLastModifiedTime
+      using fntype = jlong(JNIEnv*, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetJ(fn(soa.Env(), rcvr.get(), arg0.get()));
+    } else if (shorty == "LII") {
+      // String fastSubstring(int, int)
+      using fntype = jobject(JNIEnv*, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      jobject jresult = fn(soa.Env(), rcvr.get(), args[0], args[1]);
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "LI") {
+      using fntype = jobject(JNIEnv*, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      jobject jresult = fn(soa.Env(), rcvr.get(), args[0]);
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "ZLJII") {
+      using fntype = jboolean(JNIEnv*, jobject, jobject, jlong, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1, args[3], args[4]));
+    } else if (shorty == "JLL") {
+      using fntype = jlong(JNIEnv*, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
+      result->SetJ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1.get()));
+    } else if (shorty == "LLJ") {
+      // Object getReferenceVolatile(Object, long)
+      using fntype = jobject(JNIEnv*, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      jobject jresult = fn(soa.Env(), rcvr.get(), arg0.get(), arg1);
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "ZLJLL") {
+      // boolean compareAndSetReference(Object, long, Object, Object)
+      using fntype = jboolean(JNIEnv*, jobject, jobject, jlong, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      ScopedLocalRef<jobject> arg3(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      ScopedLocalRef<jobject> arg4(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[4])));
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1, arg3.get(), arg4.get()));
+    } else if (shorty == "ZLJII") {
+      // boolean compareAndSetInt(Object, long, int, int)
+      using fntype = jboolean(JNIEnv*, jobject, jobject, jlong, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1, args[3], args[4]));
+    } else if (shorty == "VLJLL") {
+      // void putReferenceVolatile(Object, long, Object)
+      using fntype = void(JNIEnv*, jobject, jobject, jlong, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      ScopedLocalRef<jobject> arg3(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1, arg3.get());
+    } else if (shorty == "VLJI") {
+      // void putIntVolatile(Object, long, int)
+      using fntype = void(JNIEnv*, jobject, jobject, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1, args[3]);
+    } else if (shorty == "ILJ") {
+      // int getIntVolatile(Object, long)
+      using fntype = jint(JNIEnv*, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      result->SetI(fn(soa.Env(), rcvr.get(), arg0.get(), arg1));
+    } else if (shorty == "ZLJJJ") {
+      // boolean compareAndSetLong(Object, long, long, long)
+      using fntype = jboolean(JNIEnv*, jobject, jobject, jlong, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      jlong arg3 = *reinterpret_cast<jlong*>(&args[3]);
+      jlong arg5 = *reinterpret_cast<jlong*>(&args[5]);
+      result->SetZ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1, arg3, arg5));
+    } else if (shorty == "JLJ") {
+      // long getLongVolatile(Object, long)
+      using fntype = jlong(JNIEnv*, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      result->SetJ(fn(soa.Env(), rcvr.get(), arg0.get(), arg1));
+    } else if (shorty == "VLJJ") {
+      // void putLongVolatile(Object, long, long)
+      using fntype = void(JNIEnv*, jobject, jobject, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      jlong arg3 = *reinterpret_cast<jlong*>(&args[3]);
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1, arg3);
+    } else if (shorty == "VLJL") {
+      // void putReferenceVolatile(Object, long, Object)
+      using fntype = void(JNIEnv*, jobject, jobject, jlong, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      ScopedLocalRef<jobject> arg3(soa.Env(),
+                                   soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1, arg3.get());
+    } else if (shorty == "JI") {
+      // long sysconf(int) - non-static
+      using fntype = jlong(JNIEnv*, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(),
+                                   soa.AddLocalReference<jobject>(receiver));
+      result->SetJ(fn(soa.Env(), rcvr.get(), args[0]));
+    } else if (shorty == "ILLII") {
+      // int writeBytes(FileDescriptor, Object, int, int) — I/O write
+      using fntype = jint(JNIEnv*, jobject, jobject, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      result->SetI(fn(soa.Env(), rcvr.get(), arg0.get(), arg1.get(), args[2], args[3]));
+    } else if (shorty == "VIILI") {
+      // void String.getCharsNoCheck(int, int, char[], int)
+      using fntype = void(JNIEnv*, jobject, jint, jint, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      fn(soa.Env(), rcvr.get(), args[0], args[1], arg2.get(), args[3]);
+    } else if (shorty == "VLL") {
+      // void fn(JNIEnv*, jobject, Object, Object) — e.g. Field.set
+      using fntype = void(JNIEnv*, jobject, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1.get());
+    } else if (shorty == "II") {
+      // int fn(JNIEnv*, jobject, int) — e.g. String.lastIndexOf(int)
+      using fntype = jint(JNIEnv*, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      result->SetI(fn(soa.Env(), rcvr.get(), args[0]));
+    } else if (shorty == "IZ") {
+      // int fn(JNIEnv*, jobject, boolean) — e.g. Thread.nativeGetStatus
+      using fntype = jint(JNIEnv*, jobject, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      result->SetI(fn(soa.Env(), rcvr.get(), args[0]));
+    } else if (shorty == "LLI") {
+      // Object fn(JNIEnv*, jobject, Object, int) — e.g. Field.get with index
+      using fntype = jobject(JNIEnv*, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jobject jresult = fn(soa.Env(), rcvr.get(), arg0.get(), args[1]);
+      result->SetL(soa.Decode<mirror::Object>(jresult));
+    } else if (shorty == "Z") {
+      // boolean fn(JNIEnv*, jobject) — e.g. Activity.isTaskRoot
+      using fntype = jboolean(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      result->SetZ(fn(soa.Env(), rcvr.get()));
+    } else if (shorty == "IL") {
+      // int fn(JNIEnv*, jobject, Object) — e.g. Field.getInt(Object)
+      using fntype = jint(JNIEnv*, jobject, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetI(fn(soa.Env(), rcvr.get(), arg0.get()));
+    } else if (shorty == "ILI") {
+      // int fn(JNIEnv*, jobject, Object, int) - String.lastIndexOf(String, int)
+      using fntype = jint(JNIEnv*, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      result->SetI(fn(soa.Env(), rcvr.get(), arg0.get(), args[1]));
+    } else if (shorty == "LJ") {
+      // Object fn(JNIEnv*, jobject, long) — BinderProxy$ProxyMap.get(long) etc.
+      using fntype = jobject(JNIEnv*, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), rcvr.get(), arg0));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "LLII") {
+      // Object fn(JNIEnv*, jobject, Object, int, int) — Linux.open(path, flags, mode)
+      using fntype = jobject(JNIEnv*, jobject, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      ScopedLocalRef<jobject> r(soa.Env(), fn(soa.Env(), rcvr.get(), arg0.get(), args[1], args[2]));
+      result->SetL(soa.Decode<mirror::Object>(r.get()));
+    } else if (shorty == "ZILLI") {
+      // boolean fn(JNIEnv*, jobject, int, Object, Object, int) — BinderProxy.transactNative!
+      using fntype = jboolean(JNIEnv*, jobject, jint, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> arg2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      result->SetZ(fn(soa.Env(), rcvr.get(), args[0], arg1.get(), arg2.get(), args[3]));
+    } else if (shorty == "VLJ") {
+      // void fn(JNIEnv*, jobject, Object, long) — Field.setLong etc.
+      using fntype = void(JNIEnv*, jobject, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      fn(soa.Env(), rcvr.get(), arg0.get(), arg1);
+    } else if (shorty == "VJ") {
+      // void fn(JNIEnv*, jobject, long) — VMRuntime.registerNativeAllocation
+      using fntype = void(JNIEnv*, jobject, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), rcvr.get(), arg0);
+    } else if (shorty == "VZJ") {
+      // void fn(JNIEnv*, jobject, boolean, long) — Unsafe.park(boolean, long)
+      using fntype = void(JNIEnv*, jobject, jboolean, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[1]);
+      fn(soa.Env(), rcvr.get(), static_cast<jboolean>(args[0]), arg1);
+    } else if (shorty == "VLF") {
+      // void fn(JNIEnv*, jobject, Object, float) — Field.setFloat
+      using fntype = void(JNIEnv*, jobject, jobject, jfloat);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), *reinterpret_cast<jfloat*>(&args[1]));
+    } else if (shorty == "VLI") {
+      // void fn(JNIEnv*, jobject, Object, int) — Field.setInt etc.
+      using fntype = void(JNIEnv*, jobject, jobject, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), args[1]);
+    } else if (shorty == "VLZ") {
+      // void fn(JNIEnv*, jobject, Object, boolean) — Field.setBoolean
+      using fntype = void(JNIEnv*, jobject, jobject, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), static_cast<jboolean>(args[1]));
+    } else if (shorty == "VLIZ") {
+      // void fn(JNIEnv*, jobject, Object, int, boolean) — Activity.onApplyThemeResource
+      using fntype = void(JNIEnv*, jobject, jobject, jint, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      ScopedLocalRef<jobject> arg0(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[0])));
+      fn(soa.Env(), rcvr.get(), arg0.get(), args[1], (jboolean)args[2]);
+    } else if (shorty == "I") {
+      // int fn(JNIEnv*, jobject) — hashCode, etc.
+      using fntype = jint(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      result->SetI(fn(soa.Env(), rcvr.get()));
+    } else if (shorty == "J") {
+      // long fn(JNIEnv*, jobject) — e.g. currentTimeMillis on instance
+      using fntype = jlong(JNIEnv*, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jobject> rcvr(soa.Env(), soa.AddLocalReference<jobject>(receiver));
+      result->SetJ(fn(soa.Env(), rcvr.get()));
+    } else {
+      LOG(WARNING) << "InterpreterJni: unhandled non-static shorty '" << shorty << "' for " << method->PrettyMethod();
+      // [DAYU600] Type-correct default (see static branch note).
+      switch (shorty[0]) {
+        case 'L': result->SetL(nullptr); break;
+        case 'Z': case 'B': case 'C': case 'S': case 'I': result->SetI(0); break;
+        case 'J': result->SetJ(0); break;
+        case 'F': result->SetF(0); break;
+        case 'D': result->SetD(0); break;
+        default: break;  // 'V'
+      }
+    }
+  }
+}
+
+NO_STACK_PROTECTOR
+static JValue ExecuteSwitch(Thread* self,
+                            const CodeItemDataAccessor& accessor,
+                            ShadowFrame& shadow_frame,
+                            JValue result_register,
+                            bool interpret_one_instruction) REQUIRES_SHARED(Locks::mutator_lock_) {
+  Runtime* runtime = Runtime::Current();
+  ArtMethod* method = shadow_frame.GetMethod();
+  UNUSED(method);
+  const bool pfc_fm_trace = false;
+  if (UNLIKELY(pfc_fm_trace && !runtime->IsActiveTransaction())) {
+    fprintf(stderr,
+            "[PFCUT-FM] ExecuteSwitch bypassing asm wrapper method=%s insns=%p "
+            "interpret_one=%d\n",
+            method->PrettyMethod().c_str(),
+            accessor.Insns(),
+            interpret_one_instruction ? 1 : 0);
+    fflush(stderr);
+    SwitchImplContext ctx {
+      .self = self,
+      .accessor = accessor,
+      .shadow_frame = shadow_frame,
+      .result_register = result_register,
+      .interpret_one_instruction = interpret_one_instruction,
+      .result = JValue(),
+    };
+    ExecuteSwitchImplCpp</*transaction_active=*/ false>(&ctx);
+    return ctx.result;
+  }
+  auto switch_impl_cpp = runtime->IsActiveTransaction()
+      ? runtime->GetClassLinker()->GetTransactionalInterpreter()
+      : reinterpret_cast<const void*>(&ExecuteSwitchImplCpp</*transaction_active=*/ false>);
+  return ExecuteSwitchImpl(
+      self, accessor, shadow_frame, result_register, interpret_one_instruction, switch_impl_cpp);
+}
+
+NO_STACK_PROTECTOR
+static inline JValue Execute(
+    Thread* self,
+    const CodeItemDataAccessor& accessor,
+    ShadowFrame& shadow_frame,
+    JValue result_register,
+    bool stay_in_interpreter = false,
+    bool from_deoptimize = false) REQUIRES_SHARED(Locks::mutator_lock_) {
+  ArtMethod* pfc_execute_method = shadow_frame.GetMethod();
+  UNUSED(pfc_execute_method);
+  // [DAYU600-CLONE-BODY] Execute() = the chokepoint all 4 interpreter wrappers funnel into.
+  if (false && pfc_execute_method != nullptr && pfc_execute_method->GetName() != nullptr &&
+      strcmp(pfc_execute_method->GetName(), "clone") == 0 &&
+      pfc_execute_method->GetDeclaringClass() != nullptr &&
+      pfc_execute_method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/Object;")) {
+    static int dcb = 0;
+    if (dcb < 8) { dcb++;
+      size_t recv_reg = accessor.RegistersSize() - accessor.InsSize();
+      ObjPtr<mirror::Object> recv = shadow_frame.GetVRegReference(recv_reg);
+      fprintf(stderr, "[CLONE-BODY] recv=%p type=%s isClass=%d\n",
+              reinterpret_cast<void*>(recv.Ptr()),
+              recv != nullptr ? recv->PrettyTypeOf().c_str() : "null",
+              (recv != nullptr && recv->IsClass()) ? 1 : 0);
+      // [DAYU600-RT-LOOKUP] the caller frame is unreflectVarHandle whose declaring class is
+      // MethodHandles$Lookup — dump its RUNTIME vtable state to settle image-vs-runtime.
+      {
+        ShadowFrame* clf = shadow_frame.GetLink();
+        if (clf != nullptr && clf->GetMethod() != nullptr &&
+            clf->GetMethod()->GetDeclaringClass() != nullptr) {
+          ObjPtr<mirror::Class> lc = clf->GetMethod()->GetDeclaringClass();
+          fprintf(stderr, "[RT-LOOKUP] class=%s vtable_len=%d caller=%s caller_idx=%u\n",
+                  lc->PrettyDescriptor().c_str(), lc->GetVTableLength(),
+                  clf->GetMethod()->PrettyMethod().c_str(),
+                  clf->GetMethod()->GetMethodIndex());
+          for (uint32_t vi = 0; vi < lc->GetVTableLength() && vi < 40; vi++) {
+            ArtMethod* ve = lc->GetVTableEntry(vi, kRuntimePointerSize);
+            const char* vn = (ve != nullptr) ? ve->GetName() : "null";
+            if (vn != nullptr && (strstr(vn, "findVarHandle") != nullptr ||
+                                  strstr(vn, "unreflectVarHandle") != nullptr)) {
+              fprintf(stderr, "   vtable[%u]=%s\n", vi, ve->PrettyMethod().c_str());
+            }
+          }
+          fflush(stderr);
+        }
+      }
+      for (ShadowFrame* f = shadow_frame.GetLink(); f != nullptr; f = f->GetLink()) {
+        ArtMethod* fm = f->GetMethod();
+        uint32_t fpc = f->GetDexPC();
+        std::string inststr = "?";
+        if (fm != nullptr) {
+          CodeItemInstructionAccessor fa(fm->DexInstructions());
+          if (fa.HasCodeItem() && fpc < fa.InsnsSizeInCodeUnits()) {
+            inststr = fa.InstructionAt(fpc).DumpString(fm->GetDexFile());
+          }
+        }
+        fprintf(stderr, "   caller-chain: %s @dex%u  inst=[%s]\n",
+                fm != nullptr ? fm->PrettyMethod().c_str() : "?", fpc, inststr.c_str());
+      }
+      // [DAYU600-CLONE-BODY] decode the CALLER's current instruction (which invoke mis-dispatched to clone)
+      {
+        ShadowFrame* cf = shadow_frame.GetLink();
+        if (cf != nullptr && cf->GetMethod() != nullptr) {
+          ArtMethod* cmeth = cf->GetMethod();
+          uint32_t cpc = cf->GetDexPC();
+          CodeItemInstructionAccessor cacc(cmeth->DexInstructions());
+          if (cacc.HasCodeItem() && cpc < cacc.InsnsSizeInCodeUnits()) {
+            const Instruction& in = cacc.InstructionAt(cpc);
+            fprintf(stderr, "   caller-inst @dex%u: %s\n", cpc, in.DumpString(cmeth->GetDexFile()).c_str());
+          }
+        }
+      }
+      // [DAYU600-CLONE-BODY] full REAL stack (quick+shadow) to find the true invoking frame
+      for (size_t d = 0; d < 16; d++) {
+        NthCallerVisitor v(self, d, /*include_runtime_and_upcalls=*/true);
+        v.WalkStack();
+        if (v.caller != nullptr) {
+          fprintf(stderr, "   real-frame[%zu]: %s\n",
+                  d, v.caller->PrettyMethod().c_str());
+        }
+      }
+      fflush(stderr);
+    }
+  }
+  const bool pfc_fm_trace = false;
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] Execute enter method=%s stay=%d deopt=%d dex_pc=%u "
+            "top_shadow=%p top_quick=%p\n",
+            pfc_execute_method->PrettyMethod().c_str(),
+            stay_in_interpreter ? 1 : 0,
+            from_deoptimize ? 1 : 0,
+            shadow_frame.GetDexPC(),
+            self->GetManagedStack()->GetTopShadowFrame(),
+            self->GetManagedStack()->GetTopQuickFrame());
+    fflush(stderr);
+  }
+  DCHECK(!shadow_frame.GetMethod()->IsAbstract());
+  DCHECK(!shadow_frame.GetMethod()->IsNative());
+  if (pfc_fm_trace) {
+    fprintf(stderr, "[PFCUT-FM] Execute after DCHECK\n");
+    fflush(stderr);
+  }
+
+  // We cache the result of NeedsDexPcEvents in the shadow frame so we don't need to call
+  // NeedsDexPcEvents on every instruction for better performance. NeedsDexPcEvents only gets
+  // updated asynchronoulsy in a SuspendAll scope and any existing shadow frames are updated with
+  // new value. So it is safe to cache it here.
+  shadow_frame.SetNotifyDexPcMoveEvents(
+      Runtime::Current()->GetInstrumentation()->NeedsDexPcEvents(shadow_frame.GetMethod(), self));
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] Execute after SetNotifyDexPcMoveEvents notify=%d\n",
+            shadow_frame.GetNotifyDexPcMoveEvents() ? 1 : 0);
+    fflush(stderr);
+  }
+
+  if (LIKELY(!from_deoptimize)) {  // Entering the method, but not via deoptimization.
+    if (kIsDebugBuild) {
+      CHECK_EQ(shadow_frame.GetDexPC(), 0u);
+      self->AssertNoPendingException();
+    }
+    ArtMethod *method = shadow_frame.GetMethod();
+    if (pfc_fm_trace) {
+      fprintf(stderr,
+              "[PFCUT-FM] Execute method-entry block listeners=%d force_pop=%d force_interp=%d\n",
+              Runtime::Current()->GetInstrumentation()->HasMethodEntryListeners() ? 1 : 0,
+              shadow_frame.GetForcePopFrame() ? 1 : 0,
+              self->IsForceInterpreter() ? 1 : 0);
+      fflush(stderr);
+    }
+
+    // If we can continue in JIT and have JITed code available execute JITed code.
+    if (!stay_in_interpreter &&
+        !self->IsForceInterpreter() &&
+        !shadow_frame.GetForcePopFrame() &&
+        !shadow_frame.GetNotifyDexPcMoveEvents()) {
+      jit::Jit* jit = Runtime::Current()->GetJit();
+      if (jit != nullptr) {
+        jit->MethodEntered(self, shadow_frame.GetMethod());
+        if (jit->CanInvokeCompiledCode(method)) {
+          JValue result;
+
+          // Pop the shadow frame before calling into compiled code.
+          self->PopShadowFrame();
+          // Calculate the offset of the first input reg. The input registers are in the high regs.
+          // It's ok to access the code item here since JIT code will have been touched by the
+          // interpreter and compiler already.
+          uint16_t arg_offset = accessor.RegistersSize() - accessor.InsSize();
+          ArtInterpreterToCompiledCodeBridge(self, nullptr, &shadow_frame, arg_offset, &result);
+          // Push the shadow frame back as the caller will expect it.
+          self->PushShadowFrame(&shadow_frame);
+
+          return result;
+        }
+      }
+    }
+
+    instrumentation::Instrumentation* instrumentation = Runtime::Current()->GetInstrumentation();
+    if (UNLIKELY(instrumentation->HasMethodEntryListeners() || shadow_frame.GetForcePopFrame())) {
+      instrumentation->MethodEnterEvent(self, method);
+      if (UNLIKELY(shadow_frame.GetForcePopFrame())) {
+        // The caller will retry this invoke or ignore the result. Just return immediately without
+        // any value.
+        DCHECK(Runtime::Current()->AreNonStandardExitsEnabled());
+        JValue ret = JValue();
+        PerformNonStandardReturn(self,
+                                 shadow_frame,
+                                 ret,
+                                 instrumentation,
+                                 /* unlock_monitors= */ false);
+        return ret;
+      }
+      if (UNLIKELY(self->IsExceptionPending())) {
+        instrumentation->MethodUnwindEvent(self,
+                                           method,
+                                           0);
+        JValue ret = JValue();
+        if (UNLIKELY(shadow_frame.GetForcePopFrame())) {
+          DCHECK(Runtime::Current()->AreNonStandardExitsEnabled());
+          PerformNonStandardReturn(self,
+                                   shadow_frame,
+                                   ret,
+                                   instrumentation,
+                                   /* unlock_monitors= */ false);
+        }
+        return ret;
+      }
+    }
+    if (pfc_fm_trace) {
+      fprintf(stderr,
+              "[PFCUT-FM] Execute after method-entry block pending=%d\n",
+              self->IsExceptionPending() ? 1 : 0);
+      fflush(stderr);
+    }
+  }
+
+  ArtMethod* method = shadow_frame.GetMethod();
+
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] Execute before DCheckStaticState class=%p flags=0x%x\n",
+            method->GetDeclaringClass().Ptr(),
+            method->GetAccessFlags());
+    fflush(stderr);
+  }
+  DCheckStaticState(self, method);
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] Execute before ExecuteSwitch insns=%p pending=%d\n",
+            accessor.Insns(),
+            self->IsExceptionPending() ? 1 : 0);
+    fflush(stderr);
+  }
+
+  // Lock counting is a special version of accessibility checks, and for simplicity and
+  // reduction of template parameters, we gate it behind access-checks mode.
+  DCHECK_IMPLIES(method->SkipAccessChecks(), !method->MustCountLocks());
+
+  VLOG(interpreter) << "Interpreting " << method->PrettyMethod();
+
+  return ExecuteSwitch(
+      self, accessor, shadow_frame, result_register, /*interpret_one_instruction=*/ false);
+}
+
+void EnterInterpreterFromInvoke(Thread* self,
+                                ArtMethod* method,
+                                ObjPtr<mirror::Object> receiver,
+                                uint32_t* args,
+                                JValue* result,
+                                bool stay_in_interpreter) {
+  DCHECK_EQ(self, Thread::Current());
+
+  // Interpreter depth guard — prevents infinite recursion from circular class init
+  static thread_local int invoke_depth = 0;
+  invoke_depth++;
+  struct InvokeDepthGuard { ~InvokeDepthGuard() { invoke_depth--; } } idg;
+  if (invoke_depth > 50) {
+    // Don't decrement here — RAII guard handles it
+    ThrowStackOverflowError(self);
+    return;
+  }
+
+  bool implicit_check = Runtime::Current()->GetImplicitStackOverflowChecks();
+  if (UNLIKELY(__builtin_frame_address(0) < self->GetStackEndForInterpreter(implicit_check))) {
+    ThrowStackOverflowError(self);
+    return;
+  }
+
+  // This can happen if we are in forced interpreter mode and an obsolete method is called using
+  // reflection.
+  if (UNLIKELY(method->IsObsolete())) {
+    ThrowInternalError("Attempting to invoke obsolete version of '%s'.",
+                       method->PrettyMethod().c_str());
+    return;
+  }
+
+  if (method->IsNative() &&
+      method->IsStatic() &&
+      method->GetDeclaringClassDescriptor() != nullptr &&
+      strcmp(method->GetDeclaringClassDescriptor(), "Ljava/util/TimeZone;") == 0 &&
+      (strcmp(method->GetName(), "getDefault") == 0 ||
+       strcmp(method->GetName(), "getDefaultRef") == 0) &&
+      method->GetInterfaceMethodIfProxy(kRuntimePointerSize)->GetShortyView() == "L") {
+    using FnType = jobject (*)(JNIEnv*, jclass);
+    FnType fn = reinterpret_cast<FnType>(const_cast<void*>(method->GetEntryPointFromJni()));
+    JNIEnvExt* env = down_cast<JNIEnvExt*>(self->GetJniEnv());
+    const bool trace_tz = WestlakeTraceTimeZoneBridge();
+    if (trace_tz) {
+      fprintf(stderr,
+              "[WESTLAKE-TZ-EARLY] direct native invoke method=%s fn=%p env=%p\n",
+              method->PrettyMethod().c_str(),
+              reinterpret_cast<void*>(fn),
+              env);
+      fflush(stderr);
+    }
+    jobject jresult = fn(env, nullptr);
+    if (trace_tz) {
+      fprintf(stderr, "[WESTLAKE-TZ-EARLY] direct native invoke result=%p\n", jresult);
+      fflush(stderr);
+    }
+    result->SetL(self->DecodeJObject(jresult));
+    if (trace_tz) {
+      fprintf(stderr, "[WESTLAKE-TZ-EARLY] direct native invoke decoded\n");
+      fflush(stderr);
+    }
+    return;
+  }
+
+  const char* old_cause = self->StartAssertNoThreadSuspension("EnterInterpreterFromInvoke");
+  CodeItemDataAccessor accessor(method->DexInstructionData());
+  uint16_t num_regs;
+  uint16_t num_ins;
+  if (accessor.HasCodeItem()) {
+    num_regs =  accessor.RegistersSize();
+    num_ins = accessor.InsSize();
+  } else if (!method->IsInvokable()) {
+    self->EndAssertNoThreadSuspension(old_cause);
+    method->ThrowInvocationTimeError(receiver);
+    return;
+  } else {
+    DCHECK(method->IsNative()) << method->PrettyMethod();
+    num_regs = num_ins = ArtMethod::NumArgRegisters(method->GetShortyView());
+    if (!method->IsStatic()) {
+      num_regs++;
+      num_ins++;
+    }
+  }
+  // Set up shadow frame with matching number of reference slots to vregs.
+  ShadowFrameAllocaUniquePtr shadow_frame_unique_ptr =
+      CREATE_SHADOW_FRAME(num_regs, method, /* dex pc */ 0);
+  ShadowFrame* shadow_frame = shadow_frame_unique_ptr.get();
+
+  size_t cur_reg = num_regs - num_ins;
+  if (!method->IsStatic()) {
+    if (UNLIKELY(receiver == nullptr)) {
+      self->EndAssertNoThreadSuspension(old_cause);
+      InvokeType invoke_type = method->IsDirect()
+          ? InvokeType::kDirect
+          : (method->GetDeclaringClass()->IsInterface() ? InvokeType::kInterface
+                                                        : InvokeType::kVirtual);
+      ThrowNullPointerExceptionForMethodAccess(method, invoke_type);
+      return;
+    }
+    shadow_frame->SetVRegReference(cur_reg, receiver);
+    ++cur_reg;
+  }
+  uint32_t shorty_len = 0;
+  const char* shorty = method->GetShorty(&shorty_len);
+  // DEBUG: trace shorty for non-boot-image methods
+  if (method->IsNative()) {
+    std::string class_desc_storage;
+    const char* class_desc = method->GetDeclaringClass()->GetDescriptor(&class_desc_storage);
+    const char* method_name = method->GetName();
+    const bool is_thread_sleep =
+        class_desc != nullptr &&
+        strcmp(class_desc, "Ljava/lang/Thread;") == 0 &&
+        method_name != nullptr &&
+        strcmp(method_name, "sleep") == 0;
+    const bool is_thread_current =
+        class_desc != nullptr &&
+        strcmp(class_desc, "Ljava/lang/Thread;") == 0 &&
+        method_name != nullptr &&
+        strcmp(method_name, "currentThread") == 0;
+    const bool is_system_nano_time =
+        class_desc != nullptr &&
+        strcmp(class_desc, "Ljava/lang/System;") == 0 &&
+        method_name != nullptr &&
+        strcmp(method_name, "nanoTime") == 0;
+    const bool is_string_last_index =
+        class_desc != nullptr &&
+        strcmp(class_desc, "Ljava/lang/String;") == 0 &&
+        method_name != nullptr &&
+        strcmp(method_name, "lastIndexOf") == 0;
+    const bool is_hot_loop_probe =
+        is_thread_sleep || is_thread_current || is_system_nano_time || is_string_last_index;
+
+    auto dump_shadow_callers = [&](const char* label) {
+      fprintf(stderr,
+              "[InterpJniTrace] %s %s shorty='%s' len=%u dexIdx=%u\n",
+              label,
+              method->PrettyMethod().c_str(),
+              shorty != nullptr ? shorty : "NULL",
+              shorty_len,
+              method->GetDexMethodIndex());
+      int depth = 0;
+      for (auto* frame = self->GetManagedStack()->GetTopShadowFrame();
+           frame != nullptr && depth < 6;
+           frame = frame->GetLink(), ++depth) {
+        ArtMethod* caller = frame->GetMethod();
+        if (caller != nullptr) {
+          fprintf(stderr,
+                  "[InterpJniTrace]   #%d %s (dex_pc=%u)\n",
+                  depth,
+                  caller->PrettyMethod().c_str(),
+                  frame->GetDexPC());
+        }
+      }
+      fflush(stderr);
+    };
+
+    if (is_thread_sleep) {
+      static int sleep_trace_count = 0;
+      if (sleep_trace_count < 48) {
+        ++sleep_trace_count;
+        jlong millis = 0;
+        jint nanos = 0;
+        if (shorty_len >= 4) {
+          millis = *reinterpret_cast<jlong*>(&args[1]);
+          nanos = static_cast<jint>(args[3]);
+        }
+        char label[96];
+        snprintf(label, sizeof(label), "sleep(millis=%lld,nanos=%d)",
+                 static_cast<long long>(millis), static_cast<int>(nanos));
+        dump_shadow_callers(label);
+      }
+    } else if (is_string_last_index) {
+      static int last_index_trace_count = 0;
+      if (last_index_trace_count < 24) {
+        ++last_index_trace_count;
+        jint ch = shorty_len >= 2 ? static_cast<jint>(args[0]) : 0;
+        jint from_index = shorty_len >= 3 ? static_cast<jint>(args[1]) : -1;
+        char label[96];
+        snprintf(label, sizeof(label), "lastIndexOf(ch=%d,from=%d)",
+                 static_cast<int>(ch), static_cast<int>(from_index));
+        dump_shadow_callers(label);
+      }
+    } else if (!is_hot_loop_probe) {
+      fprintf(stderr, "[InterpJni] %s shorty='%s' len=%u dexIdx=%u\n",
+              method->PrettyMethod().c_str(),
+              shorty != nullptr ? shorty : "NULL",
+              shorty_len,
+              method->GetDexMethodIndex());
+      fflush(stderr);
+    }
+  }
+  for (size_t shorty_pos = 0, arg_pos = 0; cur_reg < num_regs; ++shorty_pos, ++arg_pos, cur_reg++) {
+    DCHECK_LT(shorty_pos + 1, shorty_len);
+    switch (shorty[shorty_pos + 1]) {
+      case 'L': {
+        ObjPtr<mirror::Object> o =
+            reinterpret_cast<StackReference<mirror::Object>*>(&args[arg_pos])->AsMirrorPtr();
+        shadow_frame->SetVRegReference(cur_reg, o);
+        break;
+      }
+      case 'J': case 'D': {
+        uint64_t wide_value = (static_cast<uint64_t>(args[arg_pos + 1]) << 32) | args[arg_pos];
+        shadow_frame->SetVRegLong(cur_reg, wide_value);
+        cur_reg++;
+        arg_pos++;
+        break;
+      }
+      default:
+        shadow_frame->SetVReg(cur_reg, args[arg_pos]);
+        break;
+    }
+  }
+  self->EndAssertNoThreadSuspension(old_cause);
+  if (!EnsureInitialized(self, shadow_frame)) {
+    return;
+  }
+  self->PushShadowFrame(shadow_frame);
+  if (LIKELY(!method->IsNative())) {
+    std::string class_desc_storage;
+    const char* class_desc = method->GetDeclaringClass()->GetDescriptor(&class_desc_storage);
+    const char* method_name = method->GetName();
+    if (class_desc != nullptr &&
+        strcmp(class_desc, "Ljava/lang/invoke/MethodHandles;") == 0 &&
+        method_name != nullptr &&
+        strcmp(method_name, "lookup") == 0) {
+      ShadowFrame* caller_frame = shadow_frame->GetLink();
+      ObjPtr<mirror::Class> caller_class = caller_frame != nullptr
+          ? caller_frame->GetMethod()->GetDeclaringClass()
+          : method->GetDeclaringClass();
+      StackHandleScope<1> hs(self);
+      Handle<mirror::Class> lookup_class(hs.NewHandle(caller_class));
+      ObjPtr<mirror::MethodHandlesLookup> lookup =
+          mirror::MethodHandlesLookup::Create(self, lookup_class);
+      if (result != nullptr) {
+        result->SetL(lookup);
+      }
+      self->PopShadowFrame();
+      return;
+    }
+    JValue r = Execute(self, accessor, *shadow_frame, JValue(), stay_in_interpreter);
+    if (result != nullptr) {
+      *result = r;
+    }
+  } else {
+    // We don't expect to be asked to interpret native code (which is entered via a JNI compiler
+    // generated stub) except during testing and image writing.
+    // Update args to be the args in the shadow frame since the input ones could hold stale
+    // references pointers due to moving GC.
+    args = shadow_frame->GetVRegArgs(method->IsStatic() ? 0 : 1);
+    // Always use InterpreterJni (not UnstartedRuntime::Jni) — our native stubs
+    // are registered and available even before Runtime::IsStarted(). UnstartedRuntime::Jni
+    // only handles a subset of methods and returns null for unhandled ones.
+    if (!Runtime::Current()->IsStarted() && Runtime::Current()->IsAotCompiler()) {
+      UnstartedRuntime::Jni(self, method, receiver.Ptr(), args, result);
+    } else {
+      InterpreterJni(self, method, shorty, receiver, args, result);
+    }
+  }
+  // [DAYU600-DIAG] identify methods that leave an EXTRA frame above shadow_frame (imbalance).
+  {
+    ShadowFrame* top = self->GetManagedStack()->GetTopShadowFrame();
+    if (top != shadow_frame) {
+      static int dc = 0;
+      if (dc < 200) { dc++;
+        fprintf(stderr, "[FRAME-IMBALANCE] method=%s dexIdx=%u top=%p frame=%p link=%p\n",
+                method != nullptr ? method->PrettyMethod().c_str() : "?",
+                method != nullptr ? method->GetDexMethodIndex() : 0u,
+                (void*)top, (void*)shadow_frame, (void*)shadow_frame->GetLink());
+        fflush(stderr);
+      }
+    }
+  }
+  // [DAYU600-FIX-A] 861 pop-skip removed (caused shadow-stack imbalance -> heap-object corruption)
+  self->PopShadowFrame();
+}
+
+static int16_t GetReceiverRegisterForStringInit(const Instruction* instr) {
+  DCHECK(instr->Opcode() == Instruction::INVOKE_DIRECT_RANGE ||
+         instr->Opcode() == Instruction::INVOKE_DIRECT);
+  return (instr->Opcode() == Instruction::INVOKE_DIRECT_RANGE) ?
+      instr->VRegC_3rc() : instr->VRegC_35c();
+}
+
+void EnterInterpreterFromDeoptimize(Thread* self,
+                                    ShadowFrame* shadow_frame,
+                                    JValue* ret_val,
+                                    bool from_code,
+                                    DeoptimizationMethodType deopt_method_type)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  JValue value;
+  // Set value to last known result in case the shadow frame chain is empty.
+  value.SetJ(ret_val->GetJ());
+  // How many frames we have executed.
+  size_t frame_cnt = 0;
+  while (shadow_frame != nullptr) {
+    // We do not want to recover lock state for lock counting when deoptimizing. Currently,
+    // the compiler should not have compiled a method that failed structured-locking checks.
+    DCHECK(!shadow_frame->GetMethod()->MustCountLocks());
+
+    self->SetTopOfShadowStack(shadow_frame);
+    CodeItemDataAccessor accessor(shadow_frame->GetMethod()->DexInstructionData());
+    const uint32_t dex_pc = shadow_frame->GetDexPC();
+    uint32_t new_dex_pc = dex_pc;
+    if (UNLIKELY(self->IsExceptionPending())) {
+      DCHECK(self->GetException() != Thread::GetDeoptimizationException());
+      // If we deoptimize from the QuickExceptionHandler, we already reported the exception throw
+      // event to the instrumentation. Skip throw listeners for the first frame. The deopt check
+      // should happen after the throw listener is called as throw listener can trigger a
+      // deoptimization.
+      new_dex_pc = MoveToExceptionHandler(self,
+                                          *shadow_frame,
+                                          /* skip_listeners= */ false,
+                                          /* skip_throw_listener= */ frame_cnt == 0) ?
+                       shadow_frame->GetDexPC() :
+                       dex::kDexNoIndex;
+    } else if (!from_code) {
+      // Deoptimization is not called from code directly.
+      const Instruction* instr = &accessor.InstructionAt(dex_pc);
+      if (deopt_method_type == DeoptimizationMethodType::kKeepDexPc ||
+          shadow_frame->GetForceRetryInstruction()) {
+        DCHECK(frame_cnt == 0 || shadow_frame->GetForceRetryInstruction())
+            << "frame_cnt: " << frame_cnt
+            << " force-retry: " << shadow_frame->GetForceRetryInstruction();
+        // Need to re-execute the dex instruction.
+        // (1) An invocation might be split into class initialization and invoke.
+        //     In this case, the invoke should not be skipped.
+        // (2) A suspend check should also execute the dex instruction at the
+        //     corresponding dex pc.
+        // If the ForceRetryInstruction bit is set this must be the second frame (the first being
+        // the one that is being popped).
+        DCHECK_EQ(new_dex_pc, dex_pc);
+        shadow_frame->SetForceRetryInstruction(false);
+      } else if (instr->Opcode() == Instruction::MONITOR_ENTER ||
+                 instr->Opcode() == Instruction::MONITOR_EXIT) {
+        DCHECK(deopt_method_type == DeoptimizationMethodType::kDefault);
+        DCHECK_EQ(frame_cnt, 0u);
+        // Non-idempotent dex instruction should not be re-executed.
+        // On the other hand, if a MONITOR_ENTER is at the dex_pc of a suspend
+        // check, that MONITOR_ENTER should be executed. That case is handled
+        // above.
+        new_dex_pc = dex_pc + instr->SizeInCodeUnits();
+      } else if (instr->IsInvoke()) {
+        DCHECK(deopt_method_type == DeoptimizationMethodType::kDefault);
+        if (IsStringInit(*instr, shadow_frame->GetMethod())) {
+          uint16_t this_obj_vreg = GetReceiverRegisterForStringInit(instr);
+          // Move the StringFactory.newStringFromChars() result into the register representing
+          // "this object" when invoking the string constructor in the original dex instruction.
+          // Also move the result into all aliases.
+          DCHECK(value.GetL()->IsString());
+          SetStringInitValueToAllAliases(shadow_frame, this_obj_vreg, value);
+          // Calling string constructor in the original dex code doesn't generate a result value.
+          value.SetJ(0);
+        }
+        new_dex_pc = dex_pc + instr->SizeInCodeUnits();
+      } else if (instr->Opcode() == Instruction::NEW_INSTANCE) {
+        // A NEW_INSTANCE is simply re-executed, including
+        // "new-instance String" which is compiled into a call into
+        // StringFactory.newEmptyString().
+        DCHECK_EQ(new_dex_pc, dex_pc);
+      } else {
+        DCHECK(deopt_method_type == DeoptimizationMethodType::kDefault);
+        DCHECK_EQ(frame_cnt, 0u);
+        // By default, we re-execute the dex instruction since if they are not
+        // an invoke, so that we don't have to decode the dex instruction to move
+        // result into the right vreg. All slow paths have been audited to be
+        // idempotent except monitor-enter/exit and invocation stubs.
+        // TODO: move result and advance dex pc. That also requires that we
+        // can tell the return type of a runtime method, possibly by decoding
+        // the dex instruction at the caller.
+        DCHECK_EQ(new_dex_pc, dex_pc);
+      }
+    } else {
+      // Nothing to do, the dex_pc is the one at which the code requested
+      // the deoptimization.
+      DCHECK_EQ(frame_cnt, 0u);
+      DCHECK_EQ(new_dex_pc, dex_pc);
+    }
+    if (new_dex_pc != dex::kDexNoIndex) {
+      shadow_frame->SetDexPC(new_dex_pc);
+      value = Execute(self,
+                      accessor,
+                      *shadow_frame,
+                      value,
+                      /* stay_in_interpreter= */ true,
+                      /* from_deoptimize= */ true);
+    }
+    ShadowFrame* old_frame = shadow_frame;
+    shadow_frame = shadow_frame->GetLink();
+    ShadowFrame::DeleteDeoptimizedFrame(old_frame);
+    // Following deoptimizations of shadow frames must be at invocation point
+    // and should advance dex pc past the invoke instruction.
+    from_code = false;
+    deopt_method_type = DeoptimizationMethodType::kDefault;
+    frame_cnt++;
+  }
+  ret_val->SetJ(value.GetJ());
+}
+
+NO_STACK_PROTECTOR
+JValue EnterInterpreterFromEntryPoint(Thread* self, const CodeItemDataAccessor& accessor,
+                                      ShadowFrame* shadow_frame) {
+  DCHECK_EQ(self, Thread::Current());
+  bool implicit_check = Runtime::Current()->GetImplicitStackOverflowChecks();
+  if (UNLIKELY(__builtin_frame_address(0) < self->GetStackEndForInterpreter(implicit_check))) {
+    ThrowStackOverflowError(self);
+    return JValue();
+  }
+
+  jit::Jit* jit = Runtime::Current()->GetJit();
+  if (jit != nullptr) {
+    jit->NotifyCompiledCodeToInterpreterTransition(self, shadow_frame->GetMethod());
+  }
+  return Execute(self, accessor, *shadow_frame, JValue());
+}
+
+NO_STACK_PROTECTOR
+void ArtInterpreterToInterpreterBridge(Thread* self,
+                                       const CodeItemDataAccessor& accessor,
+                                       ShadowFrame* shadow_frame,
+                                       JValue* result) {
+  ArtMethod* pfc_method = shadow_frame != nullptr ? shadow_frame->GetMethod() : nullptr;
+  UNUSED(pfc_method);
+  const bool pfc_fm_trace = false;
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] bridge enter method=%s frame=%p code_item=%p insns=%p regs=%u ins=%u "
+            "top_shadow=%p top_quick=%p\n",
+            pfc_method->PrettyMethod().c_str(),
+            shadow_frame,
+            pfc_method->GetCodeItem(),
+            accessor.Insns(),
+            accessor.RegistersSize(),
+            accessor.InsSize(),
+            self->GetManagedStack()->GetTopShadowFrame(),
+            self->GetManagedStack()->GetTopQuickFrame());
+    fflush(stderr);
+  }
+  bool implicit_check = Runtime::Current()->GetImplicitStackOverflowChecks();
+  if (UNLIKELY(__builtin_frame_address(0) < self->GetStackEndForInterpreter(implicit_check))) {
+    ThrowStackOverflowError(self);
+    return;
+  }
+
+  self->PushShadowFrame(shadow_frame);
+  if (pfc_fm_trace) {
+    fprintf(stderr,
+            "[PFCUT-FM] bridge after push top_shadow=%p top_quick=%p\n",
+            self->GetManagedStack()->GetTopShadowFrame(),
+            self->GetManagedStack()->GetTopQuickFrame());
+    fflush(stderr);
+  }
+
+  if (LIKELY(!shadow_frame->GetMethod()->IsNative())) {
+    result->SetJ(Execute(self, accessor, *shadow_frame, JValue()).GetJ());
+    if (pfc_fm_trace) {
+      fprintf(stderr,
+              "[PFCUT-FM] bridge after Execute result=%p pending=%d top_shadow=%p top_quick=%p\n",
+              result != nullptr ? result->GetL() : nullptr,
+              self->IsExceptionPending() ? 1 : 0,
+              self->GetManagedStack()->GetTopShadowFrame(),
+              self->GetManagedStack()->GetTopQuickFrame());
+      fflush(stderr);
+    }
+  } else {
+    // We don't expect to be asked to interpret native code (which is entered via a JNI compiler
+    // generated stub) except during testing and image writing.
+    ArtMethod* native_method = shadow_frame->GetMethod();
+    if (native_method->IsStatic() &&
+        native_method->GetDeclaringClassDescriptor() != nullptr &&
+        strcmp(native_method->GetDeclaringClassDescriptor(), "Ljava/util/TimeZone;") == 0 &&
+        (strcmp(native_method->GetName(), "getDefault") == 0 ||
+         strcmp(native_method->GetName(), "getDefaultRef") == 0) &&
+        native_method->GetInterfaceMethodIfProxy(kRuntimePointerSize)->GetShortyView() == "L") {
+      using FnType = jobject (*)(JNIEnv*, jclass);
+      FnType fn = reinterpret_cast<FnType>(
+          const_cast<void*>(native_method->GetEntryPointFromJni()));
+      JNIEnvExt* env = down_cast<JNIEnvExt*>(self->GetJniEnv());
+      const bool trace_tz = WestlakeTraceTimeZoneBridge();
+      if (trace_tz) {
+        fprintf(stderr,
+                "[WESTLAKE-TZ-INVOKE] direct native invoke method=%s fn=%p env=%p\n",
+                native_method->PrettyMethod().c_str(),
+                reinterpret_cast<void*>(fn),
+                env);
+        fflush(stderr);
+      }
+      jobject jresult = fn(env, nullptr);
+      if (trace_tz) {
+        fprintf(stderr, "[WESTLAKE-TZ-INVOKE] direct native invoke result=%p\n", jresult);
+        fflush(stderr);
+      }
+      result->SetL(self->DecodeJObject(jresult));
+      if (trace_tz) {
+        fprintf(stderr, "[WESTLAKE-TZ-INVOKE] direct native invoke decoded\n");
+        fflush(stderr);
+      }
+      self->PopShadowFrame();
+      return;
+    }
+    CHECK(!Runtime::Current()->IsStarted());
+    bool is_static = shadow_frame->GetMethod()->IsStatic();
+    ObjPtr<mirror::Object> receiver = is_static ? nullptr : shadow_frame->GetVRegReference(0);
+    uint32_t* args = shadow_frame->GetVRegArgs(is_static ? 0 : 1);
+    if (Runtime::Current()->IsAotCompiler()) {
+      UnstartedRuntime::Jni(self, shadow_frame->GetMethod(), receiver.Ptr(), args, result);
+    } else {
+      ArtMethod* method = shadow_frame->GetMethod();
+      std::string_view shorty =
+          method->GetInterfaceMethodIfProxy(kRuntimePointerSize)->GetShortyView();
+      InterpreterJni(self, method, shorty, receiver, args, result);
+    }
+  }
+
+  self->PopShadowFrame();
+}
+
+void CheckInterpreterAsmConstants() {
+  CheckNterpAsmConstants();
+}
+
+bool PrevFrameWillRetry(Thread* self, const ShadowFrame& frame) {
+  ShadowFrame* prev_frame = frame.GetLink();
+  if (prev_frame == nullptr) {
+    NthCallerVisitor vis(self, 1, false);
+    vis.WalkStack();
+    prev_frame = vis.GetCurrentShadowFrame();
+    if (prev_frame == nullptr) {
+      prev_frame = self->FindDebuggerShadowFrame(vis.GetFrameId());
+    }
+  }
+  return prev_frame != nullptr && prev_frame->GetForceRetryInstruction();
+}
+
+}  // namespace interpreter
+}  // namespace art
