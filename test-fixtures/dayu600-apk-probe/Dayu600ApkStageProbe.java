@@ -593,6 +593,13 @@ public final class Dayu600ApkStageProbe {
             int st = 200;
             writeText(probeLogPath("asset-probe.txt"), "STEP:start");
             try {
+                // Force XmlBlock/StringBlock <clinit> BEFORE System.load so OHBridge registers their
+                // natives first; then our JNI_OnLoad (System.load) re-registers on top and wins.
+                try {
+                    ClassLoader cl = Dayu600ApkStageProbe.class.getClassLoader();
+                    Class.forName("android.content.res.XmlBlock", true, cl);
+                    Class.forName("android.content.res.StringBlock", true, cl);
+                } catch (Throwable ignored) {}
                 try { System.load("/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so"); writeText(probeLogPath("asset-probe.txt"), "STEP:loaded"); } catch (Throwable t) { writeText(probeLogPath("asset-probe.txt"), "load libandroidfw FAIL: " + t); }
                 String apk = "/data/local/tmp/westlake-dayu600-substrate/apks/2048-2-9.apk";
                 // Sentinel ctor: only nativeCreate(), skips createSystemAssetsInZygoteLocked
