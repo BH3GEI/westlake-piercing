@@ -4,6 +4,7 @@
 #include <jni.h>
 #include <string>
 #include <vector>
+#include <variant>
 #include "androidfw/AssetManager2.h"
 #include "androidfw/ApkAssets.h"
 #include "androidfw/ResourceTypes.h"
@@ -59,13 +60,34 @@ static void AssetManager_nativeSetApkAssets(JNIEnv* env, jclass, jlong ptr,
     if (sp && *sp) list.push_back(*sp);
     env->DeleteLocalRef(o);
   }
-  am->SetApkAssets(AssetManager2::ApkAssetsList(list.data(), list.size()), inv);
+  (void)inv;  // force cache (re)build so GetResourceId/GetResourceName index is populated
+  am->SetApkAssets(AssetManager2::ApkAssetsList(list.data(), list.size()), true);
 }
 static jint AssetManager_nativeGetResourceIdentifier(JNIEnv* env, jclass, jlong ptr,
     jstring name, jstring defType, jstring defPackage) {
   auto* am = reinterpret_cast<AssetManager2*>(ptr);
   auto r = am->GetResourceId(jstr(env, name), jstr(env, defType), jstr(env, defPackage));
   return r.has_value() ? static_cast<jint>(*r) : 0;
+}
+static void append16(std::string& s, const char16_t* p, size_t n) {
+  for (size_t i = 0; i < n; i++) s.push_back(static_cast<char>(p[i] & 0x7f));
+}
+static jstring AssetManager_nativeGetResourceName(JNIEnv* env, jclass, jlong ptr, jint resid) {
+  auto* am = reinterpret_cast<AssetManager2*>(ptr);
+  auto r = am->GetResourceName(static_cast<uint32_t>(resid));
+  if (!r.has_value()) {
+    // diagnostic: distinguish "not found (null)" vs IOError so the probe can see why
+    return env->NewStringUTF(std::holds_alternative<IOError>(r.error()) ? "GRN:ioerror" : "GRN:notfound");
+  }
+  std::string s;
+  if (r->package && r->package_len) s.append(r->package, r->package_len);
+  s.append(":");
+  if (r->type && r->type_len) s.append(r->type, r->type_len);
+  else if (r->type16 && r->type_len) append16(s, r->type16, r->type_len);
+  s.append("/");
+  if (r->entry && r->entry_len) s.append(r->entry, r->entry_len);
+  else if (r->entry16 && r->entry_len) append16(s, r->entry16, r->entry_len);
+  return env->NewStringUTF(s.c_str());
 }
 
 static const JNINativeMethod kApkAssets[] = {
@@ -79,6 +101,7 @@ static const JNINativeMethod kAssetManager[] = {
   {"nativeSetApkAssets", "(J[Landroid/content/res/ApkAssets;ZZ)V", (void*)AssetManager_nativeSetApkAssets},
   {"nativeGetResourceIdentifier", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
    (void*)AssetManager_nativeGetResourceIdentifier},
+  {"nativeGetResourceName", "(JI)Ljava/lang/String;", (void*)AssetManager_nativeGetResourceName},
 };
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
@@ -86,7 +109,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
   jclass am = env->FindClass("android/content/res/AssetManager");
   jclass ak = env->FindClass("android/content/res/ApkAssets");
-  if (am) env->RegisterNatives(am, kAssetManager, 4);
+  if (am) env->RegisterNatives(am, kAssetManager, 5);
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
   LOGI("registered AssetManager(%d)/ApkAssets(%d) natives", am != nullptr, ak != nullptr);
   return JNI_VERSION_1_6;

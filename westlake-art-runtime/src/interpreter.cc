@@ -1255,6 +1255,37 @@ static void InterpreterJni(Thread* self,
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
       result->SetZ(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "JILIL") {
+      // [DAYU600] long fn(JNIEnv*, jclass, int, String, int, Object) — ApkAssets.nativeLoad
+      using fntype = jlong(JNIEnv*, jclass, jint, jstring, jint, jobject);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
+      ScopedLocalRef<jobject> a3(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      result->SetJ(fn(soa.Env(), klass.get(), args[0],
+                      reinterpret_cast<jstring>(a1.get()), args[2], a3.get()));
+    } else if (shorty == "IJLLL") {
+      // [DAYU600] int fn(JNIEnv*, jclass, long, String, String, String) — nativeGetResourceIdentifier
+      using fntype = jint(JNIEnv*, jclass, jlong, jstring, jstring, jstring);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[2])));
+      ScopedLocalRef<jobject> a2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[3])));
+      ScopedLocalRef<jobject> a3(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[4])));
+      result->SetI(fn(soa.Env(), klass.get(), arg0, reinterpret_cast<jstring>(a1.get()),
+                      reinterpret_cast<jstring>(a2.get()), reinterpret_cast<jstring>(a3.get())));
+    } else if (shorty == "LJI") {
+      // [DAYU600] String fn(JNIEnv*, jclass, long, int) — AssetManager.nativeGetResourceName
+      using fntype = jobject(JNIEnv*, jclass, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jobject r = fn(soa.Env(), klass.get(), arg0, args[2]);
+      result->SetL(soa.Decode<mirror::Object>(r));
     } else {
       LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
       // [DAYU600] Return a type-correct default instead of leaving garbage in the

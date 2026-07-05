@@ -619,11 +619,40 @@ public final class Dayu600ApkStageProbe {
                         "getResourceIdentifier", String.class, String.class, String.class);
                 getId.setAccessible(true);
                 Object idMain = getId.invoke(am, "main", "layout", "com.digiplex.game");
-                Object idApp = getId.invoke(am, "activity_main", "layout", "com.digiplex.game");
                 st = 203;
+                // Airtight arsc-parse proof: scan resource IDs 0x7f<type><entry> for real names.
+                java.lang.reflect.Method nGetName = android.content.res.AssetManager.class
+                        .getDeclaredMethod("nativeGetResourceName", long.class, int.class);
+                nGetName.setAccessible(true);
+                java.lang.reflect.Field mObjF =
+                        android.content.res.AssetManager.class.getDeclaredField("mObject");
+                mObjF.setAccessible(true);
+                long amPtr = mObjF.getLong(am);
+                // Diagnose: is the loaded ApkAssets' native ptr valid (nativeLoad worked)?
+                Object[] apkArr = (Object[]) mApkAssetsF.get(am);
+                long apkPtr = 0;
+                if (apkArr != null && apkArr.length > 0) {
+                    java.lang.reflect.Field npF = apkAssetsCls.getDeclaredField("mNativePtr");
+                    npF.setAccessible(true);
+                    apkPtr = npF.getLong(apkArr[apkArr.length - 1]);
+                }
+                StringBuilder names = new StringBuilder();
+                int found = 0;
+                for (int type = 1; type <= 20 && found < 8; type++) {
+                    for (int entry = 0; entry < 6 && found < 8; entry++) {
+                        int resid = 0x7f000000 | (type << 16) | entry;
+                        Object nm = nGetName.invoke(null, amPtr, resid);
+                        if (nm != null) {
+                            names.append("0x").append(Integer.toHexString(resid))
+                                 .append('=').append(nm).append(' ');
+                            found++;
+                        }
+                    }
+                }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
+                        + " amPtr=" + amPtr + " apkPtr=" + apkPtr + " apkCount=" + (apkArr == null ? -1 : apkArr.length)
                         + " resId(main/layout)=0x" + Integer.toHexString(((Number) idMain).intValue())
-                        + " resId(activity_main/layout)=0x" + Integer.toHexString(((Number) idApp).intValue()));
+                        + " realResourceNames=[" + names + "]");
             } catch (Throwable t) {
                 Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException
                         && t.getCause() != null) ? t.getCause() : t;
