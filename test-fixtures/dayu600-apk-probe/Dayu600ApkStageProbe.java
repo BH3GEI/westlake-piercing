@@ -588,7 +588,6 @@ public final class Dayu600ApkStageProbe {
     }
 
     private static void runResolved(String target, String stage, String directionArg) throws Exception {
-        try { writeText(probeLogPath("asset-probe.txt"), "runResolved stage=[" + stage + "]"); } catch (Throwable ignored) {}
         ClassLoader loader = targetClassLoader();
         if ("assetProbe".equals(stage)) {
             int st = 200;
