@@ -176,13 +176,91 @@ static jint XmlBlock_nativeGetText(JNIEnv*, jclass, jlong state) {
   ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
   return p ? static_cast<jint>(p->getTextID()) : -1;
 }
+static jint XmlBlock_nativeGetNamespace(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getElementNamespaceID()) : -1;
+}
+static jint XmlBlock_nativeGetLineNumber(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getLineNumber()) : -1;
+}
+// String block (the XML tree's string pool) — XmlBlock.mStrings uses it to resolve indices.
+static jlong XmlBlock_nativeGetStringBlock(JNIEnv*, jclass, jlong obj) {
+  ResXMLTree* t = reinterpret_cast<ResXMLTree*>(obj);
+  return t ? reinterpret_cast<jlong>(&t->getStrings()) : 0;
+}
+// ---- attribute getters (idx-based) ----
+static jint XmlBlock_nativeGetAttributeNamespace(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeNamespaceID(idx)) : -1;
+}
+static jint XmlBlock_nativeGetAttributeName(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeNameID(idx)) : -1;
+}
+static jint XmlBlock_nativeGetAttributeResource(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeNameResID(idx)) : 0;
+}
+static jint XmlBlock_nativeGetAttributeDataType(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeDataType(idx)) : 0;
+}
+static jint XmlBlock_nativeGetAttributeData(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeData(idx)) : 0;
+}
+static jint XmlBlock_nativeGetAttributeStringValue(JNIEnv*, jclass, jlong state, jint idx) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeValueStringID(idx)) : -1;
+}
+static jint XmlBlock_nativeGetIdAttribute(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  if (!p) return -1;
+  ssize_t i = p->indexOfID();
+  return i < 0 ? -1 : static_cast<jint>(p->getAttributeValueStringID(i));
+}
+static jint XmlBlock_nativeGetClassAttribute(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  if (!p) return -1;
+  ssize_t i = p->indexOfClass();
+  return i < 0 ? -1 : static_cast<jint>(p->getAttributeValueStringID(i));
+}
+static jint XmlBlock_nativeGetStyleAttribute(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  if (!p) return 0;
+  ssize_t i = p->indexOfStyle();
+  if (i < 0) return 0;
+  Res_value v;
+  if (p->getAttributeValue(i, &v) < 0) return 0;
+  return (v.dataType == Res_value::TYPE_REFERENCE || v.dataType == Res_value::TYPE_ATTRIBUTE)
+             ? static_cast<jint>(v.data) : 0;
+}
+static jint XmlBlock_nativeGetSourceResId(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getSourceResourceId()) : 0;
+}
 static const JNINativeMethod kXmlBlock[] = {
   {"nativeCreateParseState", "(JI)J", (void*)XmlBlock_nativeCreateParseState},
   {"nativeDestroyParseState", "(J)V", (void*)XmlBlock_nativeDestroyParseState},
+  {"nativeDestroy", "(J)V", (void*)XmlBlock_nativeDestroyParseState},
   {"nativeNext", "(J)I", (void*)XmlBlock_nativeNext},
   {"nativeGetName", "(J)I", (void*)XmlBlock_nativeGetName},
-  {"nativeGetAttributeCount", "(J)I", (void*)XmlBlock_nativeGetAttributeCount},
   {"nativeGetText", "(J)I", (void*)XmlBlock_nativeGetText},
+  {"nativeGetNamespace", "(J)I", (void*)XmlBlock_nativeGetNamespace},
+  {"nativeGetLineNumber", "(J)I", (void*)XmlBlock_nativeGetLineNumber},
+  {"nativeGetStringBlock", "(J)J", (void*)XmlBlock_nativeGetStringBlock},
+  {"nativeGetAttributeCount", "(J)I", (void*)XmlBlock_nativeGetAttributeCount},
+  {"nativeGetAttributeNamespace", "(JI)I", (void*)XmlBlock_nativeGetAttributeNamespace},
+  {"nativeGetAttributeName", "(JI)I", (void*)XmlBlock_nativeGetAttributeName},
+  {"nativeGetAttributeResource", "(JI)I", (void*)XmlBlock_nativeGetAttributeResource},
+  {"nativeGetAttributeDataType", "(JI)I", (void*)XmlBlock_nativeGetAttributeDataType},
+  {"nativeGetAttributeData", "(JI)I", (void*)XmlBlock_nativeGetAttributeData},
+  {"nativeGetAttributeStringValue", "(JI)I", (void*)XmlBlock_nativeGetAttributeStringValue},
+  {"nativeGetIdAttribute", "(J)I", (void*)XmlBlock_nativeGetIdAttribute},
+  {"nativeGetClassAttribute", "(J)I", (void*)XmlBlock_nativeGetClassAttribute},
+  {"nativeGetStyleAttribute", "(J)I", (void*)XmlBlock_nativeGetStyleAttribute},
+  {"nativeGetSourceResId", "(J)I", (void*)XmlBlock_nativeGetSourceResId},
 };
 
 static const JNINativeMethod kApkAssets[] = {
@@ -209,7 +287,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (am) env->RegisterNatives(am, kAssetManager, 7);
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
   jclass xb = env->FindClass("android/content/res/XmlBlock");
-  if (xb) env->RegisterNatives(xb, kXmlBlock, 6);
+  if (xb) env->RegisterNatives(xb, kXmlBlock, 20);
   LOGI("registered AssetManager(%d)/ApkAssets(%d)/XmlBlock(%d) natives", am != nullptr, ak != nullptr, xb != nullptr);
   return JNI_VERSION_1_6;
 }

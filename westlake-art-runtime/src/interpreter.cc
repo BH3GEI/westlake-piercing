@@ -1329,6 +1329,22 @@ static void InterpreterJni(Thread* self,
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
       fn(soa.Env(), klass.get(), arg0);
+    } else if (shorty == "IJI") {
+      // [DAYU600] int fn(JNIEnv*, jclass, long, int) — XmlBlock.nativeGetAttribute*(state, idx)
+      using fntype = jint(JNIEnv*, jclass, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetI(fn(soa.Env(), klass.get(), arg0, args[2]));
+    } else if (shorty == "JJ") {
+      // [DAYU600] long fn(JNIEnv*, jclass, long) — XmlBlock.nativeGetStringBlock
+      using fntype = jlong(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetJ(fn(soa.Env(), klass.get(), arg0));
     } else {
       LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
       // [DAYU600] Return a type-correct default instead of leaving garbage in the
