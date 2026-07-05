@@ -785,26 +785,78 @@ public final class Dayu600ApkStageProbe {
                 // FIRST STRIKE at real View inflation: get a real system Context via ActivityThread,
                 // then LayoutInflater.inflate a framework layout into a REAL View tree.
                 String viewInflate = "n/a";
+                String sysresNote = "";
                 try {
+                    // Wire REAL framework resources into the system AssetManager. The device has no
+                    // framework-res.apk; we packed one from SDK android.jar (resources.arsc + res/)
+                    // and deployed it to the substrate. The startup sSystem was built by OHBridge
+                    // STUB natives (incompatible native ptrs), so rebuild it entirely with OUR JNI:
+                    // sentinel AssetManager + ApkAssets.loadFromPath, then overwrite the statics.
+                    String fwResPath = "/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk";
+                    int propSystem = 1;
+                    try { propSystem = apkAssetsCls.getField("PROPERTY_SYSTEM").getInt(null); } catch (Throwable ig) {}
+                    java.lang.reflect.Method lfp = apkAssetsCls.getMethod("loadFromPath", String.class, int.class);
+                    Object fwApk = lfp.invoke(null, fwResPath, propSystem);
+                    Object sysArr = java.lang.reflect.Array.newInstance(apkAssetsCls, 1);
+                    java.lang.reflect.Array.set(sysArr, 0, fwApk);
+                    // Set the statics FIRST: setApkAssets() internally prepends sSystemApkAssets and
+                    // consults sSystemApkAssetsSet (NPEs if null).
+                    java.lang.reflect.Field fSArr = android.content.res.AssetManager.class.getDeclaredField("sSystemApkAssets");
+                    fSArr.setAccessible(true); fSArr.set(null, sysArr);
+                    java.lang.reflect.Field fSSet = android.content.res.AssetManager.class.getDeclaredField("sSystemApkAssetsSet");
+                    fSSet.setAccessible(true);
+                    Class<?> asCls = Class.forName("android.util.ArraySet");
+                    Object aset = asCls.getConstructor().newInstance();
+                    asCls.getMethod("add", Object.class).invoke(aset, fwApk);
+                    fSSet.set(null, aset);
+                    android.content.res.AssetManager sysAm = ac.newInstance(Boolean.TRUE);
+                    mApkAssetsF.set(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
+                    java.lang.reflect.Method setAA = android.content.res.AssetManager.class
+                            .getMethod("setApkAssets", sysArr.getClass(), boolean.class);
+                    setAA.invoke(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0), false);
+                    java.lang.reflect.Field fSys = android.content.res.AssetManager.class.getDeclaredField("sSystem");
+                    fSys.setAccessible(true); fSys.set(null, sysAm);
+                    // Drop any cached system Resources built on the old stub AssetManager.
+                    try {
+                        java.lang.reflect.Field rSys = android.content.res.Resources.class.getDeclaredField("mSystem");
+                        rSys.setAccessible(true); rSys.set(null, null);
+                    } catch (Throwable ig) {}
+                    // Sanity: framework resource lookup through Resources.getSystem().
+                    String sysProof;
+                    try {
+                        android.content.res.Resources sr = android.content.res.Resources.getSystem();
+                        sysProof = "getSystem.getString(ok)=" + sr.getString(android.R.string.ok);
+                    } catch (Throwable spT) {
+                        Throwable spC = (spT instanceof java.lang.reflect.InvocationTargetException
+                                && spT.getCause() != null) ? spT.getCause() : spT;
+                        sysProof = "SYSRES_FAIL:" + spC.getClass().getSimpleName() + ":" + spC.getMessage();
+                    }
+                    sysresNote = "SYSRES[" + sysProof + "] ";
                     Class<?> atCls = Class.forName("android.app.ActivityThread");
                     Object at = atCls.getMethod("systemMain").invoke(null);
                     Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
                     Class<?> ctxCls = Class.forName("android.content.Context");
                     Class<?> liCls = Class.forName("android.view.LayoutInflater");
                     Class<?> vgCls = Class.forName("android.view.ViewGroup");
+                    // Ensure the framework resource package is available to this Context's AssetManager.
+                    try {
+                        Object fwAm = ctxCls.getMethod("getAssets").invoke(sysCtx);
+                        java.lang.reflect.Method addPath = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class);
+                        addPath.invoke(fwAm, "/data/local/tmp/westlake-dayu600-substrate/apks/framework-res.apk");
+                    } catch (Throwable ignored) {}
                     Object li = liCls.getMethod("from", ctxCls).invoke(null, sysCtx);
                     // android.R.layout.simple_list_item_1 = 0x01090003 (framework TextView layout)
                     Object v = liCls.getMethod("inflate", int.class, vgCls).invoke(li, 0x01090003, null);
                     String rootCls = v != null ? v.getClass().getName() : "null";
                     int childCount = -1;
                     if (v != null && vgCls.isInstance(v)) childCount = ((Number) vgCls.getMethod("getChildCount").invoke(v)).intValue();
-                    viewInflate = "INFLATED root=" + rootCls + " childCount=" + childCount;
+                    viewInflate = sysresNote + "INFLATED root=" + rootCls + " childCount=" + childCount;
                 } catch (Throwable it) {
                     Throwable ic = (it instanceof java.lang.reflect.InvocationTargetException
                             && it.getCause() != null) ? it.getCause() : it;
                     StackTraceElement[] ist = ic.getStackTrace();
                     String iat = ist.length > 0 ? (ist[0].getClassName() + "." + ist[0].getMethodName() + ":" + ist[0].getLineNumber()) : "?";
-                    viewInflate = "VIEW_FAIL:" + ic.getClass().getSimpleName() + ":" + ic.getMessage() + "@" + iat;
+                    viewInflate = sysresNote + "VIEW_FAIL:" + ic.getClass().getSimpleName() + ":" + ic.getMessage() + "@" + iat;
                 }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
                         + " apkPtr=" + apkPtr
@@ -821,6 +873,118 @@ public final class Dayu600ApkStageProbe {
                 writeText(probeLogPath("asset-probe.txt"), "FAIL step=" + st + " "
                         + cause.getClass().getName() + ": " + cause.getMessage()
                         + "\n" + tr.substring(0, Math.min(tr.length(), 700)));
+            }
+            finishOrExit(0);
+            return;
+        }
+        if ("uptodownProbe".equals(stage)) {
+            // First strike at the user-supplied test.apk (com.uptodown 7.33): resource engine on
+            // its arsc, dex classload, then headless UptodownApp/MainActivity bring-up. Incremental
+            // writeText so partial progress survives a crash.
+            StringBuilder ulog = new StringBuilder();
+            java.io.File apkF = new java.io.File(apkPath("test-uptodown.apk"));
+            ulog.append("apk=").append(apkF.exists() ? apkF.length() : -1).append(' ');
+            writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+            try {
+                try {
+                    ClassLoader bcl = Dayu600ApkStageProbe.class.getClassLoader();
+                    Class.forName("android.content.res.XmlBlock", true, bcl);
+                    Class.forName("android.content.res.StringBlock", true, bcl);
+                } catch (Throwable ignored) {}
+                try { System.load(rootPath() + "/android/lib64/libandroidfw.so"); ulog.append("fwlib=OK "); }
+                catch (Throwable lt) { ulog.append("fwlib=FAIL:").append(lt.getMessage()).append(' '); }
+                try {
+                    java.lang.reflect.Constructor<android.content.res.AssetManager> uc =
+                            android.content.res.AssetManager.class.getDeclaredConstructor(boolean.class);
+                    uc.setAccessible(true);
+                    android.content.res.AssetManager uam = uc.newInstance(Boolean.TRUE);
+                    java.lang.reflect.Field uaf = android.content.res.AssetManager.class.getDeclaredField("mApkAssets");
+                    uaf.setAccessible(true);
+                    Class<?> apkCls2 = Class.forName("android.content.res.ApkAssets");
+                    uaf.set(uam, java.lang.reflect.Array.newInstance(apkCls2, 0));
+                    Object ck = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                            .invoke(uam, apkF.getAbsolutePath());
+                    ulog.append("cookie=").append(ck).append(' ');
+                    java.lang.reflect.Method ngn = android.content.res.AssetManager.class
+                            .getDeclaredMethod("nativeGetResourceName", long.class, int.class);
+                    ngn.setAccessible(true);
+                    java.lang.reflect.Field mo = android.content.res.AssetManager.class.getDeclaredField("mObject");
+                    mo.setAccessible(true);
+                    long uap = mo.getLong(uam);
+                    int ufound = 0;
+                    StringBuilder unames = new StringBuilder();
+                    for (int type = 1; type <= 24 && ufound < 5; type++)
+                        for (int entry = 0; entry < 4 && ufound < 5; entry++) {
+                            Object nm = ngn.invoke(null, uap, 0x7f000000 | (type << 16) | entry);
+                            if (nm != null && !nm.toString().startsWith("GRN:")) { unames.append(nm).append(' '); ufound++; }
+                        }
+                    ulog.append("res=[").append(unames).append("] ");
+                } catch (Throwable rt) {
+                    Throwable rc = (rt instanceof java.lang.reflect.InvocationTargetException
+                            && rt.getCause() != null) ? rt.getCause() : rt;
+                    ulog.append("RES_FAIL:").append(rc.getClass().getSimpleName()).append(':').append(rc.getMessage()).append(' ');
+                }
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                ClassLoader uloader = new dalvik.system.PathClassLoader(apkF.getAbsolutePath(),
+                        Dayu600ApkStageProbe.class.getClassLoader());
+                Class<?> uAppCls = Class.forName("com.uptodown.UptodownApp", false, uloader);
+                ulog.append("appCls=OK ");
+                Class<?> uMainCls = Class.forName("com.uptodown.activities.MainActivity", false, uloader);
+                ulog.append("mainCls=OK ");
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                try { Class.forName("com.uptodown.UptodownApp", true, uloader); ulog.append("appClinit=OK "); }
+                catch (Throwable ct) {
+                    Throwable cc = ct.getCause() != null ? ct.getCause() : ct;
+                    ulog.append("appClinit=FAIL:").append(cc.getClass().getSimpleName()).append(':').append(cc.getMessage()).append(' ');
+                }
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                try {
+                    Object uapp = uAppCls.getDeclaredConstructor().newInstance();
+                    ulog.append("appNew=OK ");
+                    writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                    try { uAppCls.getMethod("onCreate").invoke(uapp); ulog.append("appOnCreate=OK "); }
+                    catch (Throwable ot) {
+                        Throwable oc = (ot instanceof java.lang.reflect.InvocationTargetException
+                                && ot.getCause() != null) ? ot.getCause() : ot;
+                        ulog.append("appOnCreate=FAIL:").append(oc.getClass().getSimpleName()).append(':').append(oc.getMessage());
+                        StackTraceElement[] ost = oc.getStackTrace();
+                        for (int i2 = 0; i2 < Math.min(4, ost.length); i2++)
+                            ulog.append(" @").append(ost[i2].getClassName()).append('.')
+                                .append(ost[i2].getMethodName()).append(':').append(ost[i2].getLineNumber());
+                        ulog.append(' ');
+                    }
+                } catch (Throwable nt) {
+                    Throwable nc = (nt instanceof java.lang.reflect.InvocationTargetException
+                            && nt.getCause() != null) ? nt.getCause() : nt;
+                    ulog.append("appNew=FAIL:").append(nc.getClass().getSimpleName()).append(':').append(nc.getMessage()).append(' ');
+                }
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                try { Class.forName("com.uptodown.activities.MainActivity", true, uloader); ulog.append("mainClinit=OK "); }
+                catch (Throwable mt) {
+                    Throwable mc = mt.getCause() != null ? mt.getCause() : mt;
+                    ulog.append("mainClinit=FAIL:").append(mc.getClass().getSimpleName()).append(':').append(mc.getMessage()).append(' ');
+                }
+                try { Object uact = uMainCls.getDeclaredConstructor().newInstance();
+                      ulog.append("mainNew=").append(uact != null ? "OK" : "null").append(' '); }
+                catch (Throwable at) {
+                    Throwable acs = (at instanceof java.lang.reflect.InvocationTargetException
+                            && at.getCause() != null) ? at.getCause() : at;
+                    ulog.append("mainNew=FAIL:").append(acs.getClass().getSimpleName()).append(':').append(acs.getMessage());
+                    StackTraceElement[] ast = acs.getStackTrace();
+                    for (int i3 = 0; i3 < Math.min(4, ast.length); i3++)
+                        ulog.append(" @").append(ast[i3].getClassName()).append('.')
+                            .append(ast[i3].getMethodName()).append(':').append(ast[i3].getLineNumber());
+                    ulog.append(' ');
+                }
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+            } catch (Throwable ut) {
+                Throwable uc2 = (ut instanceof java.lang.reflect.InvocationTargetException
+                        && ut.getCause() != null) ? ut.getCause() : ut;
+                java.io.StringWriter usw = new java.io.StringWriter();
+                uc2.printStackTrace(new java.io.PrintWriter(usw));
+                String utr = usw.toString();
+                ulog.append("UPROBE_FAIL:").append(utr.substring(0, Math.min(utr.length(), 600)));
+                writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
             }
             finishOrExit(0);
             return;

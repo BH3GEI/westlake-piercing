@@ -48,6 +48,15 @@ static jstring ApkAssets_nativeGetAssetPath(JNIEnv* env, jclass, jlong ptr) {
   auto path = (*sp)->GetPath();
   return env->NewStringUTF(path.has_value() ? std::string(*path).c_str() : "");
 }
+// ApkAssets.getStringFromPool path: Java builds a StringBlock over this pool ptr. Must be OURS —
+// the OHBridge stub otherwise returns a fake handle that our StringBlock natives then deref (SIGSEGV).
+static jlong ApkAssets_nativeGetStringBlock(JNIEnv*, jclass, jlong ptr) {
+  auto* sp = reinterpret_cast<WApk*>(ptr);
+  if (!sp || !*sp) return 0;
+  const LoadedArsc* arsc = (*sp)->GetLoadedArsc();
+  if (!arsc) return 0;
+  return reinterpret_cast<jlong>(arsc->GetStringPool());
+}
 
 // ---- AssetManager ----
 static jlong AssetManager_nativeCreate(JNIEnv*, jclass) {
@@ -109,7 +118,9 @@ static jint AssetManager_nativeGetResourceValue(JNIEnv* env, jclass, jlong ptr, 
   jclass tv = env->GetObjectClass(outValue);
   env->SetIntField(outValue, env->GetFieldID(tv, "type", "I"), value.type);
   env->SetIntField(outValue, env->GetFieldID(tv, "data", "I"), static_cast<jint>(value.data));
-  env->SetIntField(outValue, env->GetFieldID(tv, "assetCookie", "I"), value.cookie);
+  // AOSP JavaCookie convention: Java-visible cookies are 1-based (0/negative = invalid);
+  // AssetManager.getResourceValue() treats a native return of <= 0 as NOT FOUND.
+  env->SetIntField(outValue, env->GetFieldID(tv, "assetCookie", "I"), value.cookie + 1);
   env->SetIntField(outValue, env->GetFieldID(tv, "resourceId", "I"), value.resid ? value.resid : resId);
   env->SetIntField(outValue, env->GetFieldID(tv, "changingConfigurations", "I"), static_cast<jint>(value.flags));
   env->SetIntField(outValue, env->GetFieldID(tv, "density", "I"), value.config.density);
@@ -124,18 +135,20 @@ static jint AssetManager_nativeGetResourceValue(JNIEnv* env, jclass, jlong ptr, 
       }
     }
   }
-  return value.cookie;
+  return value.cookie + 1;  // JavaCookie (1-based)
 }
 // AssetManager.nativeOpenXmlAsset(long ptr, int cookie, String fileName) -> long (ResXMLTree*)
+// The incoming cookie is a JavaCookie (1-based); convert to the 0-based ApkAssetsCookie.
 static jlong AssetManager_nativeOpenXmlAsset(JNIEnv* env, jclass, jlong ptr, jint cookie, jstring fileName) {
   auto* am = reinterpret_cast<AssetManager2*>(ptr);
   std::string path = jstr(env, fileName);
-  auto asset = am->OpenNonAsset(path, static_cast<ApkAssetsCookie>(cookie), Asset::AccessMode::ACCESS_RANDOM);
+  ApkAssetsCookie ac = cookie > 0 ? static_cast<ApkAssetsCookie>(cookie - 1) : kInvalidCookie;
+  auto asset = am->OpenNonAsset(path, ac, Asset::AccessMode::ACCESS_RANDOM);
   if (!asset) return 0;
   auto buffer = asset->getIncFsBuffer(true /*aligned*/);
   const size_t length = asset->getLength();
   if (buffer.unsafe_ptr() == nullptr || length == 0) return 0;
-  auto ref = am->GetDynamicRefTableForCookie(cookie);
+  auto ref = am->GetDynamicRefTableForCookie(ac);
   auto* tree = new ResXMLTree(ref);
   if (tree->setTo(buffer.unsafe_ptr(), length, true) != NO_ERROR) { delete tree; return 0; }
   return reinterpret_cast<jlong>(tree);
@@ -294,18 +307,36 @@ extern "C" JNIEXPORT jstring JNICALL Java_android_content_res_StringBlock_native
   return env->NewStringUTF(out.c_str());
 }
 extern "C" JNIEXPORT jobject JNICALL Java_android_content_res_StringBlock_nativeGetStyle(JNIEnv*, jclass, jlong, jint) { return nullptr; }
-extern "C" JNIEXPORT void JNICALL Java_android_content_res_StringBlock_nativeDestroy(JNIEnv*, jclass, jlong) { /* not owned: ResXMLTree owns pool */ }
+extern "C" JNIEXPORT void JNICALL Java_android_content_res_StringBlock_nativeDestroy(JNIEnv*, jclass, jlong) { /* pool freed with owner; leak standalone pools rather than risk double-free */ }
+// StringBlock.nativeCreate(byte[] data, int offset, int length) -> long (ResStringPool*).
+// The framework builds a standalone StringBlock over a resource string pool this way (e.g.
+// during layout inflation). Copy the bytes into an owned ResStringPool so nativeGetSize/String work.
+extern "C" JNIEXPORT jlong JNICALL Java_android_content_res_StringBlock_nativeCreate(
+    JNIEnv* env, jclass, jbyteArray data, jint offset, jint length) {
+  if (!data || length <= 0) return 0;
+  jsize total = env->GetArrayLength(data);
+  if (offset < 0 || (jlong)offset + length > total) return 0;
+  jbyte* buf = env->GetByteArrayElements(data, nullptr);
+  if (!buf) return 0;
+  ResStringPool* pool = new ResStringPool();
+  status_t err = pool->setTo(buf + offset, (size_t)length, true /*copyData*/);
+  env->ReleaseByteArrayElements(data, buf, JNI_ABORT);
+  if (err != NO_ERROR) { delete pool; return 0; }
+  return reinterpret_cast<jlong>(pool);
+}
 static const JNINativeMethod kStringBlock[] = {
   {"nativeGetSize", "(J)I", (void*)Java_android_content_res_StringBlock_nativeGetSize},
   {"nativeGetString", "(JI)Ljava/lang/String;", (void*)Java_android_content_res_StringBlock_nativeGetString},
   {"nativeGetStyle", "(JI)[I", (void*)Java_android_content_res_StringBlock_nativeGetStyle},
   {"nativeDestroy", "(J)V", (void*)Java_android_content_res_StringBlock_nativeDestroy},
+  {"nativeCreate", "([BII)J", (void*)Java_android_content_res_StringBlock_nativeCreate},
 };
 
 static const JNINativeMethod kApkAssets[] = {
   {"nativeLoad", "(ILjava/lang/String;ILandroid/content/res/loader/AssetsProvider;)J", (void*)ApkAssets_nativeLoad},
   {"nativeDestroy", "(J)V", (void*)ApkAssets_nativeDestroy},
   {"nativeGetAssetPath", "(J)Ljava/lang/String;", (void*)ApkAssets_nativeGetAssetPath},
+  {"nativeGetStringBlock", "(J)J", (void*)ApkAssets_nativeGetStringBlock},
 };
 static const JNINativeMethod kAssetManager[] = {
   {"nativeCreate", "()J", (void*)AssetManager_nativeCreate},
@@ -324,7 +355,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   jclass am = env->FindClass("android/content/res/AssetManager");
   jclass ak = env->FindClass("android/content/res/ApkAssets");
   if (am) env->RegisterNatives(am, kAssetManager, 7);
-  if (ak) env->RegisterNatives(ak, kApkAssets, 3);
+  if (ak) env->RegisterNatives(ak, kApkAssets, 4);
   jclass xb = env->FindClass("android/content/res/XmlBlock");
   if (env->ExceptionCheck()) env->ExceptionClear();
   FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/jni-onload.txt", "w");
@@ -340,7 +371,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (env->ExceptionCheck()) env->ExceptionClear();
   if (df) fprintf(df, "StringBlock found=%d\n", sb != nullptr);
   if (sb) {
-    for (size_t i = 0; i < 4; i++) {
+    for (size_t i = 0; i < 5; i++) {
       int rc = env->RegisterNatives(sb, &kStringBlock[i], 1);
       if (env->ExceptionCheck()) env->ExceptionClear();
       if (df && rc != 0) fprintf(df, "  FAIL %s %s rc=%d\n", kStringBlock[i].name, kStringBlock[i].signature, rc);

@@ -146,6 +146,24 @@ static void InterpreterJni(Thread* self,
         result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000000000LL + dts.tv_nsec);
         return;
       }
+    } else if (ddc->DescriptorEquals("Landroid/os/SystemClock;") && shorty == "J") {
+      // Framework clock natives (normally libandroid_runtime): monotonic clocks suffice here.
+      struct timespec dts;
+      if (strcmp(dmn, "uptimeMillis") == 0 || strcmp(dmn, "elapsedRealtime") == 0) {
+        clock_gettime(CLOCK_MONOTONIC, &dts);
+        result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000 + dts.tv_nsec / 1000000);
+        return;
+      }
+      if (strcmp(dmn, "uptimeNanos") == 0 || strcmp(dmn, "elapsedRealtimeNanos") == 0) {
+        clock_gettime(CLOCK_MONOTONIC, &dts);
+        result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000000000LL + dts.tv_nsec);
+        return;
+      }
+      if (strcmp(dmn, "currentThreadTimeMillis") == 0) {
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &dts);
+        result->SetJ(static_cast<jlong>(dts.tv_sec) * 1000 + dts.tv_nsec / 1000000);
+        return;
+      }
     }
   }
   if (!method->IsStatic() &&
@@ -229,6 +247,30 @@ static void InterpreterJni(Thread* self,
         : haystack->GetLength();
     result->SetI(WestlakeStringLastIndexOf(haystack, needle, from_index));
     return;
+  }
+
+  // [DAYU600] Robust SystemClock clock-native catch, independent of shorty (some clock natives
+  // are @CriticalNative and reach here with a shorty the if-else chain above didn't match).
+  // Must run BEFORE JNI name resolution, which would otherwise throw UnsatisfiedLinkError.
+  if (method->IsStatic() &&
+      method->GetDeclaringClass()->DescriptorEquals("Landroid/os/SystemClock;")) {
+    const char* nm = method->GetName();
+    struct timespec cts;
+    if (strcmp(nm, "uptimeMillis") == 0 || strcmp(nm, "elapsedRealtime") == 0) {
+      clock_gettime(CLOCK_MONOTONIC, &cts);
+      result->SetJ(static_cast<jlong>(cts.tv_sec) * 1000 + cts.tv_nsec / 1000000);
+      return;
+    }
+    if (strcmp(nm, "uptimeNanos") == 0 || strcmp(nm, "elapsedRealtimeNanos") == 0) {
+      clock_gettime(CLOCK_MONOTONIC, &cts);
+      result->SetJ(static_cast<jlong>(cts.tv_sec) * 1000000000LL + cts.tv_nsec);
+      return;
+    }
+    if (strcmp(nm, "currentThreadTimeMillis") == 0) {
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cts);
+      result->SetJ(static_cast<jlong>(cts.tv_sec) * 1000 + cts.tv_nsec / 1000000);
+      return;
+    }
   }
 
   // Resolve the native function if it hasn't been registered yet.
@@ -434,6 +476,15 @@ static void InterpreterJni(Thread* self,
           soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
       // No state transition: stay in kRunnable for FastNative compat + nonconcurrent GC
       result->SetJ(fn(soa.Env(), klass.get(), arg0.get()));
+    } else if (shorty == "JLII") {
+      // jlong fn(JNIEnv*, jclass, jobject, jint, jint) — StringBlock.nativeCreate(byte[], off, size)
+      using fntype = jlong(JNIEnv*, jclass, jobject, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jobject> arg0(soa.Env(),
+          soa.AddLocalReference<jobject>(reinterpret_cast<StackReference<mirror::Object>*>(&args[0])->AsMirrorPtr()));
+      result->SetJ(fn(soa.Env(), klass.get(), arg0.get(), args[1], args[2]));
     } else if (shorty == "VLL") {
       using fntype = void(JNIEnv*, jclass, jobject, jobject);
       fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
