@@ -180,6 +180,15 @@ static void InterpreterJni(Thread* self,
                                            static_cast<uint16_t>(args[1])));
     return;
   }
+  if (!method->IsStatic() &&
+      shorty == "LLZ" &&
+      strcmp(method->GetName(), "canonicalize0") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/io/UnixFileSystem;")) {
+    // [DAYU600] UnixFileSystem.canonicalize0(String path, boolean) — identity canonicalization
+    // (return the path arg as-is); sufficient for asset/resource path resolution during inflate.
+    result->SetL(ObjArg(args[0]));
+    return;
+  }
   if (method->IsStatic() &&
       shorty == "ZI" &&
       strcmp(method->GetName(), "isLetterImpl") == 0 &&

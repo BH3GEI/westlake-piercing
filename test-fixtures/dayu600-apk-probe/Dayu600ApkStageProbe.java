@@ -782,10 +782,35 @@ public final class Dayu600ApkStageProbe {
                             && lt2.getCause() != null) ? lt2.getCause() : lt2;
                     layoutTest = "LAYOUT_FAIL:" + lc2.getClass().getSimpleName() + ":" + lc2.getMessage();
                 }
+                // FIRST STRIKE at real View inflation: get a real system Context via ActivityThread,
+                // then LayoutInflater.inflate a framework layout into a REAL View tree.
+                String viewInflate = "n/a";
+                try {
+                    Class<?> atCls = Class.forName("android.app.ActivityThread");
+                    Object at = atCls.getMethod("systemMain").invoke(null);
+                    Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
+                    Class<?> ctxCls = Class.forName("android.content.Context");
+                    Class<?> liCls = Class.forName("android.view.LayoutInflater");
+                    Class<?> vgCls = Class.forName("android.view.ViewGroup");
+                    Object li = liCls.getMethod("from", ctxCls).invoke(null, sysCtx);
+                    // android.R.layout.simple_list_item_1 = 0x01090003 (framework TextView layout)
+                    Object v = liCls.getMethod("inflate", int.class, vgCls).invoke(li, 0x01090003, null);
+                    String rootCls = v != null ? v.getClass().getName() : "null";
+                    int childCount = -1;
+                    if (v != null && vgCls.isInstance(v)) childCount = ((Number) vgCls.getMethod("getChildCount").invoke(v)).intValue();
+                    viewInflate = "INFLATED root=" + rootCls + " childCount=" + childCount;
+                } catch (Throwable it) {
+                    Throwable ic = (it instanceof java.lang.reflect.InvocationTargetException
+                            && it.getCause() != null) ? it.getCause() : it;
+                    StackTraceElement[] ist = ic.getStackTrace();
+                    String iat = ist.length > 0 ? (ist[0].getClassName() + "." + ist[0].getMethodName() + ":" + ist[0].getLineNumber()) : "?";
+                    viewInflate = "VIEW_FAIL:" + ic.getClass().getSimpleName() + ":" + ic.getMessage() + "@" + iat;
+                }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
                         + " apkPtr=" + apkPtr
                         + " resValue(0x7f010000)=[" + valStr + "]"
                         + " LAYOUT=[" + layoutTest + "]"
+                        + " VIEWINFLATE=[" + viewInflate + "]"
                         + " realResourceNames=[" + names + "]");
             } catch (Throwable t) {
                 Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException
