@@ -588,20 +588,25 @@ public final class Dayu600ApkStageProbe {
     }
 
     private static void runResolved(String target, String stage, String directionArg) throws Exception {
+        try { writeText(probeLogPath("asset-probe.txt"), "runResolved stage=[" + stage + "]"); } catch (Throwable ignored) {}
         ClassLoader loader = targetClassLoader();
         if ("assetProbe".equals(stage)) {
             int st = 200;
+            writeText(probeLogPath("asset-probe.txt"), "STEP:start");
             try {
+                try { System.load("/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so"); writeText(probeLogPath("asset-probe.txt"), "STEP:loaded"); } catch (Throwable t) { writeText(probeLogPath("asset-probe.txt"), "load libandroidfw FAIL: " + t); }
                 String apk = "/data/local/tmp/westlake-dayu600-substrate/apks/2048-2-9.apk";
                 java.lang.reflect.Constructor<android.content.res.AssetManager> ac =
                         android.content.res.AssetManager.class.getDeclaredConstructor();
                 ac.setAccessible(true);
                 android.content.res.AssetManager am = ac.newInstance();
                 st = 201;
+                writeText(probeLogPath("asset-probe.txt"), "STEP:am-created");
                 java.lang.reflect.Method add =
                         android.content.res.AssetManager.class.getMethod("addAssetPath", String.class);
                 Object cookie = add.invoke(am, apk);
                 st = 202;
+                writeText(probeLogPath("asset-probe.txt"), "STEP:addAssetPath cookie=" + cookie);
                 android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
                 dm.setToDefaults();
                 android.content.res.Resources res = new android.content.res.Resources(
