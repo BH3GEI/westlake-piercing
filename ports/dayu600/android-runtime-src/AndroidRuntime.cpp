@@ -18,12 +18,15 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ucontext.h>
 #include <unistd.h>
+#include <unwind.h>
 
 #define WL_VIS __attribute__((visibility("default")))
 
@@ -42,6 +45,82 @@ void logf(const char* level, const char* fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     log_line(level, buf);
+}
+
+// ---- fatal-signal native backtrace -------------------------------------
+// The embedded-ART child is not a normal OHOS process, so the DFX signal
+// handler prints registers but an empty backtrace. We install our own handler
+// that walks frames via _Unwind_Backtrace and resolves each pc with dladdr, so
+// a crash inside a graphics registrar names the exact library+symbol.
+void bt_resolve(int idx, uintptr_t pc) {
+    Dl_info info;
+    memset(&info, 0, sizeof(info));
+    const char* lib = "?";
+    const char* sym = "?";
+    uintptr_t off = 0;
+    if (dladdr(reinterpret_cast<void*>(pc), &info)) {
+        if (info.dli_fname) lib = info.dli_fname;
+        if (info.dli_sname) {
+            sym = info.dli_sname;
+            off = pc - reinterpret_cast<uintptr_t>(info.dli_saddr);
+        } else if (info.dli_fbase) {
+            off = pc - reinterpret_cast<uintptr_t>(info.dli_fbase);
+        }
+    }
+    logf("F", "  bt[%02d] pc=%016lx %s (%s+0x%lx)",
+         idx, (unsigned long)pc, lib, sym, (unsigned long)off);
+}
+
+volatile sig_atomic_t g_in_fatal = 0;
+
+// Unwind from the FAULTING context (not the handler's own stack) by seeding
+// from ucontext pc/lr and walking the aarch64 x29 frame-pointer chain.
+void fatal_signal_handler(int signo, siginfo_t* si, void* uctx) {
+    if (g_in_fatal) _exit(134);
+    g_in_fatal = 1;
+    logf("F", "=== FATAL signal %d code %d addr %p — native backtrace ===",
+         signo, si ? si->si_code : 0, si ? si->si_addr : nullptr);
+
+    ucontext_t* uc = static_cast<ucontext_t*>(uctx);
+    int idx = 0;
+    if (uc) {
+        uintptr_t pc = (uintptr_t)uc->uc_mcontext.pc;
+        uintptr_t lr = (uintptr_t)uc->uc_mcontext.regs[30];
+        uintptr_t fp = (uintptr_t)uc->uc_mcontext.regs[29];
+        bt_resolve(idx++, pc);      // the faulting instruction itself
+        if (lr && lr != pc) bt_resolve(idx++, lr);  // its caller (via LR)
+        // frame-pointer chain: [fp]=caller_fp, [fp+8]=caller_lr
+        for (int i = 0; i < 48 && fp; ++i) {
+            uintptr_t next_fp = *reinterpret_cast<uintptr_t*>(fp);
+            uintptr_t ret     = *reinterpret_cast<uintptr_t*>(fp + 8);
+            if (!ret) break;
+            bt_resolve(idx++, ret);
+            if (next_fp <= fp) break;   // chain must ascend
+            fp = next_fp;
+        }
+    }
+    logf("F", "=== end backtrace (%d frames) ===", idx);
+    signal(signo, SIG_DFL);
+    raise(signo);
+}
+
+void install_fatal_backtrace() {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = fatal_signal_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    // The app runs in the ART interpreter (implicit null checks are explicit
+    // there, not SIGSEGV-based), so it is safe to also catch SIGSEGV/SIGBUS to
+    // get a real native backtrace of app-child bootstrap crashes. Gated by
+    // WESTLAKE_FATAL_SEGV so we can disable if it ever interferes with JITed code.
+    int sigs[] = {SIGTRAP, SIGILL, SIGABRT, SIGFPE};
+    for (int s : sigs) sigaction(s, &sa, nullptr);
+    if (getenv("WESTLAKE_FATAL_SEGV")) {
+        sigaction(SIGSEGV, &sa, nullptr);
+        sigaction(SIGBUS, &sa, nullptr);
+    }
+    log_line("I", "fatal-signal native backtrace handler installed");
 }
 
 bool clear_exception(JNIEnv* env, const char* where) {
@@ -502,6 +581,63 @@ const HwuiReg g_hwui_reg_fns[] = {
     {"GraphicsStatsService", "_Z46register_android_graphics_GraphicsStatsServiceP7_JNIEnv"},
 };
 
+static const HwuiReg g_hwui_reg_all[] = {
+    {"graphics_Canvas", "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv"},
+    {"graphics_Color", "_ZN7android31register_android_graphics_ColorEP7_JNIEnv"},
+    {"graphics_ColorSpace", "_ZN7android36register_android_graphics_ColorSpaceEP7_JNIEnv"},
+    {"graphics_Graphics", "_Z34register_android_graphics_GraphicsP7_JNIEnv"},
+    {"graphics_Bitmap", "_Z32register_android_graphics_BitmapP7_JNIEnv"},
+    {"graphics_BitmapFactory", "_Z39register_android_graphics_BitmapFactoryP7_JNIEnv"},
+    {"graphics_BitmapRegionDecoder", "_Z45register_android_graphics_BitmapRegionDecoderP7_JNIEnv"},
+    {"graphics_ByteBufferStreamAdaptor", "_Z49register_android_graphics_ByteBufferStreamAdaptorP7_JNIEnv"},
+    {"graphics_Camera", "_Z32register_android_graphics_CameraP7_JNIEnv"},
+    {"graphics_CreateJavaOutputStreamAdaptor", "_Z55register_android_graphics_CreateJavaOutputStreamAdaptorP7_JNIEnv"},
+    {"graphics_CanvasProperty", "_ZN7android40register_android_graphics_CanvasPropertyEP7_JNIEnv"},
+    {"graphics_ColorFilter", "_ZN7android37register_android_graphics_ColorFilterEP7_JNIEnv"},
+    {"graphics_DrawFilter", "_ZN7android36register_android_graphics_DrawFilterEP7_JNIEnv"},
+    {"graphics_FontFamily", "_ZN7android36register_android_graphics_FontFamilyEP7_JNIEnv"},
+    {"graphics_Gainmap", "_ZN7android33register_android_graphics_GainmapEP7_JNIEnv"},
+    {"graphics_HardwareRendererObserver", "_ZN7android50register_android_graphics_HardwareRendererObserverEP7_JNIEnv"},
+    {"graphics_ImageDecoder", "_Z38register_android_graphics_ImageDecoderP7_JNIEnv"},
+    {"graphics_drawable_AnimatedImageDrawable", "_Z56register_android_graphics_drawable_AnimatedImageDrawableP7_JNIEnv"},
+    {"graphics_Interpolator", "_Z38register_android_graphics_InterpolatorP7_JNIEnv"},
+    {"graphics_MaskFilter", "_Z36register_android_graphics_MaskFilterP7_JNIEnv"},
+    {"graphics_Matrix", "_ZN7android32register_android_graphics_MatrixEP7_JNIEnv"},
+    {"graphics_Movie", "_Z31register_android_graphics_MovieP7_JNIEnv"},
+    {"graphics_NinePatch", "_Z35register_android_graphics_NinePatchP7_JNIEnv"},
+    {"graphics_Paint", "_ZN7android31register_android_graphics_PaintEP7_JNIEnv"},
+    {"graphics_Path", "_ZN7android30register_android_graphics_PathEP7_JNIEnv"},
+    {"graphics_PathIterator", "_ZN7android38register_android_graphics_PathIteratorEP7_JNIEnv"},
+    {"graphics_PathMeasure", "_ZN7android37register_android_graphics_PathMeasureEP7_JNIEnv"},
+    {"graphics_PathEffect", "_Z36register_android_graphics_PathEffectP7_JNIEnv"},
+    {"graphics_Picture", "_ZN7android33register_android_graphics_PictureEP7_JNIEnv"},
+    {"graphics_Region", "_ZN7android32register_android_graphics_RegionEP7_JNIEnv"},
+    {"graphics_Shader", "_Z32register_android_graphics_ShaderP7_JNIEnv"},
+    {"graphics_RenderEffect", "_Z38register_android_graphics_RenderEffectP7_JNIEnv"},
+    {"graphics_TextureLayer", "_ZN7android38register_android_graphics_TextureLayerEP7_JNIEnv"},
+    {"graphics_Typeface", "_Z34register_android_graphics_TypefaceP7_JNIEnv"},
+    {"graphics_YuvImage", "_Z34register_android_graphics_YuvImageP7_JNIEnv"},
+    {"graphics_animation_NativeInterpolatorFactory", "_ZN7android61register_android_graphics_animation_NativeInterpolatorFactoryEP7_JNIEnv"},
+    {"graphics_animation_RenderNodeAnimator", "_ZN7android54register_android_graphics_animation_RenderNodeAnimatorEP7_JNIEnv"},
+    {"graphics_drawable_AnimatedVectorDrawable", "_ZN7android57register_android_graphics_drawable_AnimatedVectorDrawableEP7_JNIEnv"},
+    {"graphics_drawable_VectorDrawable", "_ZN7android49register_android_graphics_drawable_VectorDrawableEP7_JNIEnv"},
+    {"graphics_fonts_Font", "_ZN7android36register_android_graphics_fonts_FontEP7_JNIEnv"},
+    {"graphics_fonts_FontFamily", "_ZN7android42register_android_graphics_fonts_FontFamilyEP7_JNIEnv"},
+    {"graphics_pdf_PdfDocument", "_ZN7android41register_android_graphics_pdf_PdfDocumentEP7_JNIEnv"},
+    {"graphics_pdf_PdfEditor", "_ZN7android39register_android_graphics_pdf_PdfEditorEP7_JNIEnv"},
+    {"graphics_text_MeasuredText", "_ZN7android43register_android_graphics_text_MeasuredTextEP7_JNIEnv"},
+    {"graphics_text_LineBreaker", "_ZN7android42register_android_graphics_text_LineBreakerEP7_JNIEnv"},
+    {"graphics_text_TextShaper", "_ZN7android41register_android_graphics_text_TextShaperEP7_JNIEnv"},
+    {"graphics_text_GraphemeBreak", "_ZN7android44register_android_graphics_text_GraphemeBreakEP7_JNIEnv"},
+    {"graphics_MeshSpecification", "_ZN7android43register_android_graphics_MeshSpecificationEP7_JNIEnv"},
+    {"graphics_Mesh", "_ZN7android30register_android_graphics_MeshEP7_JNIEnv"},
+    {"util_PathParser", "_ZN7android32register_android_util_PathParserEP7_JNIEnv"},
+    {"view_RenderNode", "_ZN7android32register_android_view_RenderNodeEP7_JNIEnv"},
+    {"view_DisplayListCanvas", "_ZN7android39register_android_view_DisplayListCanvasEP7_JNIEnv"},
+    {"graphics_HardwareBufferRenderer", "_ZN7android48register_android_graphics_HardwareBufferRendererEP7_JNIEnv"},
+    {"view_ThreadedRenderer", "_ZN7android38register_android_view_ThreadedRendererEP7_JNIEnv"},
+};
+
 void* dlopen_first_existing(const char* const* paths, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         void* h = dlopen(paths[i], RTLD_NOW | RTLD_GLOBAL);
@@ -528,21 +664,40 @@ void register_hwui_if_present(JNIEnv* env) {
         return;
     }
 
-    // Preferred: hwui's own aggregate registrar (apex/jni_runtime.cpp) — the
-    // full gRegJNI table (Canvas/Bitmap/Paint/RenderNode/ThreadedRenderer/…)
-    // in dependency order. C linkage in AOSP 15.
-    HwuiRegFn all = reinterpret_cast<HwuiRegFn>(dlsym(hwui, "register_android_graphics_classes"));
-    if (all) {
-        int rc = all(env);
-        clear_exception(env, "register_android_graphics_classes");
-        logf(rc == 0 ? "I" : "W", "hwui aggregate registration rc=%d", rc);
-        if (rc == 0) {
-            return;
-        }
-        log_line("W", "aggregate registration failed; falling back to per-item list");
-    } else {
-        log_line("I", "register_android_graphics_classes not found; per-item fallback");
+    // Diagnostic mode: call the 54 registrars ONE BY ONE in gRegJNI order with a
+    // log line BEFORE and AFTER each, so a hang/crash pins the exact registrar.
+    // Env WESTLAKE_HWUI_STOP_AT=<n> stops after n registrars (skip a known bad
+    // one). Env WESTLAKE_HWUI_AGG=1 uses the aggregate instead.
+    const char* agg = getenv("WESTLAKE_HWUI_AGG");
+    if (agg && agg[0] == '1') {
+        HwuiRegFn all = reinterpret_cast<HwuiRegFn>(dlsym(hwui, "register_android_graphics_classes"));
+        if (all) { int rc = all(env); clear_exception(env, "aggregate");
+            logf("I", "hwui aggregate registration rc=%d", rc); return; }
     }
+    const char* stopEnv = getenv("WESTLAKE_HWUI_STOP_AT");
+    int stopAt = stopEnv ? atoi(stopEnv) : 1000;
+    // WESTLAKE_HWUI_SKIP=",50,51," — skip specific registrar indices (survey mode:
+    // step over a fatal registrar to enumerate ALL remaining walls in one run).
+    const char* skipEnv = getenv("WESTLAKE_HWUI_SKIP");
+    int n = (int)(sizeof(g_hwui_reg_all) / sizeof(g_hwui_reg_all[0]));
+    for (int i = 0; i < n && i < stopAt; ++i) {
+        if (skipEnv) {
+            char needle[16];
+            snprintf(needle, sizeof(needle), ",%d,", i);
+            if (strstr(skipEnv, needle)) {
+                logf("W", "hwui reg[%d/%d] SKIP %s (WESTLAKE_HWUI_SKIP)", i, n, g_hwui_reg_all[i].name);
+                continue;
+            }
+        }
+        logf("I", "hwui reg[%d/%d] BEGIN %s", i, n, g_hwui_reg_all[i].name);
+        HwuiRegFn fn = reinterpret_cast<HwuiRegFn>(dlsym(hwui, g_hwui_reg_all[i].sym));
+        if (!fn) { logf("W", "hwui reg[%d] symbol missing %s", i, g_hwui_reg_all[i].name); continue; }
+        int rc = fn(env);
+        clear_exception(env, g_hwui_reg_all[i].name);
+        logf("I", "hwui reg[%d/%d] END %s rc=%d", i, n, g_hwui_reg_all[i].name, rc);
+    }
+    log_line("I", "hwui per-registrar registration loop done");
+    return;
 
     int ok = 0;
     for (const HwuiReg& item : g_hwui_reg_fns) {
@@ -572,6 +727,7 @@ public:
 
 int AndroidRuntime::startReg(JNIEnv* env) {
     log_line("I", "AndroidRuntime::startReg enter");
+    if (getenv("WESTLAKE_FATAL_BT")) install_fatal_backtrace();
     if (!env) {
         log_line("E", "startReg called with null JNIEnv");
         return -1;

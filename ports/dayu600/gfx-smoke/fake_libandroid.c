@@ -67,3 +67,31 @@ __attribute__((visibility("default")))
 long ASurfaceControlStats_getAcquireTime(void* stats) { (void)stats; return 0; }
 __attribute__((visibility("default")))
 unsigned long ASurfaceControlStats_getFrameNumber(void* stats) { (void)stats; return 0; }
+
+// hwui's HardwareBufferHelpers::init() (pulled in by register_android_graphics_Bitmap)
+// dlsym's these two from libandroid.so and LOG_ALWAYS_FATAL_IF either is null.
+// They are only *invoked* when the app uses HardwareBuffer-backed bitmaps; init
+// merely checks the symbols exist. Non-null stubs unblock Bitmap registration.
+typedef struct AHardwareBuffer AHardwareBuffer;
+__attribute__((visibility("default")))
+AHardwareBuffer* AHardwareBuffer_fromHardwareBuffer(void* env, void* hardwarebuffer) {
+    (void)env; (void)hardwarebuffer; return 0;
+}
+__attribute__((visibility("default")))
+void* AHardwareBuffer_toHardwareBuffer(void* env, AHardwareBuffer* ahardwarebuffer) {
+    (void)env; (void)ahardwarebuffer; return 0;
+}
+
+// hwui's register_android_view_ThreadedRenderer dlsym's ANativeWindow_fromSurface
+// from libandroid.so and LOG_ALWAYS_FATAL_IF null. Needed at registration merely
+// to exist; at runtime ThreadedRenderer.setSurface() calls it to turn the app's
+// Java Surface into a native window (real surface wiring is the next gate).
+typedef struct ANativeWindow ANativeWindow;
+__attribute__((visibility("default")))
+ANativeWindow* ANativeWindow_fromSurface(void* env, void* surface) {
+    (void)env; (void)surface; return 0;
+}
+__attribute__((visibility("default")))
+void* ANativeWindow_toSurface(void* env, ANativeWindow* window) {
+    (void)env; (void)window; return 0;
+}

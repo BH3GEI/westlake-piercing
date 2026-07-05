@@ -520,6 +520,19 @@ static char *build_art_path(void)
     return build_root_path(path, sizeof(path), "/art/libwestlake_art.so");
 }
 
+/* [DAYU600] -Ximage:<root>/arm64/boot.art — load the arm64 boot image (with the FieldVarHandle
+ * fixup) so VarHandle-dependent classes are pre-initialized instead of hitting the broken
+ * imageless clinit. Enabled only when WESTLAKE_BOOT_IMAGE=1. */
+static char *build_image_option(void)
+{
+    static char opt[512];
+    unsigned long pos = 0;
+    append_text(opt, sizeof(opt), &pos, "-Ximage:");
+    append_text(opt, sizeof(opt), &pos, westlake_root());
+    append_text(opt, sizeof(opt), &pos, "/arm64/boot.art");
+    return opt;
+}
+
 static char *build_default_heavy_bridge_path(void)
 {
     static char path[512];
@@ -1573,7 +1586,7 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     JavaVM *vm = 0;
     JNIEnv *env = 0;
 
-    JavaVMOption options[8];
+    JavaVMOption options[9];
     options[0].optionString = build_bootclasspath_option();
     options[0].extraInfo = 0;
     options[1].optionString = "-classpath";
@@ -1591,9 +1604,21 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     options[7].optionString = "-Xint";
     options[7].extraInfo = 0;
 
+    int dayu_nopt = 8;
+    {
+        char *img = getenv("WESTLAKE_BOOT_IMAGE");
+        if (img != 0 && img[0] == '1') {
+            options[8].optionString = build_image_option();
+            options[8].extraInfo = 0;
+            dayu_nopt = 9;
+            log_text("WESTLAKE_BOOT_IMAGE=1: adding -Ximage");
+            log_text(options[8].optionString);
+        }
+    }
+
     JavaVMInitArgs args;
     args.version = JNI_VERSION_1_6;
-    args.nOptions = 8;
+    args.nOptions = dayu_nopt;
     args.options = options;
     args.ignoreUnrecognized = JNI_FALSE;
 
