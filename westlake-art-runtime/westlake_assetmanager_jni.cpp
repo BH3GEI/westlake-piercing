@@ -113,7 +113,32 @@ static jint AssetManager_nativeGetResourceValue(JNIEnv* env, jclass, jlong ptr, 
   env->SetIntField(outValue, env->GetFieldID(tv, "resourceId", "I"), value.resid ? value.resid : resId);
   env->SetIntField(outValue, env->GetFieldID(tv, "changingConfigurations", "I"), static_cast<jint>(value.flags));
   env->SetIntField(outValue, env->GetFieldID(tv, "density", "I"), value.config.density);
+  if (value.type == 0x03 /*Res_value::TYPE_STRING*/) {
+    const ResStringPool* pool = am->GetStringPoolForCookie(value.cookie);
+    if (pool) {
+      auto s = pool->string8At(value.data);
+      if (s.has_value()) {
+        jstring js = env->NewStringUTF(std::string(s->data(), s->size()).c_str());
+        jfieldID sf = env->GetFieldID(tv, "string", "Ljava/lang/CharSequence;");
+        if (sf) env->SetObjectField(outValue, sf, js);
+      }
+    }
+  }
   return value.cookie;
+}
+// AssetManager.nativeOpenXmlAsset(long ptr, int cookie, String fileName) -> long (ResXMLTree*)
+static jlong AssetManager_nativeOpenXmlAsset(JNIEnv* env, jclass, jlong ptr, jint cookie, jstring fileName) {
+  auto* am = reinterpret_cast<AssetManager2*>(ptr);
+  std::string path = jstr(env, fileName);
+  auto asset = am->OpenNonAsset(path, static_cast<ApkAssetsCookie>(cookie), Asset::AccessMode::ACCESS_RANDOM);
+  if (!asset) return 0;
+  auto buffer = asset->getIncFsBuffer(true /*aligned*/);
+  const size_t length = asset->getLength();
+  if (buffer.unsafe_ptr() == nullptr || length == 0) return 0;
+  auto ref = am->GetDynamicRefTableForCookie(cookie);
+  auto* tree = new ResXMLTree(ref);
+  if (tree->setTo(buffer.unsafe_ptr(), length, true) != NO_ERROR) { delete tree; return 0; }
+  return reinterpret_cast<jlong>(tree);
 }
 
 static const JNINativeMethod kApkAssets[] = {
@@ -129,6 +154,7 @@ static const JNINativeMethod kAssetManager[] = {
    (void*)AssetManager_nativeGetResourceIdentifier},
   {"nativeGetResourceName", "(JI)Ljava/lang/String;", (void*)AssetManager_nativeGetResourceName},
   {"nativeGetResourceValue", "(JISLandroid/util/TypedValue;Z)I", (void*)AssetManager_nativeGetResourceValue},
+  {"nativeOpenXmlAsset", "(JILjava/lang/String;)J", (void*)AssetManager_nativeOpenXmlAsset},
 };
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
@@ -136,7 +162,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
   jclass am = env->FindClass("android/content/res/AssetManager");
   jclass ak = env->FindClass("android/content/res/ApkAssets");
-  if (am) env->RegisterNatives(am, kAssetManager, 6);
+  if (am) env->RegisterNatives(am, kAssetManager, 7);
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
   LOGI("registered AssetManager(%d)/ApkAssets(%d) natives", am != nullptr, ak != nullptr);
   return JNI_VERSION_1_6;

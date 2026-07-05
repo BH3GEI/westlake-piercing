@@ -658,9 +658,18 @@ public final class Dayu600ApkStageProbe {
                     nGetVal.setAccessible(true);
                     android.util.TypedValue tval = new android.util.TypedValue();
                     int block = ((Number) nGetVal.invoke(null, amPtr, 0x7f010000, (short) 0, tval, true)).intValue();
+                    String xmlPath = tval.string != null ? tval.string.toString() : null;
                     valStr = "block=" + block + " type=0x" + Integer.toHexString(tval.type)
-                            + " data=0x" + Integer.toHexString(tval.data)
-                            + " cookie=" + tval.assetCookie + " strOf=" + tval.coerceToString();
+                            + " data=0x" + Integer.toHexString(tval.data) + " xmlPath=" + xmlPath;
+                    // getLayout step 2: open the compiled XML into a ResXMLTree.
+                    if (xmlPath != null) {
+                        java.lang.reflect.Method nOpenXml = android.content.res.AssetManager.class
+                                .getDeclaredMethod("nativeOpenXmlAsset", long.class, int.class, String.class);
+                        nOpenXml.setAccessible(true);
+                        long xmlTree = ((Number) nOpenXml.invoke(null, amPtr, tval.assetCookie, xmlPath)).longValue();
+                        valStr += " nativeOpenXmlAsset=0x" + Long.toHexString(xmlTree)
+                                + (xmlTree != 0 ? " XMLTREE_OK" : " XMLTREE_NULL");
+                    }
                 } catch (Throwable vt) {
                     valStr = "VAL_FAIL:" + vt.getClass().getSimpleName() + ":" + vt.getMessage();
                 }
