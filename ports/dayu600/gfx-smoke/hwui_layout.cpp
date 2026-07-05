@@ -1,20 +1,18 @@
-/* Westlake layout wireframe renderer — the custom-engine path that BYPASSES framework.jar.
+/* Westlake layout renderer — the custom-engine path that BYPASSES framework.jar.
  *
- * Prior art (docs/agent-memory/project_real_framework_jar_arch.md) proved a custom
- * AXML-inflate + layout + render engine renders real app UIs, sidestepping the
- * framework.jar Binder/ServiceManager dead-end. This is a minimal on-DAYU600 rebuild:
- *   v1 (this file): render a view-hierarchy node tree as nested rounded rects on the
- *       OHOS panel via the proven gate-2 hwui pipeline (RenderProxy -> RenderThread).
- *   v2 (next): feed the node tree from libandroidfw's real AXML parse of test.apk.
- *
- * Reuses hwui_2048's window/RenderProxy setup verbatim; only the draw fn changes.
+ * v2: reads a node tree parsed at runtime from test.apk by libandroidfw (dump_layout ->
+ * /data/local/tmp/hwui/tree.txt, lines "depth|tag|wspec|hspec"), lays it out (naive nested
+ * vertical stack), and renders each node as a typed rect via the gate-2 hwui pipeline
+ * (RenderProxy -> RenderThread -> OHOS Surface). No Java / framework.jar / Binder / ActivityThread.
+ * Falls back to a built-in demo tree if the file is absent.
  */
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <unistd.h>
+#include <string>
 #include <vector>
+#include <unistd.h>
 
 #include <SkBlendMode.h>
 #include <SkColor.h>
@@ -51,86 +49,78 @@ public:
     }
 };
 
-static inline SkColor rgb(uint32_t v) {
-    return (SkColor)(0xFF000000u | (v & 0x00FFFFFFu));
-}
+static inline SkColor rgb(uint32_t v) { return (SkColor)(0xFF000000u | (v & 0x00FFFFFFu)); }
 
-// A laid-out view node: bounds already computed (px), colored by depth/role.
-struct Node {
-    float x, y, w, h;
+struct TNode {
     int depth;
-    uint32_t color;
-    bool stroke;   // true = outline only (containers), false = filled (leaf widgets)
+    std::string tag;
+    int parent = -1;
+    std::vector<int> kids;
+    float x = 0, y = 0, w = 0, h = 0;
 };
 
-// Depth palette (dark UI).
-static uint32_t depthColor(int d) {
-    static const uint32_t pal[] = {0x1b2b34, 0x22333b, 0x2c3e46, 0x3a5561, 0x4a6b78};
-    return pal[d < 5 ? d : 4];
+// Read "depth|tag|w|h" lines into a flat node list, then link parents by depth.
+static std::vector<TNode> readTree(const char* path) {
+    std::vector<TNode> ns;
+    FILE* f = fopen(path, "r");
+    if (!f) return ns;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        int d = -1; char tag[256] = {0}; int w = 0, h = 0;
+        if (sscanf(line, "%d|%255[^|]|%d|%d", &d, tag, &w, &h) >= 2 && d >= 0) {
+            TNode n; n.depth = d; n.tag = tag; ns.push_back(n);
+        }
+    }
+    fclose(f);
+    // link parents: nearest previous node with depth-1
+    std::vector<int> stack;
+    for (size_t i = 0; i < ns.size(); i++) {
+        while (!stack.empty() && ns[stack.back()].depth >= ns[i].depth) stack.pop_back();
+        if (!stack.empty()) { ns[i].parent = stack.back(); ns[stack.back()].kids.push_back((int)i); }
+        stack.push_back((int)i);
+    }
+    return ns;
 }
 
-// Build a representative com.uptodown store-app hierarchy, laid out in a WxH window.
-// v1: hand-laid (proves the render side). v2 replaces this with a libandroidfw AXML walk.
-static std::vector<Node> buildTree(int W, int H) {
-    std::vector<Node> t;
-    // root FrameLayout
-    t.push_back({0, 0, (float)W, (float)H, 0, depthColor(0), false});
-    // status bar strip
-    t.push_back({0, 0, (float)W, 54, 1, 0x0d1418, false});
-    // AppBarLayout / Toolbar
-    float toolTop = 54, toolH = 150;
-    t.push_back({0, toolTop, (float)W, toolH, 1, depthColor(1), false});
-    t.push_back({40, toolTop + 45, 60, 60, 2, 0x6ab0c9, false});                 // nav icon
-    t.push_back({130, toolTop + 55, 420, 42, 2, 0x9fb7c0, false});               // title text bar
-    t.push_back({(float)W - 100, toolTop + 45, 60, 60, 2, 0x6ab0c9, false});     // search icon
-    // content RecyclerView
-    float listTop = toolTop + toolH + 20, listBottom = (float)H - 210;
-    t.push_back({20, listTop, (float)W - 40, listBottom - listTop, 1, depthColor(1), true});
-    // list item cards
-    float cardH = 210, gap = 24, y = listTop + gap;
-    int card = 0;
-    while (y + cardH < listBottom && card < 6) {
-        float cx = 40, cw = (float)W - 80;
-        t.push_back({cx, y, cw, cardH, 2, depthColor(2), false});                // card
-        t.push_back({cx + 24, y + 24, 162, 162, 3, 0x4e8ea8, false});            // app icon
-        t.push_back({cx + 210, y + 32, 520, 40, 3, 0x9fb7c0, false});            // app name
-        t.push_back({cx + 210, y + 92, 360, 30, 3, 0x6f8792, false});            // subtitle
-        t.push_back({cw - 160, y + 66, 150, 70, 3, 0x3ea06a, false});            // install btn
-        y += cardH + gap;
-        card++;
-    }
-    // BottomNavigationView
-    float navTop = (float)H - 190;
-    t.push_back({0, navTop, (float)W, 190, 1, depthColor(1), false});
-    for (int i = 0; i < 4; i++) {
-        float tabW = (float)W / 4.0f, tx = i * tabW;
-        uint32_t tint = (i == 0) ? 0xffffff : 0x74909b;   // first tab selected
-        t.push_back({tx + tabW / 2 - 34, navTop + 40, 68, 68, 2, tint, false});  // tab icon
-        t.push_back({tx + tabW / 2 - 60, navTop + 120, 120, 26, 2, tint, false}); // tab label
-    }
-    return t;
+// Naive layout: each container splits its inner box among children as a vertical stack.
+static void layoutNode(std::vector<TNode>& ns, int i, float x, float y, float w, float h, float pad) {
+    ns[i].x = x; ns[i].y = y; ns[i].w = w; ns[i].h = h;
+    auto& kids = ns[i].kids;
+    if (kids.empty()) return;
+    float ix = x + pad, iy = y + pad, iw = w - 2 * pad, ih = h - 2 * pad;
+    if (iw < 8 || ih < 8) return;
+    float each = ih / (float)kids.size();
+    float cy = iy;
+    float cpad = pad * 0.65f; if (cpad < 3) cpad = 3;
+    for (int k : kids) { layoutNode(ns, k, ix, cy, iw, each - cpad * 0.5f, cpad); cy += each; }
 }
 
-void renderLayout(Canvas* canvas, const std::vector<Node>& nodes, int width, int height) {
-    canvas->drawColor(rgb(0x0d1418), SkBlendMode::kSrcOver);   // page bg
-    for (const Node& n : nodes) {
-        Paint p;
-        p.setColor(rgb(n.color));
-        p.setAntiAlias(true);
-        float rad = 10.0f;
-        if (n.stroke) {
-            p.setStyle(Paint::kStroke_Style);
-            p.setStrokeWidth(3.0f);
+// Color/style by widget role.
+static bool isLeaf(const std::string& t) {
+    return t == "TextView" || t == "ImageView" || t == "ProgressBar" || t == "View" ||
+           t == "Button" || t == "Space" || t == "ImageButton";
+}
+static uint32_t nodeColor(const std::string& t, int depth) {
+    if (t == "ImageView" || t == "ImageButton") return 0x4e8ea8;      // image = blue
+    if (t == "TextView") return 0x9fb7c0;                             // text = light grey
+    if (t == "ProgressBar") return 0x3ea06a;                          // progress = green
+    if (t == "Button") return 0x3ea06a;
+    static const uint32_t pal[] = {0x1b2b34, 0x22333b, 0x2c3e46, 0x37505b, 0x466570, 0x557784};
+    return pal[depth < 6 ? depth : 5];
+}
+
+void renderTree(Canvas* canvas, const std::vector<TNode>& ns, int width, int height) {
+    canvas->drawColor(rgb(0x0d1418), SkBlendMode::kSrcOver);
+    for (const TNode& n : ns) {
+        if (n.w < 2 || n.h < 2) continue;
+        bool leaf = isLeaf(n.tag);
+        Paint p; p.setColor(rgb(nodeColor(n.tag, n.depth))); p.setAntiAlias(true);
+        float rad = 8.0f;
+        if (leaf) {
             canvas->drawRoundRect(n.x, n.y, n.x + n.w, n.y + n.h, rad, rad, p);
         } else {
+            p.setStyle(Paint::kStroke_Style); p.setStrokeWidth(2.5f);
             canvas->drawRoundRect(n.x, n.y, n.x + n.w, n.y + n.h, rad, rad, p);
-            // hairline border so nested boxes read as a hierarchy
-            Paint b;
-            b.setColor(rgb(0x0d1418));
-            b.setAntiAlias(true);
-            b.setStyle(Paint::kStroke_Style);
-            b.setStrokeWidth(2.0f);
-            canvas->drawRoundRect(n.x, n.y, n.x + n.w, n.y + n.h, rad, rad, b);
         }
     }
 }
@@ -138,33 +128,33 @@ void renderLayout(Canvas* canvas, const std::vector<Node>& nodes, int width, int
 }  // namespace
 
 int main(int argc, char** argv) {
-    const int width = 1200;
-    const int height = 1920;
+    const int width = 1200, height = 1920;
     const int seconds = argc > 1 ? atoi(argv[1]) : 30;
+    const char* treePath = argc > 2 ? argv[2] : "/data/local/tmp/hwui/tree.txt";
 
     Properties::isolatedProcess = true;
+    printf("%screating display window %dx%d, tree=%s\n", kTag, width, height, treePath);
 
-    printf("%screating display window %dx%d\n", kTag, width, height);
+    std::vector<TNode> tree = readTree(treePath);
+    if (tree.empty()) { printf("%sNO TREE at %s — nothing to render\n", kTag, treePath); return 2; }
+    // layout inside a content area (leave a top status margin).
+    layoutNode(tree, 0, 20, 60, (float)width - 40, (float)height - 120, 18);
+    printf("%sparsed+laid-out %zu nodes from test.apk layout\n", kTag, tree.size());
+
     int w = 0, h = 0;
     void* raw = westlake_ohos_make_display_window(width, height, &w, &h);
-    if (!raw) { printf("%sfailed to obtain OHNativeWindow\n", kTag); return 1; }
+    if (!raw) { printf("%sno OHNativeWindow\n", kTag); return 1; }
     ANativeWindow* window = reinterpret_cast<ANativeWindow*>(oh_anw_wrap(raw));
     if (!window) { printf("%soh_anw_wrap failed\n", kTag); return 1; }
-    printf("%sOHNativeWindow=%p wrapped=%p (%dx%d)\n", kTag, raw, (void*)window, w, h);
-
-    std::vector<Node> tree = buildTree(width, height);
-    printf("%sbuilt layout tree: %zu nodes\n", kTag, tree.size());
 
     sp<RenderNode> rootNode(new RenderNode());
     RenderProperties& props = rootNode->mutateStagingProperties();
     props.setLeftTopRightBottom(0, 0, width, height);
     props.setClipToBounds(false);
     rootNode->setPropertyFieldsDirty(0xFFFFFFFF);
-
     {
-        std::unique_ptr<Canvas> canvas(
-                Canvas::create_recording_canvas(width, height, rootNode.get()));
-        renderLayout(canvas.get(), tree, width, height);
+        std::unique_ptr<Canvas> canvas(Canvas::create_recording_canvas(width, height, rootNode.get()));
+        renderTree(canvas.get(), tree, width, height);
         canvas->finishRecording(rootNode.get());
     }
     printf("%sinitial layout recorded\n", kTag);
@@ -178,20 +168,16 @@ int main(int argc, char** argv) {
         proxy.setSurface(window);
         proxy.setLightAlpha(255 * 0.075, 255 * 0.15);
         proxy.setLightGeometry({(float)width / 2.0f, -200.0f, 800.0f}, 800.0f);
-        printf("%ssetSurface done, holding layout on panel\n", kTag);
-
-        const int fps = 10;
-        const int frames = seconds * fps;
+        printf("%ssetSurface done, holding test.apk layout on panel\n", kTag);
+        const int frames = seconds * 10;
         for (int i = 0; i < frames; i++) {
             nsecs_t vsync = systemTime(SYSTEM_TIME_MONOTONIC);
             UiFrameInfoBuilder(proxy.frameInfo())
                     .setVsync(vsync, vsync, UiFrameInfoBuilder::INVALID_VSYNC_ID,
-                              UiFrameInfoBuilder::UNKNOWN_DEADLINE,
-                              UiFrameInfoBuilder::UNKNOWN_FRAME_INTERVAL);
+                              UiFrameInfoBuilder::UNKNOWN_DEADLINE, UiFrameInfoBuilder::UNKNOWN_FRAME_INTERVAL);
             {
-                std::unique_ptr<Canvas> canvas(
-                        Canvas::create_recording_canvas(width, height, rootNode.get()));
-                renderLayout(canvas.get(), tree, width, height);
+                std::unique_ptr<Canvas> canvas(Canvas::create_recording_canvas(width, height, rootNode.get()));
+                renderTree(canvas.get(), tree, width, height);
                 canvas->finishRecording(rootNode.get());
             }
             proxy.forceDrawNextFrame();
@@ -201,8 +187,7 @@ int main(int argc, char** argv) {
         }
         proxy.fence();
     }
-
-    printf("%sdone, tearing down\n", kTag);
+    printf("%sdone\n", kTag);
     westlake_ohos_teardown();
     return 0;
 }
