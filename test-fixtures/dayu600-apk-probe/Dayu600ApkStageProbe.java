@@ -649,9 +649,24 @@ public final class Dayu600ApkStageProbe {
                         }
                     }
                 }
+                // Read an actual resource VALUE (type/data) via nativeGetResourceValue.
+                String valStr = "n/a";
+                try {
+                    java.lang.reflect.Method nGetVal = android.content.res.AssetManager.class
+                            .getDeclaredMethod("nativeGetResourceValue", long.class, int.class,
+                                    short.class, android.util.TypedValue.class, boolean.class);
+                    nGetVal.setAccessible(true);
+                    android.util.TypedValue tval = new android.util.TypedValue();
+                    int block = ((Number) nGetVal.invoke(null, amPtr, 0x7f010000, (short) 0, tval, true)).intValue();
+                    valStr = "block=" + block + " type=0x" + Integer.toHexString(tval.type)
+                            + " data=0x" + Integer.toHexString(tval.data)
+                            + " cookie=" + tval.assetCookie + " strOf=" + tval.coerceToString();
+                } catch (Throwable vt) {
+                    valStr = "VAL_FAIL:" + vt.getClass().getSimpleName() + ":" + vt.getMessage();
+                }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
-                        + " amPtr=" + amPtr + " apkPtr=" + apkPtr + " apkCount=" + (apkArr == null ? -1 : apkArr.length)
-                        + " resId(main/layout)=0x" + Integer.toHexString(((Number) idMain).intValue())
+                        + " apkPtr=" + apkPtr
+                        + " resValue(0x7f010000)=[" + valStr + "]"
                         + " realResourceNames=[" + names + "]");
             } catch (Throwable t) {
                 Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException

@@ -99,6 +99,23 @@ static jstring AssetManager_nativeGetResourceName(JNIEnv* env, jclass, jlong ptr
   return env->NewStringUTF(s.c_str());
 }
 
+static jint AssetManager_nativeGetResourceValue(JNIEnv* env, jclass, jlong ptr, jint resId,
+    jshort density, jobject outValue, jboolean resolveRefs) {
+  auto* am = reinterpret_cast<AssetManager2*>(ptr);
+  auto sv = am->GetResource(static_cast<uint32_t>(resId), false, static_cast<uint16_t>(density));
+  if (!sv.has_value()) return -1;  // kInvalidCookie
+  AssetManager2::SelectedValue value = *sv;
+  if (resolveRefs) { auto r = am->ResolveReference(value); (void)r; }
+  jclass tv = env->GetObjectClass(outValue);
+  env->SetIntField(outValue, env->GetFieldID(tv, "type", "I"), value.type);
+  env->SetIntField(outValue, env->GetFieldID(tv, "data", "I"), static_cast<jint>(value.data));
+  env->SetIntField(outValue, env->GetFieldID(tv, "assetCookie", "I"), value.cookie);
+  env->SetIntField(outValue, env->GetFieldID(tv, "resourceId", "I"), value.resid ? value.resid : resId);
+  env->SetIntField(outValue, env->GetFieldID(tv, "changingConfigurations", "I"), static_cast<jint>(value.flags));
+  env->SetIntField(outValue, env->GetFieldID(tv, "density", "I"), value.config.density);
+  return value.cookie;
+}
+
 static const JNINativeMethod kApkAssets[] = {
   {"nativeLoad", "(ILjava/lang/String;ILandroid/content/res/loader/AssetsProvider;)J", (void*)ApkAssets_nativeLoad},
   {"nativeDestroy", "(J)V", (void*)ApkAssets_nativeDestroy},
@@ -111,6 +128,7 @@ static const JNINativeMethod kAssetManager[] = {
   {"nativeGetResourceIdentifier", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
    (void*)AssetManager_nativeGetResourceIdentifier},
   {"nativeGetResourceName", "(JI)Ljava/lang/String;", (void*)AssetManager_nativeGetResourceName},
+  {"nativeGetResourceValue", "(JISLandroid/util/TypedValue;Z)I", (void*)AssetManager_nativeGetResourceValue},
 };
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
@@ -118,7 +136,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
   jclass am = env->FindClass("android/content/res/AssetManager");
   jclass ak = env->FindClass("android/content/res/ApkAssets");
-  if (am) env->RegisterNatives(am, kAssetManager, 5);
+  if (am) env->RegisterNatives(am, kAssetManager, 6);
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
   LOGI("registered AssetManager(%d)/ApkAssets(%d) natives", am != nullptr, ak != nullptr);
   return JNI_VERSION_1_6;

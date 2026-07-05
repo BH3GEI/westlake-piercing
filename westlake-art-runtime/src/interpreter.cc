@@ -1286,6 +1286,16 @@ static void InterpreterJni(Thread* self,
       jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
       jobject r = fn(soa.Env(), klass.get(), arg0, args[2]);
       result->SetL(soa.Decode<mirror::Object>(r));
+    } else if (shorty == "IJISLZ") {
+      // [DAYU600] int fn(JNIEnv*, jclass, long, int, short, Object, boolean) — nativeGetResourceValue
+      using fntype = jint(JNIEnv*, jclass, jlong, jint, jshort, jobject, jboolean);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      ScopedLocalRef<jobject> a3(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[4])));
+      result->SetI(fn(soa.Env(), klass.get(), arg0, args[2],
+                      static_cast<jshort>(args[3]), a3.get(), static_cast<jboolean>(args[5])));
     } else {
       LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
       // [DAYU600] Return a type-correct default instead of leaving garbage in the
