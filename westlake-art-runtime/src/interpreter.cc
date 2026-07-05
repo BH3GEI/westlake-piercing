@@ -160,6 +160,26 @@ static void InterpreterJni(Thread* self,
     result->SetC(receiver->AsString()->CharAt(static_cast<int32_t>(args[0])));
     return;
   }
+  if (!method->IsStatic() &&
+      shorty == "LCC" &&
+      strcmp(method->GetName(), "doReplace") == 0 &&
+      method->GetDeclaringClass()->DescriptorEquals("Ljava/lang/String;")) {
+    // [DAYU600] String.doReplace(char oldChar, char newChar) — ART runtime String
+    // intrinsic (called by String.replace). Reuse mirror::String::DoReplace so real
+    // framework resource-path processing (e.g. '.'->'/') returns a real string
+    // instead of null (null return -> caller deref -> SIGSEGV on the AssetManager path).
+    if (receiver == nullptr) {
+      ThrowNullPointerExceptionFromInterpreter();
+      result->SetL(nullptr);
+      return;
+    }
+    StackHandleScope<1> hs(self);
+    Handle<mirror::String> string = hs.NewHandle(receiver->AsString());
+    result->SetL(mirror::String::DoReplace(self, string,
+                                           static_cast<uint16_t>(args[0]),
+                                           static_cast<uint16_t>(args[1])));
+    return;
+  }
   if (method->IsStatic() &&
       shorty == "ZI" &&
       strcmp(method->GetName(), "isLetterImpl") == 0 &&

@@ -595,39 +595,44 @@ public final class Dayu600ApkStageProbe {
             try {
                 try { System.load("/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so"); writeText(probeLogPath("asset-probe.txt"), "STEP:loaded"); } catch (Throwable t) { writeText(probeLogPath("asset-probe.txt"), "load libandroidfw FAIL: " + t); }
                 String apk = "/data/local/tmp/westlake-dayu600-substrate/apks/2048-2-9.apk";
+                // Sentinel ctor: only nativeCreate(), skips createSystemAssetsInZygoteLocked
+                // (which needs OverlayConfig zygote env we don't have). Bypasses system-asset init.
                 java.lang.reflect.Constructor<android.content.res.AssetManager> ac =
-                        android.content.res.AssetManager.class.getDeclaredConstructor();
+                        android.content.res.AssetManager.class.getDeclaredConstructor(boolean.class);
                 ac.setAccessible(true);
-                android.content.res.AssetManager am = ac.newInstance();
+                android.content.res.AssetManager am = ac.newInstance(Boolean.TRUE);
+                // Sentinel ctor leaves mApkAssets null; addAssetPathInternal reads its .length.
+                java.lang.reflect.Field mApkAssetsF =
+                        android.content.res.AssetManager.class.getDeclaredField("mApkAssets");
+                mApkAssetsF.setAccessible(true);
+                Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+                mApkAssetsF.set(am, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
                 st = 201;
-                writeText(probeLogPath("asset-probe.txt"), "STEP:am-created");
+                writeText(probeLogPath("asset-probe.txt"), "STEP:am-created(sentinel)");
                 java.lang.reflect.Method add =
                         android.content.res.AssetManager.class.getMethod("addAssetPath", String.class);
                 Object cookie = add.invoke(am, apk);
                 st = 202;
                 writeText(probeLogPath("asset-probe.txt"), "STEP:addAssetPath cookie=" + cookie);
-                android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
-                dm.setToDefaults();
-                android.content.res.Resources res = new android.content.res.Resources(
-                        am, dm, new android.content.res.Configuration());
+                // Direct libandroidfw resource-lookup validation (no Resources/system needed):
+                java.lang.reflect.Method getId = android.content.res.AssetManager.class.getDeclaredMethod(
+                        "getResourceIdentifier", String.class, String.class, String.class);
+                getId.setAccessible(true);
+                Object idMain = getId.invoke(am, "main", "layout", "com.digiplex.game");
+                Object idApp = getId.invoke(am, "activity_main", "layout", "com.digiplex.game");
                 st = 203;
-                int layoutId = 2131492914;
-                android.content.res.XmlResourceParser xml = res.getLayout(layoutId);
-                st = 204;
-                int events = 0, ev;
-                StringBuilder tags = new StringBuilder();
-                while ((ev = xml.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
-                    events++;
-                    if (ev == org.xmlpull.v1.XmlPullParser.START_TAG && tags.length() < 200) {
-                        tags.append(xml.getName()).append(' ');
-                    }
-                }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
-                        + " layoutId=" + Integer.toHexString(layoutId)
-                        + " xmlEvents=" + events + " tags=[" + tags + "]");
+                        + " resId(main/layout)=0x" + Integer.toHexString(((Number) idMain).intValue())
+                        + " resId(activity_main/layout)=0x" + Integer.toHexString(((Number) idApp).intValue()));
             } catch (Throwable t) {
+                Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException
+                        && t.getCause() != null) ? t.getCause() : t;
+                java.io.StringWriter sw = new java.io.StringWriter();
+                cause.printStackTrace(new java.io.PrintWriter(sw));
+                String tr = sw.toString();
                 writeText(probeLogPath("asset-probe.txt"), "FAIL step=" + st + " "
-                        + t.getClass().getName() + ": " + t.getMessage());
+                        + cause.getClass().getName() + ": " + cause.getMessage()
+                        + "\n" + tr.substring(0, Math.min(tr.length(), 700)));
             }
             finishOrExit(0);
             return;
