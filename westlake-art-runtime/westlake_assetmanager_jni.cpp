@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <variant>
+#include <cstdio>
+#include <sys/stat.h>
 #include "androidfw/AssetManager2.h"
 #include "androidfw/ApkAssets.h"
 #include "androidfw/ResourceTypes.h"
@@ -27,6 +29,13 @@ static jlong ApkAssets_nativeLoad(JNIEnv* env, jclass, jint /*format*/, jstring 
                                   jint flags, jobject /*assetsProvider*/) {
   std::string p = jstr(env, path);
   WApk apk = ApkAssets::Load(p, static_cast<package_property_t>(flags));
+  FILE* df = fopen("/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/nativeload.txt", "a");
+  if (df) {
+    struct stat st; int ex = (stat(p.c_str(), &st) == 0);
+    fprintf(df, "path=[%s] flags=%d exists=%d size=%lld loaded=%d\n", p.c_str(), (int)flags,
+            ex, ex ? (long long)st.st_size : -1LL, apk ? 1 : 0);
+    fclose(df);
+  }
   if (!apk) { LOGI("ApkAssets::Load failed for %s", p.c_str()); return 0; }
   return reinterpret_cast<jlong>(new WApk(apk));  // heap-held sp; nativeDestroy frees
 }
