@@ -589,6 +589,45 @@ public final class Dayu600ApkStageProbe {
 
     private static void runResolved(String target, String stage, String directionArg) throws Exception {
         ClassLoader loader = targetClassLoader();
+        if ("assetProbe".equals(stage)) {
+            int st = 200;
+            try {
+                String apk = "/data/local/tmp/westlake-dayu600-substrate/apks/2048-2-9.apk";
+                java.lang.reflect.Constructor<android.content.res.AssetManager> ac =
+                        android.content.res.AssetManager.class.getDeclaredConstructor();
+                ac.setAccessible(true);
+                android.content.res.AssetManager am = ac.newInstance();
+                st = 201;
+                java.lang.reflect.Method add =
+                        android.content.res.AssetManager.class.getMethod("addAssetPath", String.class);
+                Object cookie = add.invoke(am, apk);
+                st = 202;
+                android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+                dm.setToDefaults();
+                android.content.res.Resources res = new android.content.res.Resources(
+                        am, dm, new android.content.res.Configuration());
+                st = 203;
+                int layoutId = 2131492914;
+                android.content.res.XmlResourceParser xml = res.getLayout(layoutId);
+                st = 204;
+                int events = 0, ev;
+                StringBuilder tags = new StringBuilder();
+                while ((ev = xml.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                    events++;
+                    if (ev == org.xmlpull.v1.XmlPullParser.START_TAG && tags.length() < 200) {
+                        tags.append(xml.getName()).append(' ');
+                    }
+                }
+                writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
+                        + " layoutId=" + Integer.toHexString(layoutId)
+                        + " xmlEvents=" + events + " tags=[" + tags + "]");
+            } catch (Throwable t) {
+                writeText(probeLogPath("asset-probe.txt"), "FAIL step=" + st + " "
+                        + t.getClass().getName() + ": " + t.getMessage());
+            }
+            finishOrExit(0);
+            return;
+        }
         if ("loader".equals(stage)) {
             if (finishOrExit(loaderStatus)) {
                 return;
