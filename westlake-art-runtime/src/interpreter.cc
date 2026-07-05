@@ -1305,6 +1305,30 @@ static void InterpreterJni(Thread* self,
       jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
       ScopedLocalRef<jobject> a2(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[3])));
       result->SetJ(fn(soa.Env(), klass.get(), arg0, args[2], reinterpret_cast<jstring>(a2.get())));
+    } else if (shorty == "JJI") {
+      // [DAYU600] long fn(JNIEnv*, jclass, long, int) — XmlBlock.nativeCreateParseState
+      using fntype = jlong(JNIEnv*, jclass, jlong, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetJ(fn(soa.Env(), klass.get(), arg0, args[2]));
+    } else if (shorty == "IJ") {
+      // [DAYU600] int fn(JNIEnv*, jclass, long) — XmlBlock.nativeNext/nativeGetName/nativeGetAttributeCount/nativeGetText
+      using fntype = jint(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      result->SetI(fn(soa.Env(), klass.get(), arg0));
+    } else if (shorty == "VJ") {
+      // [DAYU600] void fn(JNIEnv*, jclass, long) — XmlBlock.nativeDestroyParseState
+      using fntype = void(JNIEnv*, jclass, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      fn(soa.Env(), klass.get(), arg0);
     } else {
       LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
       // [DAYU600] Return a type-correct default instead of leaving garbage in the

@@ -141,6 +141,50 @@ static jlong AssetManager_nativeOpenXmlAsset(JNIEnv* env, jclass, jlong ptr, jin
   return reinterpret_cast<jlong>(tree);
 }
 
+// ---- XmlBlock (parse the ResXMLTree returned by nativeOpenXmlAsset) ----
+static jlong XmlBlock_nativeCreateParseState(JNIEnv*, jclass, jlong tree, jint /*resId*/) {
+  ResXMLTree* t = reinterpret_cast<ResXMLTree*>(tree);
+  if (!t) return 0;
+  ResXMLParser* p = new ResXMLParser(*t);
+  p->restart();
+  return reinterpret_cast<jlong>(p);
+}
+static void XmlBlock_nativeDestroyParseState(JNIEnv*, jclass, jlong state) {
+  delete reinterpret_cast<ResXMLParser*>(state);
+}
+static jint XmlBlock_nativeNext(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  if (!p) return 1;
+  ResXMLParser::event_code_t code = p->next();
+  switch (code) {
+    case ResXMLParser::START_TAG: return 2;  // XmlPullParser.START_TAG
+    case ResXMLParser::END_TAG: return 3;
+    case ResXMLParser::TEXT: return 4;
+    case ResXMLParser::START_DOCUMENT: return 0;
+    default: return 1;  // END_DOCUMENT / BAD_DOCUMENT
+  }
+}
+static jint XmlBlock_nativeGetName(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getElementNameID()) : -1;
+}
+static jint XmlBlock_nativeGetAttributeCount(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getAttributeCount()) : 0;
+}
+static jint XmlBlock_nativeGetText(JNIEnv*, jclass, jlong state) {
+  ResXMLParser* p = reinterpret_cast<ResXMLParser*>(state);
+  return p ? static_cast<jint>(p->getTextID()) : -1;
+}
+static const JNINativeMethod kXmlBlock[] = {
+  {"nativeCreateParseState", "(JI)J", (void*)XmlBlock_nativeCreateParseState},
+  {"nativeDestroyParseState", "(J)V", (void*)XmlBlock_nativeDestroyParseState},
+  {"nativeNext", "(J)I", (void*)XmlBlock_nativeNext},
+  {"nativeGetName", "(J)I", (void*)XmlBlock_nativeGetName},
+  {"nativeGetAttributeCount", "(J)I", (void*)XmlBlock_nativeGetAttributeCount},
+  {"nativeGetText", "(J)I", (void*)XmlBlock_nativeGetText},
+};
+
 static const JNINativeMethod kApkAssets[] = {
   {"nativeLoad", "(ILjava/lang/String;ILandroid/content/res/loader/AssetsProvider;)J", (void*)ApkAssets_nativeLoad},
   {"nativeDestroy", "(J)V", (void*)ApkAssets_nativeDestroy},
@@ -164,6 +208,8 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
   jclass ak = env->FindClass("android/content/res/ApkAssets");
   if (am) env->RegisterNatives(am, kAssetManager, 7);
   if (ak) env->RegisterNatives(ak, kApkAssets, 3);
-  LOGI("registered AssetManager(%d)/ApkAssets(%d) natives", am != nullptr, ak != nullptr);
+  jclass xb = env->FindClass("android/content/res/XmlBlock");
+  if (xb) env->RegisterNatives(xb, kXmlBlock, 6);
+  LOGI("registered AssetManager(%d)/ApkAssets(%d)/XmlBlock(%d) natives", am != nullptr, ak != nullptr, xb != nullptr);
   return JNI_VERSION_1_6;
 }

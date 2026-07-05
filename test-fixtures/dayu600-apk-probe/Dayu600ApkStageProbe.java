@@ -669,9 +669,32 @@ public final class Dayu600ApkStageProbe {
                         long xmlTree = ((Number) nOpenXml.invoke(null, amPtr, tval.assetCookie, xmlPath)).longValue();
                         valStr += " nativeOpenXmlAsset=0x" + Long.toHexString(xmlTree)
                                 + (xmlTree != 0 ? " XMLTREE_OK" : " XMLTREE_NULL");
+                        // getLayout step 3: iterate the compiled XML via XmlBlock parse state.
+                        if (xmlTree != 0) {
+                            Class<?> xbCls = Class.forName("android.content.res.XmlBlock");
+                            java.lang.reflect.Method nCPS = xbCls.getDeclaredMethod("nativeCreateParseState", long.class, int.class);
+                            java.lang.reflect.Method nNext = xbCls.getDeclaredMethod("nativeNext", long.class);
+                            java.lang.reflect.Method nXbName = xbCls.getDeclaredMethod("nativeGetName", long.class);
+                            java.lang.reflect.Method nGetAttr = xbCls.getDeclaredMethod("nativeGetAttributeCount", long.class);
+                            nCPS.setAccessible(true); nNext.setAccessible(true); nXbName.setAccessible(true); nGetAttr.setAccessible(true);
+                            long state = ((Number) nCPS.invoke(null, xmlTree, 0)).longValue();
+                            int events = 0, firstTag = -2, attrs = -2, ev;
+                            while ((ev = ((Number) nNext.invoke(null, state)).intValue()) != 1 && events < 60) {
+                                events++;
+                                if (ev == 2 && firstTag == -2) {
+                                    firstTag = ((Number) nXbName.invoke(null, state)).intValue();
+                                    attrs = ((Number) nGetAttr.invoke(null, state)).intValue();
+                                }
+                            }
+                            valStr += " XMLPARSE[events=" + events + " firstTagNameIdx=" + firstTag + " attrCount=" + attrs + "]";
+                        }
                     }
                 } catch (Throwable vt) {
-                    valStr = "VAL_FAIL:" + vt.getClass().getSimpleName() + ":" + vt.getMessage();
+                    Throwable vc = (vt instanceof java.lang.reflect.InvocationTargetException
+                            && vt.getCause() != null) ? vt.getCause() : vt;
+                    StackTraceElement[] vst = vc.getStackTrace();
+                    String at = vst.length > 0 ? (vst[0].getMethodName() + ":" + vst[0].getLineNumber()) : "?";
+                    valStr += " VAL_FAIL:" + vc.getClass().getSimpleName() + ":" + vc.getMessage() + "@" + at;
                 }
                 writeText(probeLogPath("asset-probe.txt"), "OK cookie=" + cookie
                         + " apkPtr=" + apkPtr
