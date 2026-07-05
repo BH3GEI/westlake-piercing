@@ -162,9 +162,50 @@ public final class OHServiceManager {
         }
     }
 
+    // [DAYU600] Same boot-image bug as proxyClassCache: Proxy.ORDER_BY_SIGNATURE_AND_SUBTYPE
+    // and Method.ORDER_BY_SIGNATURE came back null, so Proxy.java sorts methods with a null
+    // comparator -> ComparableTimSort -> (Comparable)Method -> ClassCastException. Repopulate
+    // both with self-contained comparators (no dependency on any libcore static).
+    private static void setStaticIfNull(Class<?> owner, String name, Object value) {
+        try {
+            java.lang.reflect.Field f = owner.getDeclaredField(name);
+            f.setAccessible(true);
+            if (f.get(null) == null) f.set(null, value);
+        } catch (Throwable t) { log("setStaticIfNull " + owner.getName() + "." + name + " failed: " + t); }
+    }
+    private static void repairProxyComparators() {
+        final java.util.Comparator<java.lang.reflect.Method> BY_SIGNATURE =
+            new java.util.Comparator<java.lang.reflect.Method>() {
+                public int compare(java.lang.reflect.Method a, java.lang.reflect.Method b) {
+                    if (a == b) return 0;
+                    int c = a.getName().compareTo(b.getName());
+                    if (c != 0) return c;
+                    Class<?>[] pa = a.getParameterTypes(), pb = b.getParameterTypes();
+                    if (pa.length != pb.length) return pa.length - pb.length;
+                    for (int i = 0; i < pa.length; i++)
+                        if (pa[i] != pb[i]) { c = pa[i].getName().compareTo(pb[i].getName()); if (c != 0) return c; }
+                    Class<?> ra = a.getReturnType(), rb = b.getReturnType();
+                    return ra == rb ? 0 : ra.getName().compareTo(rb.getName());
+                }
+            };
+        final java.util.Comparator<java.lang.reflect.Method> BY_SIG_SUBTYPE =
+            new java.util.Comparator<java.lang.reflect.Method>() {
+                public int compare(java.lang.reflect.Method a, java.lang.reflect.Method b) {
+                    int c = BY_SIGNATURE.compare(a, b);
+                    if (c != 0) return c;
+                    Class<?> t1 = a.getDeclaringClass(), t2 = b.getDeclaringClass();
+                    if (t1 != t2) { if (t1.isAssignableFrom(t2)) return 1; if (t2.isAssignableFrom(t1)) return -1; }
+                    return 0;
+                }
+            };
+        setStaticIfNull(java.lang.reflect.Method.class, "ORDER_BY_SIGNATURE", BY_SIGNATURE);
+        setStaticIfNull(java.lang.reflect.Proxy.class, "ORDER_BY_SIGNATURE_AND_SUBTYPE", BY_SIG_SUBTYPE);
+    }
+
     public static void install() {
         try {
             repairProxyCache();
+            repairProxyComparators();
             Class<?> iServiceManager = Class.forName("android.os.IServiceManager");
             ClassLoader loader = iServiceManager.getClassLoader();
             Object proxy = Proxy.newProxyInstance(loader, new Class<?>[] {iServiceManager},

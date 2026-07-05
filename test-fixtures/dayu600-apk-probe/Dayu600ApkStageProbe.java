@@ -863,6 +863,20 @@ public final class Dayu600ApkStageProbe {
                         }
                         sysresNote += "SMFIELDS[" + fs + "] ";
                     } catch (Throwable ft) { sysresNote += "SMFIELDS_FAIL[" + ft + "] "; }
+                    // Isolate: does dynamic Proxy work AT ALL (over a simple public interface)?
+                    try {
+                        Object tp = java.lang.reflect.Proxy.newProxyInstance(
+                                Runnable.class.getClassLoader(), new Class<?>[] {Runnable.class},
+                                new java.lang.reflect.InvocationHandler() {
+                                    public Object invoke(Object p, java.lang.reflect.Method m, Object[] a) { return null; }
+                                });
+                        sysresNote += "PROXYTEST[ok:" + (tp != null) + "] ";
+                    } catch (Throwable pt) {
+                        Throwable pc = pt; while (pc.getCause() != null && pc != pc.getCause()) pc = pc.getCause();
+                        StackTraceElement[] pst = pc.getStackTrace();
+                        String pat = pst.length > 0 ? (pst[0].getClassName() + "." + pst[0].getMethodName() + ":" + pst[0].getLineNumber()) : "?";
+                        sysresNote += "PROXYTEST_FAIL[" + pc.getClass().getSimpleName() + ":" + pc.getMessage() + "@" + pat + "] ";
+                    }
                     Class<?> atCls = Class.forName("android.app.ActivityThread");
                     Object at = atCls.getMethod("systemMain").invoke(null);
                     Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
@@ -1039,6 +1053,62 @@ public final class Dayu600ApkStageProbe {
                 try {
                     Object uapp = uAppCls.getDeclaredConstructor().newInstance();
                     ulog.append("appNew=OK ");
+                    // The app is built via bare newInstance, so its ContextWrapper.mBase is
+                    // null and every Context delegation in onCreate (getApplicationContext/
+                    // getAssets/getResources/...) NPEs. Attach a real system Context the same
+                    // way assetProbe does (ActivityThread.systemMain().getSystemContext()).
+                    try {
+                        // (a) Wire REAL framework resources into the system AssetManager first —
+                        // ActivityThread.getSystemContext() resolves framework resource IDs, which
+                        // NotFound unless sSystem points at framework-res.apk (assetProbe recipe).
+                        Class<?> amCls = android.content.res.AssetManager.class;
+                        Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+                        java.lang.reflect.Constructor<?> acC = amCls.getDeclaredConstructor(boolean.class);
+                        acC.setAccessible(true);
+                        java.lang.reflect.Field mApkAssetsF = amCls.getDeclaredField("mApkAssets");
+                        mApkAssetsF.setAccessible(true);
+                        String fwResPath = rootPath() + "/android/framework/framework-res.apk";
+                        int propSystem = 1;
+                        try { propSystem = apkAssetsCls.getField("PROPERTY_SYSTEM").getInt(null); } catch (Throwable ig) {}
+                        Object fwApk = apkAssetsCls.getMethod("loadFromPath", String.class, int.class)
+                                .invoke(null, fwResPath, propSystem);
+                        Object sysArr = java.lang.reflect.Array.newInstance(apkAssetsCls, 1);
+                        java.lang.reflect.Array.set(sysArr, 0, fwApk);
+                        java.lang.reflect.Field fSArr = amCls.getDeclaredField("sSystemApkAssets");
+                        fSArr.setAccessible(true); fSArr.set(null, sysArr);
+                        java.lang.reflect.Field fSSet = amCls.getDeclaredField("sSystemApkAssetsSet");
+                        fSSet.setAccessible(true);
+                        Class<?> asCls = Class.forName("android.util.ArraySet");
+                        Object aset = asCls.getConstructor().newInstance();
+                        asCls.getMethod("add", Object.class).invoke(aset, fwApk);
+                        fSSet.set(null, aset);
+                        Object sysAm = acC.newInstance(Boolean.TRUE);
+                        mApkAssetsF.set(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
+                        amCls.getMethod("setApkAssets", sysArr.getClass(), boolean.class)
+                                .invoke(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0), false);
+                        java.lang.reflect.Field fSys = amCls.getDeclaredField("sSystem");
+                        fSys.setAccessible(true); fSys.set(null, sysAm);
+                        try { java.lang.reflect.Field rSys = android.content.res.Resources.class.getDeclaredField("mSystem");
+                              rSys.setAccessible(true); rSys.set(null, null); } catch (Throwable ig) {}
+                        // (b) Install OHServiceManager so ActivityThread boot's getService() calls
+                        // return local-binder adapter stubs instead of NPEing.
+                        try { Class.forName("westlake.adapter.OHServiceManager").getMethod("install").invoke(null); }
+                        catch (Throwable ig) {}
+                        // (c) Real system Context via ActivityThread, attach as the app's base Context.
+                        Class<?> atCls = Class.forName("android.app.ActivityThread");
+                        Object at = atCls.getMethod("systemMain").invoke(null);
+                        Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
+                        java.lang.reflect.Field mBaseF =
+                                Class.forName("android.content.ContextWrapper").getDeclaredField("mBase");
+                        mBaseF.setAccessible(true);
+                        mBaseF.set(uapp, sysCtx);
+                        ulog.append("ctxAttach=OK ");
+                    } catch (Throwable cx) {
+                        Throwable cxc = (cx instanceof java.lang.reflect.InvocationTargetException
+                                && cx.getCause() != null) ? cx.getCause() : cx;
+                        ulog.append("ctxAttach=FAIL:").append(cxc.getClass().getSimpleName())
+                            .append(':').append(cxc.getMessage()).append(' ');
+                    }
                     writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
                     try { uAppCls.getMethod("onCreate").invoke(uapp); ulog.append("appOnCreate=OK "); }
                     catch (Throwable ot) {
