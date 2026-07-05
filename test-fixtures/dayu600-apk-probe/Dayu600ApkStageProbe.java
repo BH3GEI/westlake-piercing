@@ -832,6 +832,37 @@ public final class Dayu600ApkStageProbe {
                         sysProof = "SYSRES_FAIL:" + spC.getClass().getSimpleName() + ":" + spC.getMessage();
                     }
                     sysresNote = "SYSRES[" + sysProof + "] ";
+                    // Install the in-process ServiceManager (OHServiceManager) so the REAL
+                    // ActivityThread boot's getService("display")/etc. return local-binder adapter
+                    // stubs instead of NPE — this is the Wine-style OS-boundary shim.
+                    try {
+                        Class.forName("westlake.adapter.OHServiceManager").getMethod("install").invoke(null);
+                        sysresNote += "OHSM[installed] ";
+                    } catch (Throwable ohsm) {
+                        Throwable oc = (ohsm instanceof java.lang.reflect.InvocationTargetException
+                                && ohsm.getCause() != null) ? ohsm.getCause() : ohsm;
+                        while (oc.getCause() != null && oc != oc.getCause()) oc = oc.getCause();
+                        StackTraceElement[] ost = oc.getStackTrace();
+                        StringBuilder stk = new StringBuilder();
+                        for (int si = 0; si < ost.length && si < 6; si++)
+                            stk.append(ost[si].getClassName()).append('.').append(ost[si].getMethodName())
+                               .append(':').append(ost[si].getLineNumber()).append(" <- ");
+                        sysresNote += "OHSM_FAIL[" + oc.getClass().getSimpleName() + ":" + oc.getMessage() + "@" + stk + "] ";
+                    }
+                    // Diagnostic: what static fields does the REAL ServiceManager have, and did install set one?
+                    try {
+                        Class<?> smCls = Class.forName("android.os.ServiceManager");
+                        StringBuilder fs = new StringBuilder();
+                        for (java.lang.reflect.Field ff : smCls.getDeclaredFields()) {
+                            if (java.lang.reflect.Modifier.isStatic(ff.getModifiers())) {
+                                ff.setAccessible(true);
+                                Object val = null; try { val = ff.get(null); } catch (Throwable ignore) {}
+                                fs.append(ff.getName()).append(':').append(ff.getType().getSimpleName())
+                                  .append('=').append(val == null ? "null" : val.getClass().getSimpleName()).append(' ');
+                            }
+                        }
+                        sysresNote += "SMFIELDS[" + fs + "] ";
+                    } catch (Throwable ft) { sysresNote += "SMFIELDS_FAIL[" + ft + "] "; }
                     Class<?> atCls = Class.forName("android.app.ActivityThread");
                     Object at = atCls.getMethod("systemMain").invoke(null);
                     Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
@@ -956,21 +987,41 @@ public final class Dayu600ApkStageProbe {
                             cz = cz.getCause();
                         }
                         ulog.append(' ');
-                        // What does the dex actually expose? Enumerate its entries.
+                        // Can we even open classes4.dex as a raw DexFile, and does loadClass find
+                        // UptodownApp through it? (DexFile.entries()/getClassNameList aborts in this
+                        // fork — null array — so avoid it; use loadClass directly instead.)
                         try {
                             @SuppressWarnings("deprecation")
                             dalvik.system.DexFile df4 = new dalvik.system.DexFile(c4);
-                            java.util.Enumeration<String> en = df4.entries();
-                            int total = 0; boolean hasApp = false; StringBuilder first = new StringBuilder();
-                            while (en.hasMoreElements()) {
-                                String cn = en.nextElement(); total++;
-                                if (total <= 3) first.append(cn).append(' ');
-                                if ("com.uptodown.UptodownApp".equals(cn)) hasApp = true;
+                            ulog.append("df4open=OK ");
+                            try {
+                                Class<?> viaDf = df4.loadClass("com.uptodown.UptodownApp",
+                                        Dayu600ApkStageProbe.class.getClassLoader());
+                                ulog.append("df4load=").append(viaDf == null ? "NULL" : "OK ");
+                            } catch (Throwable lt) {
+                                ulog.append("df4load=FAIL:").append(lt.getClass().getSimpleName())
+                                    .append(':').append(lt.getMessage()).append(' ');
                             }
-                            ulog.append("c4entries=").append(total).append(" hasApp=").append(hasApp)
-                                .append(" first=[").append(first).append("] ");
                         } catch (Throwable et) {
-                            ulog.append("c4entries=FAIL:").append(et).append(' ');
+                            ulog.append("df4open=FAIL:").append(et.getClass().getSimpleName())
+                                .append(':').append(et.getMessage()).append(' ');
+                        }
+                        // Per-dex matrix via the REAL full-APK PathClassLoader (uloader): one class known
+                        // (baksmali) to be DEFINED in each dex of test.apk. If only the classes.dex entry
+                        // resolves, the APK's secondary dexes (classes2/3/4) are not being opened.
+                        String[][] sweep = {
+                            {"c1", "a.a"},
+                            {"c2", "j$.com.android.tools.r8.a"},
+                            {"c3", "androidx.compose.ui.graphics.AndroidBlendMode_androidKt$WhenMappings"},
+                            {"c4", "com.uptodown.UptodownApp"},
+                        };
+                        for (String[] s : sweep) {
+                            try {
+                                Class<?> cx = Class.forName(s[1], false, uloader);
+                                ulog.append(s[0]).append('=').append(cx == null ? "NULL" : "OK").append(' ');
+                            } catch (Throwable lx) {
+                                ulog.append(s[0]).append('=').append(lx.getClass().getSimpleName()).append(' ');
+                            }
                         }
                         writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
                         throw c4t;
