@@ -37,6 +37,134 @@ public final class Dayu600ApkStageProbe {
     // only what an app's onCreate touches (getApplicationContext/getAssets/getResources/
     // getPackageName), returning the app's own AssetManager + Resources. base is null but
     // never delegated to since the reached methods are overridden. Avoids ActivityThread.
+    // The native arsc name-index for test.apk isn't populated in AssetManager2 (by-ID reads work,
+    // by-NAME getIdentifier returns 0), so FirebaseOptions.fromResource() can't find google_app_id.
+    // Bridge the 5 google-services string resources by name→value (authoritative values parsed from
+    // the APK's resources.arsc); everything else delegates to the real native Resources. L10 stub.
+    static final class WlResources extends android.content.res.Resources {
+        private static final String[] FB_NAMES = {
+            "google_app_id", "gcm_defaultSenderId", "google_api_key",
+            "google_storage_bucket", "project_id" };
+        private static final int[] FB_IDS = {
+            0x7f1401d1, 0x7f1401c1, 0x7f1401d0, 0x7f1401d5, 0x7f1403dc };
+        private static final String[] FB_VALS = {
+            "1:171380306104:android:4e827fc7c388aeec79c44d", "171380306104",
+            "AIzaSyDCOPQUW7udguhLGoxlvZOV6EgMuQ8v1Rs",
+            "uptodown-app-store.firebasestorage.app", "uptodown-app-store" };
+        WlResources(android.content.res.AssetManager am, android.util.DisplayMetrics dm,
+                android.content.res.Configuration cfg) { super(am, dm, cfg); }
+        public int getIdentifier(String name, String defType, String defPackage) {
+            if ("string".equals(defType)) {
+                for (int i = 0; i < FB_NAMES.length; i++) if (FB_NAMES[i].equals(name)) return FB_IDS[i];
+            }
+            try { return super.getIdentifier(name, defType, defPackage); } catch (Throwable t) { return 0; }
+        }
+        public String getString(int id) {
+            for (int i = 0; i < FB_IDS.length; i++) if (FB_IDS[i] == id) return FB_VALS[i];
+            try { return super.getString(id); } catch (Throwable t) { return ""; }
+        }
+        public CharSequence getText(int id) {
+            for (int i = 0; i < FB_IDS.length; i++) if (FB_IDS[i] == id) return FB_VALS[i];
+            try { return super.getText(id); } catch (Throwable t) { return ""; }
+        }
+        public CharSequence getText(int id, CharSequence def) {
+            try { return super.getText(id, def); } catch (Throwable t) { return def; }
+        }
+        public String[] getStringArray(int id) {
+            try { return super.getStringArray(id); } catch (Throwable t) { return new String[0]; }
+        }
+        public int[] getIntArray(int id) {
+            try { return super.getIntArray(id); } catch (Throwable t) { return new int[0]; }
+        }
+        // The app's arsc name-index isn't populated natively, so config-value lookups (e.g.
+        // WorkManager reading R.bool.workmanager_test_configuration) throw NotFoundException.
+        // Fall back to benign defaults instead of failing init. L10 resource stub.
+        public boolean getBoolean(int id) {
+            try { return super.getBoolean(id); } catch (Throwable t) { return false; }
+        }
+        public int getInteger(int id) {
+            try { return super.getInteger(id); } catch (Throwable t) { return 0; }
+        }
+        public String getString(int id, Object... fmt) {
+            try { return super.getString(id, fmt); } catch (Throwable t) { return ""; }
+        }
+    }
+
+    // A concrete PackageManager is required (Firebase discovery skips when getPackageManager()
+    // is null); the concrete impl is the smali-generated WlPackageManager backed by WlPmHelper.
+    static volatile int WL_GPM_CALLS = 0;
+
+    // Allocate a system-service manager without running its constructor, then set every
+    // binder-typed field (an android.* interface named I*) to a no-op dynamic proxy, so the
+    // app's register*/query calls in onCreate return defaults instead of NPEing on a null binder.
+    static Object wlService(String className) {
+        try {
+            Class<?> cls = Class.forName(className);
+            Object o = wlAlloc(cls);
+            if (o == null) return null;  // WL_SVC_ERR already set by wlAlloc
+            for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    Class<?> t = f.getType();
+                    if (t.isInterface() && t.getName().startsWith("android.")
+                            && t.getSimpleName().length() > 1 && t.getSimpleName().charAt(0) == 'I'
+                            && Character.isUpperCase(t.getSimpleName().charAt(1))) {
+                        try { f.setAccessible(true); if (f.get(o) == null) f.set(o, noopProxy(t)); }
+                        catch (Throwable ig) {}
+                    }
+                }
+            }
+            return o;
+        } catch (Throwable t) { WL_SVC_ERR = className + ":" + t.getClass().getSimpleName() + ":" + t.getMessage(); return null; }
+    }
+    static volatile String WL_SVC_ERR = "none";
+
+    // Set a static final field by first clearing its FINAL access flag (ART stores it in
+    // Field.accessFlags). Used to repair Proxy's null static state.
+    static void wlSetStaticFinal(java.lang.reflect.Field f, Object val) throws Exception {
+        try {
+            java.lang.reflect.Field mod = java.lang.reflect.Field.class.getDeclaredField("accessFlags");
+            mod.setAccessible(true);
+            mod.setInt(f, f.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
+        } catch (Throwable mm) { /* try the set anyway */ }
+        f.set(null, val);
+    }
+
+    static Object wlAlloc(Class<?> cls) {
+        try {
+            Class<?> uc = Class.forName("jdk.internal.misc.Unsafe", true, null);
+            java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+            tf.setAccessible(true);
+            Object unsafe = tf.get(null);
+            return uc.getMethod("allocateInstance", Class.class).invoke(unsafe, cls);
+        } catch (Throwable t) {
+            Throwable c = (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null) ? t.getCause() : t;
+            WL_SVC_ERR = "alloc:" + c.getClass().getName() + ":" + c.getMessage();
+            return null;
+        }
+    }
+
+    static Object noopProxy(Class<?> iface) {
+        return java.lang.reflect.Proxy.newProxyInstance(iface.getClassLoader(),
+            new Class[]{iface}, new java.lang.reflect.InvocationHandler() {
+                public Object invoke(Object proxy, java.lang.reflect.Method m, Object[] a) {
+                    return defaultFor(m.getReturnType());
+                }
+            });
+    }
+
+    static Object defaultFor(Class<?> rt) {
+        if (!rt.isPrimitive()) return null;
+        if (rt == boolean.class) return Boolean.FALSE;
+        if (rt == int.class) return Integer.valueOf(0);
+        if (rt == long.class) return Long.valueOf(0L);
+        if (rt == short.class) return Short.valueOf((short) 0);
+        if (rt == byte.class) return Byte.valueOf((byte) 0);
+        if (rt == char.class) return Character.valueOf((char) 0);
+        if (rt == float.class) return Float.valueOf(0f);
+        if (rt == double.class) return Double.valueOf(0d);
+        return null;  // void
+    }
+
     static final class ProbeContext extends android.content.ContextWrapper {
         private final android.content.res.AssetManager am;
         private android.content.res.Resources res;   // built lazily (Resources ctor hits native)
@@ -54,7 +182,7 @@ public final class Dayu600ApkStageProbe {
             if (res == null) {
                 android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
                 dm.setToDefaults();
-                res = new android.content.res.Resources(am, dm, new android.content.res.Configuration());
+                res = new WlResources(am, dm, new android.content.res.Configuration());
             }
             return res;
         }
@@ -69,6 +197,17 @@ public final class Dayu600ApkStageProbe {
                     c.setAccessible(true);
                     return c.newInstance(this, null);
                 }
+                // System-service managers the app calls in onCreate. A real one needs a binder;
+                // we allocate the manager (no constructor) and wire its binder-typed fields to
+                // no-op proxies so register*/query calls degrade to no-ops instead of NPEing.
+                if ("connectivity".equals(name)) return wlService("android.net.ConnectivityManager");
+                if ("wifi".equals(name)) return wlService("android.net.wifi.WifiManager");
+                if ("notification".equals(name)) return wlService("android.app.NotificationManager");
+                if ("phone".equals(name)) return wlService("android.telephony.TelephonyManager");
+                if ("jobscheduler".equals(name)) return wlService("android.app.job.JobScheduler");
+                if ("alarm".equals(name)) return wlService("android.app.AlarmManager");
+                if ("power".equals(name)) return wlService("android.os.PowerManager");
+                if ("batterymanager".equals(name)) return wlService("android.os.BatteryManager");
             } catch (Throwable t) { /* fall through to null */ }
             return null;
         }
@@ -104,6 +243,35 @@ public final class Dayu600ApkStageProbe {
         public String getPackageCodePath() { return rootPath() + "/apks/test.apk"; }
         public ClassLoader getClassLoader() { return ProbeContext.class.getClassLoader(); }
         public android.content.ContentResolver getContentResolver() { return null; }
+        private android.content.pm.PackageManager pm;
+        public android.content.pm.PackageManager getPackageManager() {
+            WL_GPM_CALLS++;
+            if (pm == null) {
+                try {
+                    // Smali-generated concrete PackageManager (all ~179 abstract methods), loaded
+                    // by the same loader as this probe; meaningful methods delegate to WlPmHelper.
+                    Class<?> c = Class.forName("WlPackageManager", true, getClass().getClassLoader());
+                    pm = (android.content.pm.PackageManager) c.getDeclaredConstructor().newInstance();
+                } catch (Throwable t) { /* leave null */ }
+            }
+            return pm;
+        }
+        // Permission checks (L09 stub): grant everything the app asks for during onCreate.
+        public int checkCallingOrSelfPermission(String p) { return 0; /* PERMISSION_GRANTED */ }
+        public int checkSelfPermission(String p) { return 0; }
+        public int checkCallingPermission(String p) { return 0; }
+        public int checkPermission(String p, int pid, int uid) { return 0; }
+        // BroadcastReceiver registration (L12.A04 stub): accept but deliver nothing.
+        public android.content.Intent registerReceiver(android.content.BroadcastReceiver r,
+                android.content.IntentFilter f) { return null; }
+        public android.content.Intent registerReceiver(android.content.BroadcastReceiver r,
+                android.content.IntentFilter f, int flags) { return null; }
+        public android.content.Intent registerReceiver(android.content.BroadcastReceiver r,
+                android.content.IntentFilter f, String perm, android.os.Handler h) { return null; }
+        public android.content.Intent registerReceiver(android.content.BroadcastReceiver r,
+                android.content.IntentFilter f, String perm, android.os.Handler h, int flags) { return null; }
+        public void unregisterReceiver(android.content.BroadcastReceiver r) {}
+        public void sendBroadcast(android.content.Intent i) {}
         public android.os.Looper getMainLooper() { return android.os.Looper.getMainLooper(); }
         public android.content.res.Resources.Theme getTheme() { return getResources().newTheme(); }
         private final java.util.Map<String, android.content.SharedPreferences> prefsCache =
@@ -191,16 +359,25 @@ public final class Dayu600ApkStageProbe {
         private static final String[] SUITES = { "TLS_AES_128_GCM_SHA256" };
         public String[] getDefaultCipherSuites() { return SUITES.clone(); }
         public String[] getSupportedCipherSuites() { return SUITES.clone(); }
+        // Returning a plain Socket makes OkHttp do `(SSLSocket) socket` → ClassCastException,
+        // which the app can retry-loop on. There's no real handshake here, so fail with a normal
+        // IOException the moment a connection is actually attempted (onCreate CONSTRUCTION already
+        // succeeded — this only fires if the app eagerly makes a request). If the caller closed
+        // the wrapped socket first, close it.
+        private static java.net.Socket fail(java.net.Socket toClose) throws java.io.IOException {
+            if (toClose != null) { try { toClose.close(); } catch (Throwable t) {} }
+            throw new javax.net.ssl.SSLHandshakeException(
+                    "Westlake LiteTLS: no native TLS wired — HTTPS not available in this probe");
+        }
         public java.net.Socket createSocket(java.net.Socket s, String host, int port, boolean autoClose)
-                throws java.io.IOException { return s; }
-        public java.net.Socket createSocket(String host, int port) throws java.io.IOException {
-            return new java.net.Socket(); }
+                throws java.io.IOException { return fail(autoClose ? s : null); }
+        public java.net.Socket createSocket(String host, int port) throws java.io.IOException { return fail(null); }
         public java.net.Socket createSocket(String host, int port, java.net.InetAddress lh, int lp)
-                throws java.io.IOException { return new java.net.Socket(); }
+                throws java.io.IOException { return fail(null); }
         public java.net.Socket createSocket(java.net.InetAddress host, int port) throws java.io.IOException {
-            return new java.net.Socket(); }
+            return fail(null); }
         public java.net.Socket createSocket(java.net.InetAddress a, int p, java.net.InetAddress lh, int lp)
-                throws java.io.IOException { return new java.net.Socket(); }
+                throws java.io.IOException { return fail(null); }
     }
     public static final class LiteTmfSpi extends javax.net.ssl.TrustManagerFactorySpi {
         protected void engineInit(java.security.KeyStore ks) {}
@@ -1776,6 +1953,193 @@ public final class Dayu600ApkStageProbe {
                             .append(':').append(vc.getMessage()).append(' ');
                     }
                     writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                    // Prepare the main Looper BEFORE Firebase init: FirebaseMessaging pulls in GMS
+                    // measurement, which does new Handler(Looper.getMainLooper()) — null main looper
+                    // there => NPE. (A real app's ActivityThread prepares it before any provider.)
+                    try { if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper(); }
+                    catch (Throwable ignore) {}
+                    // java.lang.reflect.Proxy.proxyClassCache is null in this runtime (its <clinit>
+                    // tolerated-failed), so ALL dynamic proxies throw NPE — breaking Settings$Global,
+                    // Retrofit, and our own no-op binder stubs. Rebuild the WeakCache and install it.
+                    try {
+                        Class<?> proxyCls = Class.forName("java.lang.reflect.Proxy");
+                        java.lang.reflect.Field pccF = proxyCls.getDeclaredField("proxyClassCache");
+                        pccF.setAccessible(true);
+                        if (pccF.get(null) == null) {
+                            Class<?> wcCls = Class.forName("java.lang.reflect.WeakCache");
+                            Class<?> kfCls = Class.forName("java.lang.reflect.Proxy$KeyFactory");
+                            Class<?> pfCls = Class.forName("java.lang.reflect.Proxy$ProxyClassFactory");
+                            java.lang.reflect.Constructor<?> kfC = kfCls.getDeclaredConstructor();
+                            kfC.setAccessible(true);
+                            java.lang.reflect.Constructor<?> pfC = pfCls.getDeclaredConstructor();
+                            pfC.setAccessible(true);
+                            java.lang.reflect.Constructor<?> wcC = wcCls.getDeclaredConstructor(
+                                    java.util.function.BiFunction.class, java.util.function.BiFunction.class);
+                            wcC.setAccessible(true);
+                            Object wc = wcC.newInstance(kfC.newInstance(), pfC.newInstance());
+                            wlSetStaticFinal(pccF, wc);
+                            // ORDER_BY_SIGNATURE_AND_SUBTYPE (Comparator) is also null → Collections.sort
+                            // degrades to natural order → Method-not-Comparable CCE. Any total order works.
+                            java.lang.reflect.Field ordF = proxyCls.getDeclaredField("ORDER_BY_SIGNATURE_AND_SUBTYPE");
+                            ordF.setAccessible(true);
+                            if (ordF.get(null) == null) {
+                                java.util.Comparator<Object> cmp = new java.util.Comparator<Object>() {
+                                    public int compare(Object a, Object b) { return a.toString().compareTo(b.toString()); }
+                                };
+                                wlSetStaticFinal(ordF, cmp);
+                            }
+                            // constructorParams = { InvocationHandler.class } for the proxy ctor lookup.
+                            java.lang.reflect.Field cpF = proxyCls.getDeclaredField("constructorParams");
+                            cpF.setAccessible(true);
+                            if (cpF.get(null) == null) {
+                                wlSetStaticFinal(cpF, new Class[]{ Class.forName("java.lang.reflect.InvocationHandler") });
+                            }
+                            // Method.ORDER_BY_SIGNATURE (used by Proxy.deduplicateAndGetExceptions) is
+                            // also null — its lambda-based static init failed the same way.
+                            try {
+                                java.lang.reflect.Field mos = java.lang.reflect.Method.class.getDeclaredField("ORDER_BY_SIGNATURE");
+                                mos.setAccessible(true);
+                                if (mos.get(null) == null) {
+                                    java.util.Comparator<Object> mc = new java.util.Comparator<Object>() {
+                                        public int compare(Object a, Object b) { return a.toString().compareTo(b.toString()); }
+                                    };
+                                    wlSetStaticFinal(mos, mc);
+                                }
+                            } catch (Throwable mox) {}
+                            ulog.append("proxyFix=").append(pccF.get(null) != null ? "OK" : "still-null").append(' ');
+                        } else { ulog.append("proxyFix=already "); }
+                    } catch (Throwable px) {
+                        ulog.append("proxyFix=").append(px.getClass().getSimpleName())
+                            .append(':').append(px.getMessage()).append(' ');
+                    }
+                    { Object cmTest = wlService("android.net.ConnectivityManager");
+                      ulog.append("cmTest=").append(cmTest == null ? "NULL" : cmTest.getClass().getSimpleName())
+                          .append("/err=").append(WL_SVC_ERR).append(' '); }
+                    // Resources.getSystem() (used by SQLiteGlobal.getWALConnectionPoolSize etc.)
+                    // reads com.android.internal framework resources that aren't loaded here →
+                    // NotFoundException. Swap the global system Resources for a tolerant WlResources.
+                    try {
+                        Class<?> resCls = Class.forName("android.content.res.Resources");
+                        java.lang.reflect.Field msF = resCls.getDeclaredField("mSystem");
+                        msF.setAccessible(true);
+                        android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+                        dm.setToDefaults();
+                        Object sysRes = new WlResources(uamShared, dm, new android.content.res.Configuration());
+                        wlSetStaticFinal(msF, sysRes);
+                        ulog.append("sysRes=seeded ");
+                    } catch (Throwable sr) {
+                        ulog.append("sysRes=ERR:").append(sr.getClass().getSimpleName())
+                            .append(':').append(sr.getMessage()).append(' ');
+                    }
+                    // SQLite JNI (android.database.sqlite natives over libsqlite.z.so) — WorkManager's
+                    // Room WorkDatabase needs SQLiteConnection.nativeOpen etc. Its JNI_OnLoad registers.
+                    try {
+                        System.load(rootPath() + "/android/lib64/libsqlite_jni.so");
+                        ulog.append("sqliteJni=loaded ");
+                    } catch (Throwable sq) {
+                        ulog.append("sqliteJni=").append(sq.getClass().getSimpleName())
+                            .append(':').append(sq.getMessage()).append(' ');
+                    }
+                    // Firebase auto-inits via FirebaseInitProvider (a ContentProvider) before
+                    // onCreate in a real app; the probe skips providers, so init it explicitly
+                    // (reads FirebaseOptions from the APK's string resources). L10.A08 stub.
+                    try {
+                        android.content.res.Resources res =
+                                ((android.content.Context) uapp).getResources();
+                        int gid = res.getIdentifier("google_app_id", "string", "com.uptodown");
+                        ulog.append("gappid=").append(gid);
+                        if (gid != 0) ulog.append('=').append(res.getString(gid));
+                        ulog.append(' ');
+                    } catch (Throwable gt) {
+                        ulog.append("gappid=ERR:").append(gt.getClass().getSimpleName()).append(' ');
+                    }
+                    try {
+                        Class<?> fip = Class.forName(
+                                "com.google.firebase.provider.FirebaseInitProvider", true, uloader);
+                        Object cp = fip.getDeclaredConstructor().newInstance();
+                        android.content.pm.ProviderInfo pi = new android.content.pm.ProviderInfo();
+                        pi.authority = "com.uptodown.firebaseinitprovider";  // non-default (its check)
+                        pi.name = "com.google.firebase.provider.FirebaseInitProvider";
+                        fip.getMethod("attachInfo", android.content.Context.class,
+                                android.content.pm.ProviderInfo.class).invoke(cp, uapp, pi);
+                        Object r = fip.getMethod("onCreate").invoke(cp);
+                        ulog.append("fbInit=provider(").append(r).append(") gsi=")
+                            .append(WlPmHelper.gsiCalls).append('/').append(WlPmHelper.gsiLast).append(' ');
+                    } catch (Throwable ft) {
+                        Throwable fc = (ft instanceof java.lang.reflect.InvocationTargetException
+                                && ft.getCause() != null) ? ft.getCause() : ft;
+                        ulog.append("fbInit=").append(fc.getClass().getSimpleName())
+                            .append(':').append(fc.getMessage()).append(' ');
+                    }
+                    // Seed ActivityManager's IActivityManager singleton with a no-op proxy so
+                    // getRunningAppProcesses()/etc. return defaults instead of NPEing on the
+                    // absent ServiceManager binder (no Android system server on a bare board).
+                    try {
+                        Class<?> amCls = Class.forName("android.app.ActivityManager");
+                        java.lang.reflect.Field sf = amCls.getDeclaredField("IActivityManagerSingleton");
+                        sf.setAccessible(true);
+                        Object singleton = sf.get(null);
+                        Class<?> singCls = Class.forName("android.util.Singleton");
+                        java.lang.reflect.Field inf = singCls.getDeclaredField("mInstance");
+                        inf.setAccessible(true);
+                        // Prefer the concrete smali stub (robust); fall back to a dynamic proxy.
+                        Object amImpl;
+                        try {
+                            Class<?> amsvc = Class.forName("WlActivityManagerService", true,
+                                    Dayu600ApkStageProbe.class.getClassLoader());
+                            amImpl = amsvc.getDeclaredConstructor().newInstance();
+                        } catch (Throwable ne) {
+                            amImpl = noopProxy(Class.forName("android.app.IActivityManager"));
+                        }
+                        inf.set(singleton, amImpl);
+                        ulog.append("amSeed=").append(amImpl.getClass().getSimpleName()).append(' ');
+                    } catch (Throwable at) {
+                        StackTraceElement[] ast = at.getStackTrace();
+                        ulog.append("amSeed=").append(at.getClass().getSimpleName()).append(':')
+                            .append(at.getMessage());
+                        if (ast.length > 0) ulog.append("@").append(ast[0].getClassName())
+                            .append('.').append(ast[0].getMethodName()).append(':').append(ast[0].getLineNumber());
+                        ulog.append(' ');
+                    }
+                    // WorkManager auto-inits via androidx.startup WorkManagerInitializer before
+                    // onCreate; the app doesn't implement Configuration.Provider, so init it
+                    // explicitly with a default Configuration. L10.A08 (startup provider) stub.
+                    try {
+                        Class<?> cfgB = Class.forName("androidx.work.Configuration$Builder", true, uloader);
+                        Object b = cfgB.getDeclaredConstructor().newInstance();
+                        Class<?> cfgC = Class.forName("androidx.work.Configuration", true, uloader);
+                        Object cfg = cfgB.getMethod("build").invoke(b);
+                        Class<?> wm = Class.forName("androidx.work.WorkManager", true, uloader);
+                        wm.getMethod("initialize", android.content.Context.class, cfgC).invoke(null, uapp, cfg);
+                        ulog.append("wmInit=OK ");
+                    } catch (Throwable wt) {
+                        Throwable wc = (wt instanceof java.lang.reflect.InvocationTargetException
+                                && wt.getCause() != null) ? wt.getCause() : wt;
+                        ulog.append("wmInit=").append(wc.getClass().getSimpleName())
+                            .append(':').append(wc.getMessage());
+                        StackTraceElement[] wst = wc.getStackTrace();
+                        for (int i2 = 0; i2 < Math.min(14, wst.length); i2++)
+                            ulog.append(" @").append(wst[i2].getClassName()).append('.')
+                                .append(wst[i2].getMethodName()).append(':').append(wst[i2].getLineNumber());
+                        ulog.append(' ');
+                    }
+                    // Fallback: if full initialize failed (needs the system server), seed a stub
+                    // WorkManagerImpl so getInstance() returns and onCreate proceeds — reveals what
+                    // lies past the WorkManager wall (subsequent enqueue calls will no-op/fail).
+                    try {
+                        Class<?> wmi = Class.forName("androidx.work.impl.WorkManagerImpl", true, uloader);
+                        java.lang.reflect.Method gi = wmi.getDeclaredMethod("getInstance");
+                        gi.setAccessible(true);
+                        if (gi.invoke(null) == null) {
+                            Object stub = wlAlloc(wmi);
+                            java.lang.reflect.Field sdi = wmi.getDeclaredField("sDefaultInstance");
+                            sdi.setAccessible(true);
+                            sdi.set(null, stub);
+                            ulog.append("wmStub=").append(stub != null ? "seeded" : "allocNull").append(' ');
+                        } else { ulog.append("wmStub=alreadyInit "); }
+                    } catch (Throwable ws) {
+                        ulog.append("wmStub=ERR:").append(ws.getClass().getSimpleName()).append(' ');
+                    }
                     // Watchdog: onCreate runs on THIS (main) thread for correct behavior, but a
                     // daemon dumps the main-thread stack + force-halts after 45s if onCreate hangs
                     // or loops (e.g. an eager network call over the dummy TLS socket) — so it never
@@ -1806,12 +2170,22 @@ public final class Dayu600ApkStageProbe {
                         ocDone[0] = true;
                         Throwable oc = (ot instanceof java.lang.reflect.InvocationTargetException
                                 && ot.getCause() != null) ? ot.getCause() : ot;
+                        // Unwrap wrapper exceptions (ExecutionException/InvocationTargetException)
+                        // to the ROOT cause, whose stack shows where the failure actually happened.
+                        while ((oc instanceof java.util.concurrent.ExecutionException
+                                || oc instanceof java.lang.reflect.InvocationTargetException
+                                || oc instanceof RuntimeException && oc.getCause() != null
+                                   && oc.getStackTrace().length == 0)
+                                && oc.getCause() != null && oc.getCause() != oc) {
+                            oc = oc.getCause();
+                        }
                         ulog.append("appOnCreate=FAIL:").append(oc.getClass().getSimpleName()).append(':').append(oc.getMessage());
                         StackTraceElement[] ost = oc.getStackTrace();
-                        for (int i2 = 0; i2 < Math.min(4, ost.length); i2++)
+                        for (int i2 = 0; i2 < Math.min(12, ost.length); i2++)
                             ulog.append(" @").append(ost[i2].getClassName()).append('.')
                                 .append(ost[i2].getMethodName()).append(':').append(ost[i2].getLineNumber());
-                        ulog.append(' ');
+                        ulog.append(" gsiEnd=").append(WlPmHelper.gsiCalls).append('/').append(WlPmHelper.gsiLast)
+                            .append(" gpm=").append(WL_GPM_CALLS).append(' ');
                     }
                 } catch (Throwable nt) {
                     Throwable nc = (nt instanceof java.lang.reflect.InvocationTargetException
@@ -1828,7 +2202,9 @@ public final class Dayu600ApkStageProbe {
                 // (ActivityThread does this in a real app; the probe must do it explicitly).
                 try {
                     if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper();
-                    ulog.append("looper=OK ");
+                    ulog.append("looper=OK mainThr=").append(Thread.currentThread().getName())
+                        .append("/mainLooper=").append(android.os.Looper.getMainLooper() == null ? "NULL" : "ok")
+                        .append("/LooperCL=").append(System.identityHashCode(android.os.Looper.class)).append(' ');
                 } catch (Throwable lt) {
                     ulog.append("looper=").append(lt.getClass().getSimpleName()).append(' ');
                 }

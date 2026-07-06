@@ -506,6 +506,18 @@ static int westlake_uses_framework_shim(void)
     return !(omit && streq(omit, "1"));
 }
 
+/* The 2048 game apk is a self-contained R8-minified test app. Placing it on the
+ * shared boot/app classpath pollutes the namespace with obfuscated short names
+ * (a.a, d1.h, ...) that collide with any OTHER app launched on top — real Android
+ * never puts one app on another app's classpath. Gate it so only the 2048 stage
+ * (which sets WESTLAKE_INCLUDE_GAME_APK=1) pays for it; every other run gets a
+ * clean parent loader. */
+static int westlake_includes_game_apk(void)
+{
+    char *inc = getenv("WESTLAKE_INCLUDE_GAME_APK");
+    return inc && streq(inc, "1");
+}
+
 static char *build_root_path(char *dst, unsigned long cap, const char *suffix)
 {
     unsigned long pos = 0;
@@ -590,7 +602,12 @@ static char *build_bootclasspath_option(void)
         append_text(option, sizeof(option), &pos, root);
         append_text(option, sizeof(option), &pos, "/apks/dayu600-apk-probe.dex:");
         append_text(option, sizeof(option), &pos, root);
-        append_text(option, sizeof(option), &pos, "/apks/2048-2-9.apk");
+        append_text(option, sizeof(option), &pos, "/apks/icu-data.jar");
+        if (westlake_includes_game_apk()) {
+            append_text(option, sizeof(option), &pos, ":");
+            append_text(option, sizeof(option), &pos, root);
+            append_text(option, sizeof(option), &pos, "/apks/2048-2-9.apk");
+        }
         return option;
     }
     append_text(option, sizeof(option), &pos, root);
@@ -616,9 +633,12 @@ static char *build_bootclasspath_option(void)
     append_text(option, sizeof(option), &pos, root);
     append_text(option, sizeof(option), &pos, "/apks/dayu600-androidx-overlay-stub.dex:");
     append_text(option, sizeof(option), &pos, root);
-    append_text(option, sizeof(option), &pos, "/apks/dayu600-apk-probe.dex:");
-    append_text(option, sizeof(option), &pos, root);
-    append_text(option, sizeof(option), &pos, "/apks/2048-2-9.apk");
+    append_text(option, sizeof(option), &pos, "/apks/dayu600-apk-probe.dex");
+    if (westlake_includes_game_apk()) {
+        append_text(option, sizeof(option), &pos, ":");
+        append_text(option, sizeof(option), &pos, root);
+        append_text(option, sizeof(option), &pos, "/apks/2048-2-9.apk");
+    }
     return option;
 }
 
@@ -639,7 +659,12 @@ static char *build_classpath_value(void)
         append_text(value, sizeof(value), &pos, root);
         append_text(value, sizeof(value), &pos, "/apks/dayu600-apk-probe.dex:");
         append_text(value, sizeof(value), &pos, root);
-        append_text(value, sizeof(value), &pos, "/apks/2048-2-9.apk");
+        append_text(value, sizeof(value), &pos, "/apks/icu-data.jar");
+        if (westlake_includes_game_apk()) {
+            append_text(value, sizeof(value), &pos, ":");
+            append_text(value, sizeof(value), &pos, root);
+            append_text(value, sizeof(value), &pos, "/apks/2048-2-9.apk");
+        }
         return value;
     }
     if (westlake_uses_framework_shim()) {
@@ -649,9 +674,12 @@ static char *build_classpath_value(void)
     append_text(value, sizeof(value), &pos, root);
     append_text(value, sizeof(value), &pos, "/apks/dayu600-androidx-overlay-stub.dex:");
     append_text(value, sizeof(value), &pos, root);
-    append_text(value, sizeof(value), &pos, "/apks/dayu600-apk-probe.dex:");
-    append_text(value, sizeof(value), &pos, root);
-    append_text(value, sizeof(value), &pos, "/apks/2048-2-9.apk");
+    append_text(value, sizeof(value), &pos, "/apks/dayu600-apk-probe.dex");
+    if (westlake_includes_game_apk()) {
+        append_text(value, sizeof(value), &pos, ":");
+        append_text(value, sizeof(value), &pos, root);
+        append_text(value, sizeof(value), &pos, "/apks/2048-2-9.apk");
+    }
     return value;
 }
 
