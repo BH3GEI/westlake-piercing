@@ -33,6 +33,194 @@ public final class Dayu600ApkStageProbe {
         }
     }
 
+    // Minimal self-contained base Context for a bare-newInstance'd Application: overrides
+    // only what an app's onCreate touches (getApplicationContext/getAssets/getResources/
+    // getPackageName), returning the app's own AssetManager + Resources. base is null but
+    // never delegated to since the reached methods are overridden. Avoids ActivityThread.
+    static final class ProbeContext extends android.content.ContextWrapper {
+        private final android.content.res.AssetManager am;
+        private android.content.res.Resources res;   // built lazily (Resources ctor hits native)
+        ProbeContext(android.content.res.AssetManager am) {
+            super(null);
+            this.am = am;
+        }
+        public android.content.Context getApplicationContext() { return this; }
+        // Return null: the app only uses getAssets() for Typeface.createFromAsset(fonts), which
+        // gracefully falls back to Typeface.DEFAULT on null. A non-null AssetManager would try to
+        // openFd the font (nativeOpenAssetFd, not registered) and crash outside the app's try.
+        // getResources() below still uses the real AssetManager for arsc-backed lookups.
+        public android.content.res.AssetManager getAssets() { return null; }
+        public android.content.res.Resources getResources() {
+            if (res == null) {
+                android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+                dm.setToDefaults();
+                res = new android.content.res.Resources(am, dm, new android.content.res.Configuration());
+            }
+            return res;
+        }
+        public String getPackageName() { return "com.uptodown"; }
+        public Object getSystemService(String name) {
+            try {
+                // ActivityManager.getMemoryClass() reads a system property (no binder needed),
+                // so a reflectively-constructed instance is enough for cache-sizing in onCreate.
+                if ("activity".equals(name)) {
+                    java.lang.reflect.Constructor<?> c = android.app.ActivityManager.class
+                            .getDeclaredConstructor(android.content.Context.class, android.os.Handler.class);
+                    c.setAccessible(true);
+                    return c.newInstance(this, null);
+                }
+            } catch (Throwable t) { /* fall through to null */ }
+            return null;
+        }
+        // The app's onCreate touches real storage dirs (cache/files). Back them with a
+        // writable subtree under the substrate root so getCacheDir()/etc. don't NPE.
+        private static java.io.File appDir(String sub) {
+            java.io.File d = new java.io.File(rootPath() + "/appdata/" + sub);
+            d.mkdirs();
+            return d;
+        }
+        public java.io.File getCacheDir() { return appDir("cache"); }
+        public java.io.File getCodeCacheDir() { return appDir("code_cache"); }
+        public java.io.File getFilesDir() { return appDir("files"); }
+        public java.io.File getNoBackupFilesDir() { return appDir("no_backup"); }
+        public java.io.File getDir(String name, int mode) { return appDir("app_" + name); }
+        public java.io.File getExternalCacheDir() { return appDir("ext_cache"); }
+        public java.io.File getExternalFilesDir(String type) {
+            return appDir(type == null ? "ext_files" : "ext_files/" + type);
+        }
+        public java.io.File getDatabasePath(String name) {
+            return new java.io.File(appDir("databases"), name);
+        }
+        public android.content.pm.ApplicationInfo getApplicationInfo() {
+            android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
+            ai.packageName = "com.uptodown";
+            ai.dataDir = rootPath() + "/appdata";
+            ai.nativeLibraryDir = appDir("lib").getAbsolutePath();
+            ai.targetSdkVersion = 33;
+            ai.uid = 10000;
+            return ai;
+        }
+        public String getPackageResourcePath() { return rootPath() + "/apks/test.apk"; }
+        public String getPackageCodePath() { return rootPath() + "/apks/test.apk"; }
+        public ClassLoader getClassLoader() { return ProbeContext.class.getClassLoader(); }
+        public android.content.ContentResolver getContentResolver() { return null; }
+        public android.os.Looper getMainLooper() { return android.os.Looper.getMainLooper(); }
+        public android.content.res.Resources.Theme getTheme() { return getResources().newTheme(); }
+        private final java.util.Map<String, android.content.SharedPreferences> prefsCache =
+                new java.util.HashMap<String, android.content.SharedPreferences>();
+        public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
+            synchronized (prefsCache) {
+                android.content.SharedPreferences p = prefsCache.get(name);
+                if (p == null) { p = new LiteSharedPrefs(); prefsCache.put(name, p); }
+                return p;
+            }
+        }
+    }
+
+    // In-memory SharedPreferences — apps read/write prefs heavily in onCreate; the real impl
+    // needs a backing file + system plumbing. This satisfies the API without persistence.
+    public static final class LiteSharedPrefs implements android.content.SharedPreferences {
+        private final java.util.Map<String, Object> map =
+                new java.util.concurrent.ConcurrentHashMap<String, Object>();
+        public java.util.Map<String, ?> getAll() { return new java.util.HashMap<String, Object>(map); }
+        public String getString(String k, String d) { Object v = map.get(k); return v instanceof String ? (String) v : d; }
+        @SuppressWarnings("unchecked")
+        public java.util.Set<String> getStringSet(String k, java.util.Set<String> d) {
+            Object v = map.get(k); return v instanceof java.util.Set ? (java.util.Set<String>) v : d; }
+        public int getInt(String k, int d) { Object v = map.get(k); return v instanceof Integer ? (Integer) v : d; }
+        public long getLong(String k, long d) { Object v = map.get(k); return v instanceof Long ? (Long) v : d; }
+        public float getFloat(String k, float d) { Object v = map.get(k); return v instanceof Float ? (Float) v : d; }
+        public boolean getBoolean(String k, boolean d) { Object v = map.get(k); return v instanceof Boolean ? (Boolean) v : d; }
+        public boolean contains(String k) { return map.containsKey(k); }
+        public android.content.SharedPreferences.Editor edit() { return new LiteEditor(map); }
+        public void registerOnSharedPreferenceChangeListener(
+                android.content.SharedPreferences.OnSharedPreferenceChangeListener l) {}
+        public void unregisterOnSharedPreferenceChangeListener(
+                android.content.SharedPreferences.OnSharedPreferenceChangeListener l) {}
+    }
+    public static final class LiteEditor implements android.content.SharedPreferences.Editor {
+        private final java.util.Map<String, Object> map;
+        LiteEditor(java.util.Map<String, Object> m) { this.map = m; }
+        public android.content.SharedPreferences.Editor putString(String k, String v) { map.put(k, v == null ? "" : v); return this; }
+        public android.content.SharedPreferences.Editor putStringSet(String k, java.util.Set<String> v) { if (v != null) map.put(k, v); return this; }
+        public android.content.SharedPreferences.Editor putInt(String k, int v) { map.put(k, v); return this; }
+        public android.content.SharedPreferences.Editor putLong(String k, long v) { map.put(k, v); return this; }
+        public android.content.SharedPreferences.Editor putFloat(String k, float v) { map.put(k, v); return this; }
+        public android.content.SharedPreferences.Editor putBoolean(String k, boolean v) { map.put(k, v); return this; }
+        public android.content.SharedPreferences.Editor remove(String k) { map.remove(k); return this; }
+        public android.content.SharedPreferences.Editor clear() { map.clear(); return this; }
+        public boolean commit() { return true; }
+        public void apply() {}
+    }
+
+    // Lightweight pure-Java JSSE provider. OkHttp's constructor EAGERLY builds an
+    // SSLSocketFactory, but only needs SSLContext.getInstance("TLS") + TrustManagerFactory
+    // + a socket factory to EXIST — the real handshake crypto happens later, not in onCreate.
+    // BouncyCastle's JSSE enumerates/EC-tests every cipher suite & named group at construction,
+    // which takes minutes in the C++ interpreter and pegs the device. This provider does ZERO
+    // crypto at construction so onCreate completes instantly. (Real HTTPS would need a native
+    // TLS wired into createSocket — a separate concern from getting onCreate to finish.)
+    public static final class LiteTlsProvider extends java.security.Provider {
+        public LiteTlsProvider() {
+            super("WestlakeLiteTLS", 1.0, "Lightweight pure-Java TLS (onCreate construction only)");
+            String ctx = LiteSslContextSpi.class.getName();
+            put("SSLContext.TLS", ctx);
+            put("SSLContext.TLSv1.2", ctx);
+            put("SSLContext.TLSv1.3", ctx);
+            put("SSLContext.Default", ctx);
+            String tmf = LiteTmfSpi.class.getName();
+            put("TrustManagerFactory.PKIX", tmf);
+            put("TrustManagerFactory.SunX509", tmf);
+            put("Alg.Alias.TrustManagerFactory.X509", "PKIX");
+            String kmf = LiteKmfSpi.class.getName();
+            put("KeyManagerFactory.PKIX", kmf);
+            put("KeyManagerFactory.SunX509", kmf);
+        }
+    }
+    public static final class LiteSslContextSpi extends javax.net.ssl.SSLContextSpi {
+        protected void engineInit(javax.net.ssl.KeyManager[] km, javax.net.ssl.TrustManager[] tm,
+                                  java.security.SecureRandom sr) {}
+        protected javax.net.ssl.SSLSocketFactory engineGetSocketFactory() { return new LiteSslSocketFactory(); }
+        protected javax.net.ssl.SSLServerSocketFactory engineGetServerSocketFactory() { return null; }
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine() { return null; }
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine(String host, int port) { return null; }
+        protected javax.net.ssl.SSLSessionContext engineGetServerSessionContext() { return null; }
+        protected javax.net.ssl.SSLSessionContext engineGetClientSessionContext() { return null; }
+    }
+    public static final class LiteSslSocketFactory extends javax.net.ssl.SSLSocketFactory {
+        private static final String[] SUITES = { "TLS_AES_128_GCM_SHA256" };
+        public String[] getDefaultCipherSuites() { return SUITES.clone(); }
+        public String[] getSupportedCipherSuites() { return SUITES.clone(); }
+        public java.net.Socket createSocket(java.net.Socket s, String host, int port, boolean autoClose)
+                throws java.io.IOException { return s; }
+        public java.net.Socket createSocket(String host, int port) throws java.io.IOException {
+            return new java.net.Socket(); }
+        public java.net.Socket createSocket(String host, int port, java.net.InetAddress lh, int lp)
+                throws java.io.IOException { return new java.net.Socket(); }
+        public java.net.Socket createSocket(java.net.InetAddress host, int port) throws java.io.IOException {
+            return new java.net.Socket(); }
+        public java.net.Socket createSocket(java.net.InetAddress a, int p, java.net.InetAddress lh, int lp)
+                throws java.io.IOException { return new java.net.Socket(); }
+    }
+    public static final class LiteTmfSpi extends javax.net.ssl.TrustManagerFactorySpi {
+        protected void engineInit(java.security.KeyStore ks) {}
+        protected void engineInit(javax.net.ssl.ManagerFactoryParameters p) {}
+        protected javax.net.ssl.TrustManager[] engineGetTrustManagers() {
+            return new javax.net.ssl.TrustManager[] { new javax.net.ssl.X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return new java.security.cert.X509Certificate[0]; }
+            }};
+        }
+    }
+    public static final class LiteKmfSpi extends javax.net.ssl.KeyManagerFactorySpi {
+        protected void engineInit(java.security.KeyStore ks, char[] pw) {}
+        protected void engineInit(javax.net.ssl.ManagerFactoryParameters p) {}
+        protected javax.net.ssl.KeyManager[] engineGetKeyManagers() {
+            return new javax.net.ssl.KeyManager[0]; }
+    }
+
     private static String rootPath() {
         String root = System.getenv("WESTLAKE_ROOT");
         return root == null || root.length() == 0
@@ -863,6 +1051,20 @@ public final class Dayu600ApkStageProbe {
                         }
                         sysresNote += "SMFIELDS[" + fs + "] ";
                     } catch (Throwable ft) { sysresNote += "SMFIELDS_FAIL[" + ft + "] "; }
+                    // Enumerate ALL java.lang.reflect.Proxy static fields — the boot image left
+                    // several null (proxyClassCache, comparators); find any remaining nulls to repair.
+                    try {
+                        Class<?> proxyCls = Class.forName("java.lang.reflect.Proxy");
+                        StringBuilder pf = new StringBuilder();
+                        for (java.lang.reflect.Field ff : proxyCls.getDeclaredFields()) {
+                            if (java.lang.reflect.Modifier.isStatic(ff.getModifiers())) {
+                                ff.setAccessible(true);
+                                Object val = null; try { val = ff.get(null); } catch (Throwable ig) {}
+                                pf.append(ff.getName()).append('=').append(val == null ? "NULL" : "set").append(' ');
+                            }
+                        }
+                        sysresNote += "PROXYSTATICS[" + pf + "] ";
+                    } catch (Throwable pe) { sysresNote += "PROXYSTATICS_FAIL[" + pe + "] "; }
                     // Isolate: does dynamic Proxy work AT ALL (over a simple public interface)?
                     try {
                         Object tp = java.lang.reflect.Proxy.newProxyInstance(
@@ -923,11 +1125,35 @@ public final class Dayu600ApkStageProbe {
             return;
         }
         if ("uptodownProbe".equals(stage)) {
+            // Point ICU4J at the repackaged ICU data (device icudt74 relabeled icudt75l) so
+            // android.icu UResourceBundle locale lookups (needed in onCreate) resolve. The
+            // dataPath property is read once at ICUBinary.<clinit> (already run at boot with an
+            // empty path), so also reflectively add our path to its cached icuDataFiles list.
+            try { System.setProperty("android.icu.impl.ICUBinary.dataPath", rootPath() + "/icu"); }
+            catch (Throwable ig) {}
+            try {
+                Class<?> icb = Class.forName("android.icu.impl.ICUBinary");
+                java.lang.reflect.Field df = icb.getDeclaredField("icuDataFiles");
+                df.setAccessible(true);
+                java.util.List<?> dlist = (java.util.List<?>) df.get(null);
+                java.lang.reflect.Method addm = icb.getDeclaredMethod(
+                        "addDataFilesFromPath", String.class, java.util.List.class);
+                addm.setAccessible(true);
+                addm.invoke(null, rootPath() + "/icu", dlist);
+                writeText(probeLogPath("uptodown-probe.txt"), "icuData=" + (dlist == null ? "null" : dlist.size()));
+            } catch (Throwable icx) {
+                writeText(probeLogPath("uptodown-probe.txt"),
+                        "icuData=FAIL:" + icx.getClass().getSimpleName() + ":" + icx.getMessage());
+            }
             // First strike at the user-supplied test.apk (com.uptodown 7.33): resource engine on
             // its arsc, dex classload, then headless UptodownApp/MainActivity bring-up. Incremental
             // writeText so partial progress survives a crash.
             StringBuilder ulog = new StringBuilder();
             java.io.File apkF = new java.io.File(apkPath("test-uptodown.apk"));
+            // AssetManager the resource-enum stage builds over the app APK; reused as the app's
+            // base-Context AssetManager so we don't re-load the same APK (which would hit the
+            // unregistered ApkAssets.nativeIsUpToDate cache-check native).
+            android.content.res.AssetManager uamShared = null;
             ulog.append("apk=").append(apkF.exists() ? apkF.length() : -1).append(' ');
             writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
             try {
@@ -949,6 +1175,7 @@ public final class Dayu600ApkStageProbe {
                     uaf.set(uam, java.lang.reflect.Array.newInstance(apkCls2, 0));
                     Object ck = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
                             .invoke(uam, apkF.getAbsolutePath());
+                    uamShared = uam;
                     ulog.append("cookie=").append(ck).append(' ');
                     java.lang.reflect.Method ngn = android.content.res.AssetManager.class
                             .getDeclaredMethod("nativeGetResourceName", long.class, int.class);
@@ -1058,50 +1285,29 @@ public final class Dayu600ApkStageProbe {
                     // getAssets/getResources/...) NPEs. Attach a real system Context the same
                     // way assetProbe does (ActivityThread.systemMain().getSystemContext()).
                     try {
-                        // (a) Wire REAL framework resources into the system AssetManager first —
-                        // ActivityThread.getSystemContext() resolves framework resource IDs, which
-                        // NotFound unless sSystem points at framework-res.apk (assetProbe recipe).
+                        // Build a self-contained base Context (avoids ActivityThread.getSystemContext,
+                        // which NotFounds on com.android.internal.R IDs the SDK-derived framework-res
+                        // doesn't match): a ContextWrapper(null) subclass whose overrides return the
+                        // app's own AssetManager + a Resources over it, and getApplicationContext()==this.
                         Class<?> amCls = android.content.res.AssetManager.class;
                         Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
-                        java.lang.reflect.Constructor<?> acC = amCls.getDeclaredConstructor(boolean.class);
-                        acC.setAccessible(true);
-                        java.lang.reflect.Field mApkAssetsF = amCls.getDeclaredField("mApkAssets");
-                        mApkAssetsF.setAccessible(true);
-                        String fwResPath = rootPath() + "/android/framework/framework-res.apk";
-                        int propSystem = 1;
-                        try { propSystem = apkAssetsCls.getField("PROPERTY_SYSTEM").getInt(null); } catch (Throwable ig) {}
-                        Object fwApk = apkAssetsCls.getMethod("loadFromPath", String.class, int.class)
-                                .invoke(null, fwResPath, propSystem);
-                        Object sysArr = java.lang.reflect.Array.newInstance(apkAssetsCls, 1);
-                        java.lang.reflect.Array.set(sysArr, 0, fwApk);
-                        java.lang.reflect.Field fSArr = amCls.getDeclaredField("sSystemApkAssets");
-                        fSArr.setAccessible(true); fSArr.set(null, sysArr);
-                        java.lang.reflect.Field fSSet = amCls.getDeclaredField("sSystemApkAssetsSet");
-                        fSSet.setAccessible(true);
-                        Class<?> asCls = Class.forName("android.util.ArraySet");
-                        Object aset = asCls.getConstructor().newInstance();
-                        asCls.getMethod("add", Object.class).invoke(aset, fwApk);
-                        fSSet.set(null, aset);
-                        Object sysAm = acC.newInstance(Boolean.TRUE);
-                        mApkAssetsF.set(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
-                        amCls.getMethod("setApkAssets", sysArr.getClass(), boolean.class)
-                                .invoke(sysAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0), false);
-                        java.lang.reflect.Field fSys = amCls.getDeclaredField("sSystem");
-                        fSys.setAccessible(true); fSys.set(null, sysAm);
-                        try { java.lang.reflect.Field rSys = android.content.res.Resources.class.getDeclaredField("mSystem");
-                              rSys.setAccessible(true); rSys.set(null, null); } catch (Throwable ig) {}
-                        // (b) Install OHServiceManager so ActivityThread boot's getService() calls
-                        // return local-binder adapter stubs instead of NPEing.
-                        try { Class.forName("westlake.adapter.OHServiceManager").getMethod("install").invoke(null); }
-                        catch (Throwable ig) {}
-                        // (c) Real system Context via ActivityThread, attach as the app's base Context.
-                        Class<?> atCls = Class.forName("android.app.ActivityThread");
-                        Object at = atCls.getMethod("systemMain").invoke(null);
-                        Object sysCtx = atCls.getMethod("getSystemContext").invoke(at);
+                        // Reuse the AssetManager the res-enum stage already built over this APK.
+                        // Building a second one re-loads the APK → ApkAssets.nativeIsUpToDate (unregistered).
+                        android.content.res.AssetManager appAm = uamShared;
+                        if (appAm == null) {
+                            java.lang.reflect.Constructor<?> acC = amCls.getDeclaredConstructor(boolean.class);
+                            acC.setAccessible(true);
+                            java.lang.reflect.Field mApkAssetsF = amCls.getDeclaredField("mApkAssets");
+                            mApkAssetsF.setAccessible(true);
+                            appAm = (android.content.res.AssetManager) acC.newInstance(Boolean.TRUE);
+                            mApkAssetsF.set(appAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
+                            amCls.getMethod("addAssetPath", String.class).invoke(appAm, apkF.getAbsolutePath());
+                        }
+                        android.content.Context baseCtx = new ProbeContext(appAm);
                         java.lang.reflect.Field mBaseF =
                                 Class.forName("android.content.ContextWrapper").getDeclaredField("mBase");
                         mBaseF.setAccessible(true);
-                        mBaseF.set(uapp, sysCtx);
+                        mBaseF.set(uapp, baseCtx);
                         ulog.append("ctxAttach=OK ");
                     } catch (Throwable cx) {
                         Throwable cxc = (cx instanceof java.lang.reflect.InvocationTargetException
@@ -1109,9 +1315,495 @@ public final class Dayu600ApkStageProbe {
                         ulog.append("ctxAttach=FAIL:").append(cxc.getClass().getSimpleName())
                             .append(':').append(cxc.getMessage()).append(' ');
                     }
+                    // ROOT: java.nio.charset.StandardCharsets.* are null in this runtime (their
+                    // <clinit> left the static-finals unset), so ZipFile.<init> reads a null UTF_8 →
+                    // NPE:charset when opening ANY jar → VMClassLoader/getResourceAsStream/ICU all die.
+                    // Re-initialize them via Charset.forName now that the charset infra is warm.
+                    try {
+                        // Charset's own static caches are null (its <clinit> left them unset), so
+                        // Charset.forName NPEs at `monitor-enter cache2` before it can create anything.
+                        // Seed them first; then forName("UTF-8") reaches libicu's native converter (no
+                        // .dat data needed) and works.
+                        Class<?> chCls = Class.forName("java.nio.charset.Charset");
+                        java.lang.reflect.Field c2 = chCls.getDeclaredField("cache2");
+                        c2.setAccessible(true);
+                        if (c2.get(null) == null) c2.set(null, new java.util.HashMap<Object,Object>());
+                        try {
+                            java.lang.reflect.Field gate = chCls.getDeclaredField("gate");
+                            gate.setAccessible(true);
+                            if (gate.get(null) == null) gate.set(null, new ThreadLocal<Object>());
+                        } catch (Throwable ig) {}
+                        Class<?> sc = Class.forName("java.nio.charset.StandardCharsets");
+                        String[][] cs = {{"UTF_8","UTF-8"},{"ISO_8859_1","ISO-8859-1"},{"US_ASCII","US-ASCII"},
+                                {"UTF_16","UTF-16"},{"UTF_16BE","UTF-16BE"},{"UTF_16LE","UTF-16LE"}};
+                        int fixed = 0;
+                        for (String[] c : cs) {
+                            java.lang.reflect.Field f = sc.getField(c[0]);
+                            f.setAccessible(true);
+                            if (f.get(null) == null) { f.set(null, java.nio.charset.Charset.forName(c[1])); fixed++; }
+                        }
+                        // Same cascade: CodingErrorAction.{IGNORE,REPLACE,REPORT} static-finals are
+                        // null → CharsetEncoder.onMalformedInput(null) throws "Null action" when
+                        // UnixPath encodes a path. Re-seed them (private ctor takes a name String).
+                        Class<?> cea = Class.forName("java.nio.charset.CodingErrorAction");
+                        java.lang.reflect.Constructor<?> ceaC = cea.getDeclaredConstructor(String.class);
+                        ceaC.setAccessible(true);
+                        for (String nm : new String[]{"IGNORE","REPLACE","REPORT"}) {
+                            java.lang.reflect.Field ff = cea.getDeclaredField(nm);
+                            ff.setAccessible(true);
+                            if (ff.get(null) == null) { ff.set(null, ceaC.newInstance(nm)); fixed++; }
+                        }
+                        try {
+                            java.nio.ByteBuffer bb = java.nio.charset.StandardCharsets.UTF_8.newEncoder()
+                                    .encode(java.nio.CharBuffer.wrap("/abc"));
+                            ulog.append("u8enc=").append(bb.remaining()).append(' ');
+                            try {
+                                java.nio.CharBuffer cbuf = java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                                        .decode(java.nio.ByteBuffer.wrap(new byte[]{'a', 'b', 'c'}));
+                                String dec = cbuf.toString();
+                                ulog.append("u8dec=[").append(dec).append("]len").append(dec == null ? -1 : dec.length()).append(' ');
+                                // ZipCoder path: new String(bytes, off, len, UTF_8) — the actual entry-name decode.
+                                String sd = new String(new byte[]{97, 98, 99, 47, 100}, 0, 5,
+                                        java.nio.charset.StandardCharsets.UTF_8);
+                                ulog.append("strDec=[").append(sd).append("]len").append(sd == null ? -1 : sd.length()).append(' ');
+                            } catch (Throwable de) {
+                                ulog.append("u8dec=FAIL:").append(de.getClass().getSimpleName())
+                                    .append(':').append(de.getMessage()).append(' ');
+                            }
+                        } catch (Throwable te) {
+                            ulog.append("u8enc=FAIL:").append(te.getClass().getSimpleName())
+                                .append(':').append(te.getMessage()).append(' ');
+                        }
+                        try {
+                            java.lang.reflect.Field tf = Class.forName("jdk.internal.misc.Unsafe").getDeclaredField("theUnsafe");
+                            tf.setAccessible(true);
+                            Object u = tf.get(null);
+                            Object addr = u.getClass().getMethod("allocateMemory", long.class).invoke(u, 64L);
+                            ulog.append("unsafeAlloc=").append(addr).append(' ');
+                            // also test UnixPath byte encoding path (what feeds stat0's buffer)
+                            java.nio.file.Path pp = new java.io.File("/system").toPath();
+                            ulog.append("pathToStr=").append(pp.toString()).append(' ');
+                        } catch (Throwable ut) {
+                            Throwable uc = (ut instanceof java.lang.reflect.InvocationTargetException
+                                    && ut.getCause() != null) ? ut.getCause() : ut;
+                            ulog.append("unsafeAlloc=FAIL:").append(uc.getClass().getSimpleName())
+                                .append(':').append(uc.getMessage()).append(' ');
+                        }
+                        ulog.append("charsetFix=").append(fixed)
+                            .append("/UTF8=").append(java.nio.charset.StandardCharsets.UTF_8 != null).append(' ');
+                    } catch (Throwable csx) {
+                        Throwable cc = (csx instanceof java.lang.reflect.InvocationTargetException
+                                && csx.getCause() != null) ? csx.getCause() : csx;
+                        ulog.append("charsetFix=FAIL:").append(cc.getClass().getSimpleName())
+                            .append(':').append(cc.getMessage()).append(' ');
+                    }
+                    // Boot-image class whose <clinit> did not run → defaultCharBufferSize left 0
+                    // → System.out.print → BufferedWriter throws "Buffer size <= 0". Seed it.
+                    try {
+                        java.lang.reflect.Field dcbs = java.io.BufferedWriter.class
+                                .getDeclaredField("defaultCharBufferSize");
+                        dcbs.setAccessible(true);
+                        int cur = dcbs.getInt(null);
+                        if (cur <= 0) dcbs.setInt(null, 8192);
+                        ulog.append("bwFix=").append(cur).append("->").append(dcbs.getInt(null)).append(' ');
+                    } catch (Throwable bwx) {
+                        ulog.append("bwFix=FAIL:").append(bwx.getClass().getSimpleName()).append(' ');
+                    }
+                    // Boot-image java.security.Security.spiMap left null (<clinit> didn't run) →
+                    // Security.getSpiClass → Map.get(null) NPE during KeyStore/TrustManager lookup.
+                    try {
+                        java.lang.reflect.Field sm = java.security.Security.class.getDeclaredField("spiMap");
+                        sm.setAccessible(true);
+                        if (sm.get(null) == null) {
+                            sm.set(null, new java.util.concurrent.ConcurrentHashMap<Object, Object>());
+                            ulog.append("spiMapFix=seeded ");
+                        } else {
+                            ulog.append("spiMapFix=already ");
+                        }
+                    } catch (Throwable smx) {
+                        ulog.append("spiMapFix=").append(smx.getClass().getSimpleName()).append(' ');
+                    }
+                    // More boot-image null statics: the AtomicReferenceFieldUpdater fields that
+                    // Buffered{Input,Output}Stream.close() use are null (their <clinit> didn't run)
+                    // → NPE on close. Seed them.
+                    try {
+                        int seeded = 0;
+                        java.lang.reflect.Field biu = java.io.BufferedInputStream.class
+                                .getDeclaredField("bufUpdater");
+                        biu.setAccessible(true);
+                        if (biu.get(null) == null) {
+                            biu.set(null, java.util.concurrent.atomic.AtomicReferenceFieldUpdater
+                                    .newUpdater(java.io.BufferedInputStream.class, byte[].class, "buf"));
+                            seeded++;
+                        }
+                        try {
+                            java.lang.reflect.Field bou = java.io.BufferedOutputStream.class
+                                    .getDeclaredField("bufUpdater");
+                            bou.setAccessible(true);
+                            if (bou.get(null) == null) {
+                                bou.set(null, java.util.concurrent.atomic.AtomicReferenceFieldUpdater
+                                        .newUpdater(java.io.BufferedOutputStream.class, byte[].class, "buf"));
+                                seeded++;
+                            }
+                        } catch (NoSuchFieldException nf) { /* BufferedOutputStream may not use one */ }
+                        ulog.append("bufUpdFix=").append(seeded).append(' ');
+                    } catch (Throwable bux) {
+                        ulog.append("bufUpdFix=").append(bux.getClass().getSimpleName()).append(' ');
+                    }
+                    // TLS diagnostic: which security providers exist + can we get an "TLS" SSLContext?
+                    try {
+                        java.security.Provider[] ps = java.security.Security.getProviders();
+                        StringBuilder pn = new StringBuilder();
+                        for (java.security.Provider p : ps) pn.append(p.getName()).append(':').append(
+                                p.getClass().getName()).append(',');
+                        ulog.append("providers=[").append(pn).append("] ");
+                    } catch (Throwable t) { ulog.append("providers=ERR:").append(t.getClass().getSimpleName()).append(' '); }
+                    try {
+                        javax.net.ssl.SSLContext tc = javax.net.ssl.SSLContext.getInstance("TLS");
+                        ulog.append("tlsCtx=").append(tc.getProvider().getName()).append(' ');
+                        try {
+                            tc.init(null, null, null);
+                            javax.net.ssl.SSLSocketFactory sf = tc.getSocketFactory();
+                            ulog.append("tlsSF=").append(sf != null ? "OK" : "null").append(' ');
+                        } catch (Throwable it) {
+                            ulog.append("tlsInit=").append(it.getClass().getSimpleName()).append(':').append(it.getMessage()).append(' ');
+                        }
+                    } catch (Throwable t) {
+                        ulog.append("tlsCtx=FAIL:").append(t.getClass().getSimpleName()).append(':').append(t.getMessage()).append(' ');
+                    }
+                    // Can BouncyCastle supply crypto? Probe for bcprov + bctls on the classpath.
+                    try {
+                        Class.forName("com.android.org.bouncycastle.jce.provider.BouncyCastleProvider", false, uloader);
+                        ulog.append("bcprov=present ");
+                    } catch (Throwable t) {
+                        try { Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider", false, uloader); ulog.append("bcprov=present(org) "); }
+                        catch (Throwable t2) { ulog.append("bcprov=absent "); }
+                    }
+                    try {
+                        Class.forName("com.android.org.bouncycastle.jsse.provider.BouncyCastleJsseProvider", false, uloader);
+                        ulog.append("bctls=present ");
+                    } catch (Throwable t) {
+                        try { Class.forName("org.bouncycastle.jsse.provider.BouncyCastleJsseProvider", false, uloader); ulog.append("bctls=present(org) "); }
+                        catch (Throwable t2) { ulog.append("bctls=absent "); }
+                    }
+                    // Conscrypt native crypto is dead (wrong-arch lib), so its SSLContext.TLS fails →
+                    // OkHttp asserts "No System TLS". Bundle Bouncy Castle's pure-Java JSSE (bctls) +
+                    // bcprov and register BouncyCastleJsseProvider at slot 1 so SSLContext.getInstance
+                    // ("TLS") / TrustManagerFactory.getInstance("PKIX") resolve to it before onCreate.
+                    try {
+                        java.io.File odex = new java.io.File(rootPath() + "/appdata/bc-odex");
+                        odex.mkdirs();
+                        ClassLoader bcLoader = new dalvik.system.DexClassLoader(
+                                rootPath() + "/apks/bc-tls.jar", odex.getAbsolutePath(), null,
+                                ClassLoader.getSystemClassLoader());
+                        Class<?> provCls = bcLoader.loadClass(
+                                "org.bouncycastle.jce.provider.BouncyCastleProvider");
+                        java.security.Provider bcProv =
+                                (java.security.Provider) provCls.getDeclaredConstructor().newInstance();
+                        java.security.Security.addProvider(bcProv);
+                        // Register the LIGHTWEIGHT TLS provider at slot 1 for SSLContext.TLS /
+                        // TrustManagerFactory — NOT BouncyCastleJsseProvider (whose construction
+                        // does minutes of EC crypto in the interpreter and pegs/disconnects the
+                        // device). bcprov stays registered for fast crypto primitives if the app
+                        // needs them. This lets OkHttp's eager SSLSocketFactory build instantly.
+                        java.security.Provider bcJsse = new LiteTlsProvider();
+                        int insPos = java.security.Security.insertProviderAt(bcJsse, 1);
+                        // OkHttp's platformTrustManager()/keyManager use TrustManagerFactory/
+                        // KeyManagerFactory.getDefaultAlgorithm() (default "SunX509", which BC
+                        // lacks). Point the defaults at "PKIX"/"X.509" that BC JSSE provides.
+                        java.security.Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
+                        java.security.Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
+                        // BC TrustManagerFactory.init(null) loads the default trust store from
+                        // javax.net.ssl.trustStore; the device has no cacerts, so point it at an
+                        // empty PKCS12 (lets OkHttp's platformTrustManager() succeed — handshake
+                        // trust is a separate later concern).
+                        // "NONE" → BC builds an empty in-memory trust store WITHOUT any file I/O,
+                        // avoiding BufferedInputStream.close() (whose boot-image bufUpdater is null).
+                        System.setProperty("javax.net.ssl.trustStore", "NONE");
+                        System.setProperty("javax.net.ssl.trustStoreType", "PKCS12");
+                        System.setProperty("javax.net.ssl.trustStorePassword", "");
+                        // PERFORMANCE: BC is pure-Java; enumerating/EC-testing every named group at
+                        // SSLContext build time is minutes in the C++ interpreter. Limit to one curve
+                        // + TLS1.2 so onCreate's OkHttpClient construction is fast.
+                        System.setProperty("jdk.tls.namedGroups", "secp256r1");
+                        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
+                        System.setProperty("org.bouncycastle.jsse.client.assumeOriginalHostName", "true");
+                        // BC's DRBG$Default.random (entropy SecureRandom) is null — no system
+                        // entropy source is available on this port. Seed it (and the DRBG bootstrap)
+                        // with a /dev/urandom-backed SecureRandom so BC TLS can generate nonces.
+                        try {
+                            final java.io.RandomAccessFile urnd =
+                                    new java.io.RandomAccessFile("/dev/urandom", "r");
+                            // PERFORMANCE: each RandomAccessFile.readFully is a slow InterpJni
+                            // round-trip; BC's DRBG pulls entropy constantly. Buffer 16KB per read.
+                            final byte[] entBuf = new byte[16384];
+                            final int[] entPos = { entBuf.length };
+                            final java.security.SecureRandom devRnd = new java.security.SecureRandom(
+                                    new java.security.SecureRandomSpi() {
+                                        private void fill(byte[] b) {
+                                            synchronized (urnd) {
+                                                for (int i = 0; i < b.length; ) {
+                                                    if (entPos[0] >= entBuf.length) {
+                                                        try { urnd.readFully(entBuf); } catch (Throwable t) {}
+                                                        entPos[0] = 0;
+                                                    }
+                                                    int n = Math.min(b.length - i, entBuf.length - entPos[0]);
+                                                    System.arraycopy(entBuf, entPos[0], b, i, n);
+                                                    entPos[0] += n; i += n;
+                                                }
+                                            }
+                                        }
+                                        protected void engineSetSeed(byte[] s) {}
+                                        protected void engineNextBytes(byte[] b) { fill(b); }
+                                        protected byte[] engineGenerateSeed(int n) {
+                                            byte[] b = new byte[n]; fill(b); return b;
+                                        }
+                                    }, null) {};
+                            int drbgSeeded = 0;
+                            String[] drbgClasses = {
+                                "org.bouncycastle.jcajce.provider.drbg.DRBG$Default",
+                                "org.bouncycastle.jcajce.provider.drbg.DRBG$NonceAndIV",
+                            };
+                            for (String dc : drbgClasses) {
+                                try {
+                                    Class<?> dcls = bcLoader.loadClass(dc);
+                                    java.lang.reflect.Field rf = dcls.getDeclaredField("random");
+                                    rf.setAccessible(true);
+                                    rf.set(null, devRnd);
+                                    drbgSeeded++;
+                                } catch (Throwable ie) { /* keep going */ }
+                            }
+                            ulog.append("drbgFix=").append(drbgSeeded).append(' ');
+                        } catch (Throwable dt) {
+                            ulog.append("drbgFix=").append(dt.getClass().getSimpleName()).append(' ');
+                        }
+                        // Re-dexing bcprov stripped its jar signature → javax.crypto.JceSecurity
+                        // "cannot authenticate the provider BC". Mark both BC providers verified.
+                        try {
+                            Class<?> jceSec = Class.forName("javax.crypto.JceSecurity");
+                            java.lang.reflect.Field vrF = jceSec.getDeclaredField("verificationResults");
+                            vrF.setAccessible(true);
+                            Object vrObj = vrF.get(null);
+                            java.lang.reflect.Field pvF = jceSec.getDeclaredField("PROVIDER_VERIFIED");
+                            pvF.setAccessible(true);
+                            Object PV = pvF.get(null);
+                            if (vrObj instanceof java.util.Map) {
+                                @SuppressWarnings("unchecked")
+                                java.util.Map<Object, Object> vr = (java.util.Map<Object, Object>) vrObj;
+                                vr.put(bcProv, PV);
+                                vr.put(bcJsse, PV);
+                                ulog.append("jceAuth=OK ");
+                            } else {
+                                ulog.append("jceAuth=notmap ");
+                            }
+                        } catch (Throwable jt) {
+                            ulog.append("jceAuth=").append(jt.getClass().getSimpleName())
+                                .append(':').append(jt.getMessage()).append(' ');
+                        }
+                        ulog.append("bcReg=OK(name=").append(bcJsse.getName()).append(",pos=").append(insPos)
+                            .append(",hasTLS=").append(bcJsse.getService("SSLContext", "TLS") != null)
+                            .append(",p0=").append(java.security.Security.getProviders()[0].getName()).append(") ");
+                        // Force BCJSSE to isolate priority vs SPI-construction failures.
+                        try {
+                            javax.net.ssl.SSLContext tcf = javax.net.ssl.SSLContext.getInstance("TLS", bcJsse.getName());
+                            tcf.init(null, null, null);
+                            ulog.append("tlsForce=OK ");
+                        } catch (Throwable ft) {
+                            ulog.append("tlsForce=").append(ft.getClass().getSimpleName()).append(':').append(ft.getMessage()).append(' ');
+                        }
+                        javax.net.ssl.SSLContext tc2 = javax.net.ssl.SSLContext.getInstance("TLS");
+                        ulog.append("tls2=").append(tc2.getProvider().getName()).append(' ');
+                        try {
+                            javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory
+                                    .getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+                            tmf.init((java.security.KeyStore) null);
+                            ulog.append("tmf=OK(").append(tmf.getProvider().getName()).append(") ");
+                        } catch (Throwable mt) {
+                            ulog.append("tmf=").append(mt.getClass().getSimpleName()).append(':').append(mt.getMessage()).append(' ');
+                        }
+                    } catch (Throwable bt) {
+                        Throwable rc = (bt instanceof java.lang.reflect.InvocationTargetException
+                                && bt.getCause() != null) ? bt.getCause() : bt;
+                        ulog.append("bcReg=FAIL:").append(rc.getClass().getSimpleName())
+                            .append(':').append(rc.getMessage()).append(' ');
+                    }
+                    // Same cascade: FileSystems$DefaultFileSystemHolder.defaultFileSystem is null
+                    // (its <clinit> was tolerated-failed), so ZipFile$Source → File.toPath NPEs.
+                    // Rebuild it: DefaultFileSystemProvider.create().getFileSystem("file:///").
+                    try {
+                        Class<?> holder = Class.forName("java.nio.file.FileSystems$DefaultFileSystemHolder");
+                        java.lang.reflect.Field dfs = holder.getDeclaredField("defaultFileSystem");
+                        dfs.setAccessible(true);
+                        if (dfs.get(null) == null) {
+                            Object provider = Class.forName("sun.nio.fs.DefaultFileSystemProvider")
+                                    .getMethod("create").invoke(null);
+                            // Construct LinuxFileSystem(provider, "/") directly with a fixed CWD —
+                            // the normal getFileSystem() path calls UnixNativeDispatcher.getcwd()
+                            // (native not registered here); the constructor takes the CWD as a param.
+                            java.lang.reflect.Constructor<?> fsC = Class.forName("sun.nio.fs.LinuxFileSystem")
+                                    .getDeclaredConstructor(Class.forName("sun.nio.fs.UnixFileSystemProvider"), String.class);
+                            fsC.setAccessible(true);
+                            Object fs = fsC.newInstance(provider, "/");
+                            dfs.set(null, fs);
+                        }
+                        ulog.append("fsFix=").append(dfs.get(null) == null ? "null" : "OK").append(' ');
+                    } catch (Throwable fx) {
+                        Throwable fc = (fx instanceof java.lang.reflect.InvocationTargetException
+                                && fx.getCause() != null) ? fx.getCause() : fx;
+                        StringBuilder fs2 = new StringBuilder("fsFix=FAIL:").append(fc.getClass().getSimpleName())
+                            .append(':').append(fc.getMessage());
+                        StackTraceElement[] fst = fc.getStackTrace();
+                        for (int i = 0; i < Math.min(6, fst.length); i++)
+                            fs2.append(" @").append(fst[i].getClassName()).append('.').append(fst[i].getMethodName())
+                               .append(':').append(fst[i].getLineNumber());
+                        ulog.append(fs2).append(' ');
+                    }
+                    // VMClassLoader.<clinit> is tolerated-failed at early boot (NPE:charset while
+                    // building ClassPathURLStreamHandlers before charset infra is ready), leaving the
+                    // static-final bootClassPathUrlHandlers null → every getResourceAsStream NPEs.
+                    // Rebuild it now that the runtime is warm.
+                    try {
+                        Class<?> vmcl = Class.forName("java.lang.VMClassLoader");
+                        java.lang.reflect.Field bh = vmcl.getDeclaredField("bootClassPathUrlHandlers");
+                        bh.setAccessible(true);
+                        // Always rebuild: at boot the handlers were built PARTIAL (before charset/
+                        // lseek/readBytes natives worked — many jars "Unable to open"), leaving a
+                        // non-empty but incomplete array (missing icu-data.jar etc.). Now that all
+                        // the file-I/O natives work, rebuild fully so getResource finds every entry.
+                        if (true) {
+                            // libcore's createBootClassPathUrlHandlers only catches IOException; one
+                            // boot entry throws NPE:charset (in ClassPathURLStreamHandler zip open),
+                            // which aborts the whole array. Rebuild it with a per-entry Throwable
+                            // guard so the good entries still populate the handler array.
+                            java.lang.reflect.Method gbe = vmcl.getDeclaredMethod("getBootClassPathEntries");
+                            gbe.setAccessible(true);
+                            String[] entries0 = (String[]) gbe.invoke(null);
+                            // icu-data.jar is resource-only (no classes.dex) → not a loaded boot
+                            // dex → excluded from getBootClassPathEntries → no handler → its ICU
+                            // resources are unreachable via the boot classloader. Add it explicitly.
+                            java.util.ArrayList<String> el = new java.util.ArrayList<String>(
+                                    java.util.Arrays.asList(entries0));
+                            el.add(rootPath() + "/apks/icu-data.jar");
+                            String[] entries = el.toArray(new String[0]);
+                            Class<?> hCls = Class.forName("libcore.io.ClassPathURLStreamHandler");
+                            java.lang.reflect.Constructor<?> hCtor = hCls.getConstructor(String.class);
+                            java.util.ArrayList<Object> list = new java.util.ArrayList<Object>();
+                            Throwable firstErr = null;
+                            for (String e : entries) {
+                                try { list.add(hCtor.newInstance(e)); }
+                                catch (Throwable perEntry) {
+                                    if (firstErr == null) firstErr =
+                                        (perEntry instanceof java.lang.reflect.InvocationTargetException
+                                            && perEntry.getCause() != null) ? perEntry.getCause() : perEntry;
+                                }
+                            }
+                            if (firstErr != null) {
+                                try {
+                                    java.lang.reflect.Field u8 = Class.forName("java.nio.charset.StandardCharsets").getField("UTF_8");
+                                    ulog.append("UTF8null=").append(u8.get(null) == null).append(' ');
+                                } catch (Throwable ig) {}
+                                StringBuilder es = new StringBuilder("ZERR[").append(firstErr.getClass().getSimpleName())
+                                    .append(':').append(firstErr.getMessage());
+                                StackTraceElement[] st = firstErr.getStackTrace();
+                                for (int i = 0; i < Math.min(6, st.length); i++)
+                                    es.append(" @").append(st[i].getClassName()).append('.').append(st[i].getMethodName())
+                                      .append(':').append(st[i].getLineNumber());
+                                ulog.append(es).append("] ");
+                            }
+                            Object arr = java.lang.reflect.Array.newInstance(hCls, list.size());
+                            for (int i = 0; i < list.size(); i++) java.lang.reflect.Array.set(arr, i, list.get(i));
+                            bh.set(null, arr);
+                            ulog.append("vmclFix=OK(").append(list.size()).append('/').append(entries.length).append(") ");
+                            if (firstErr != null)
+                                ulog.append("bcpErr=").append(firstErr.getClass().getSimpleName())
+                                    .append(':').append(firstErr.getMessage()).append(' ');
+                            // Direct test: is the ICU resource now findable via the boot classloader?
+                            // Try each classloader path to find icu-data.jar's resource.
+                            java.io.InputStream icuRes = String.class.getResourceAsStream(
+                                    "/android/icu/impl/data/icudt75b/en_US.res");
+                            ulog.append("icuRes=").append(icuRes != null ? "FOUND" : "null").append(' ');
+                            if (icuRes != null) icuRes.close();
+                            try {
+                                Object url = vmcl.getDeclaredMethod("getResource", String.class)
+                                        .invoke(null, "android/icu/impl/data/icudt75b/en_US.res");
+                                ulog.append("bootRes=").append(url != null ? "FOUND" : "null").append(' ');
+                            } catch (Throwable br) { ulog.append("bootRes=ERR:").append(br.getClass().getSimpleName()).append(' '); }
+                            try {
+                                ClassLoader icl = Class.forName("android.icu.impl.ICUData").getClassLoader();
+                                ulog.append("icuCL=").append(icl == null ? "boot" : icl.getClass().getSimpleName());
+                                java.io.InputStream r2 = (icl == null ? String.class.getClassLoader() : icl) == null
+                                        ? null : (icl == null ? null : icl.getResourceAsStream("android/icu/impl/data/icudt75b/en_US.res"));
+                                ulog.append("/icuCLRes=").append(r2 != null ? "FOUND" : "null").append(' ');
+                                if (r2 != null) r2.close();
+                            } catch (Throwable ic) { ulog.append("icuCL=ERR:").append(ic.getClass().getSimpleName()).append(' '); }
+                            // Verify the raw read path delivers correct DATA (not just counts):
+                            // read icu-data.jar's first 4 bytes; a ZIP starts with PK\x03\x04.
+                            try {
+                                java.io.RandomAccessFile raf = new java.io.RandomAccessFile(
+                                        rootPath() + "/apks/icu-data.jar", "r");
+                                byte[] sig = new byte[4];
+                                raf.seek(0);
+                                raf.readFully(sig);
+                                raf.close();
+                                ulog.append("zipSig=").append(String.format("%02x%02x%02x%02x",
+                                        sig[0] & 0xff, sig[1] & 0xff, sig[2] & 0xff, sig[3] & 0xff)).append(' ');
+                            } catch (Throwable st) {
+                                ulog.append("zipSig=FAIL:").append(st.getClass().getSimpleName()).append(' ');
+                            }
+                            // Direct isolation test: build ONE handler for icu-data.jar and log the exact error.
+                            try {
+                                Object h = hCtor.newInstance(rootPath() + "/apks/icu-data.jar");
+                                ulog.append("icuJar=OK ");
+                                // Does THIS handler find the entry? (the exact boot-CL lookup)
+                                try {
+                                    Object eurl = hCls.getMethod("getEntryUrlOrNull", String.class)
+                                            .invoke(h, "android/icu/impl/data/icudt75b/en_US.res");
+                                    ulog.append("icuEntry=").append(eurl != null ? "FOUND" : "null").append(' ');
+                                } catch (Throwable eg) {
+                                    ulog.append("icuEntry=ERR:").append(eg.getClass().getSimpleName()).append(' ');
+                                }
+                            } catch (Throwable ij) {
+                                Throwable ijc = (ij instanceof java.lang.reflect.InvocationTargetException
+                                        && ij.getCause() != null) ? ij.getCause() : ij;
+                                ulog.append("icuJar=").append(ijc.getClass().getSimpleName())
+                                    .append(':').append(ijc.getMessage()).append(' ');
+                            }
+                        } else { ulog.append("vmclFix=already "); }
+                    } catch (Throwable vx) {
+                        Throwable vc = (vx instanceof java.lang.reflect.InvocationTargetException
+                                && vx.getCause() != null) ? vx.getCause() : vx;
+                        ulog.append("vmclFix=FAIL:").append(vc.getClass().getSimpleName())
+                            .append(':').append(vc.getMessage()).append(' ');
+                    }
                     writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
-                    try { uAppCls.getMethod("onCreate").invoke(uapp); ulog.append("appOnCreate=OK "); }
+                    // Watchdog: onCreate runs on THIS (main) thread for correct behavior, but a
+                    // daemon dumps the main-thread stack + force-halts after 45s if onCreate hangs
+                    // or loops (e.g. an eager network call over the dummy TLS socket) — so it never
+                    // pegs the device forever, and I can see exactly WHERE it's stuck.
+                    final Thread ocMainThread = Thread.currentThread();
+                    final boolean[] ocDone = new boolean[1];
+                    final StringBuilder ocLog = ulog;
+                    Thread ocWatchdog = new Thread(new Runnable() {
+                        public void run() {
+                            try { Thread.sleep(45000); } catch (Throwable t) {}
+                            if (!ocDone[0]) {
+                                StringBuilder sb = new StringBuilder("appOnCreate=HANG@45s stack=");
+                                StackTraceElement[] st = ocMainThread.getStackTrace();
+                                for (int i2 = 0; i2 < Math.min(18, st.length); i2++)
+                                    sb.append('#').append(st[i2].getClassName()).append('.')
+                                      .append(st[i2].getMethodName()).append(':')
+                                      .append(st[i2].getLineNumber()).append(' ');
+                                try { writeText(probeLogPath("uptodown-probe.txt"),
+                                        ocLog.toString() + sb.toString()); } catch (Throwable w) {}
+                                Runtime.getRuntime().halt(7);
+                            }
+                        }
+                    }, "onCreate-watchdog");
+                    ocWatchdog.setDaemon(true);
+                    ocWatchdog.start();
+                    try { uAppCls.getMethod("onCreate").invoke(uapp); ocDone[0] = true; ulog.append("appOnCreate=OK "); }
                     catch (Throwable ot) {
+                        ocDone[0] = true;
                         Throwable oc = (ot instanceof java.lang.reflect.InvocationTargetException
                                 && ot.getCause() != null) ? ot.getCause() : ot;
                         ulog.append("appOnCreate=FAIL:").append(oc.getClass().getSimpleName()).append(':').append(oc.getMessage());
@@ -1131,6 +1823,14 @@ public final class Dayu600ApkStageProbe {
                 catch (Throwable mt) {
                     Throwable mc = mt.getCause() != null ? mt.getCause() : mt;
                     ulog.append("mainClinit=FAIL:").append(mc.getClass().getSimpleName()).append(':').append(mc.getMessage()).append(' ');
+                }
+                // The main thread needs a prepared Looper before Activity/Handler construction
+                // (ActivityThread does this in a real app; the probe must do it explicitly).
+                try {
+                    if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper();
+                    ulog.append("looper=OK ");
+                } catch (Throwable lt) {
+                    ulog.append("looper=").append(lt.getClass().getSimpleName()).append(' ');
                 }
                 try { Object uact = uMainCls.getDeclaredConstructor().newInstance();
                       ulog.append("mainNew=").append(uact != null ? "OK" : "null").append(' '); }

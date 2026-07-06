@@ -202,12 +202,41 @@ public final class OHServiceManager {
         setStaticIfNull(java.lang.reflect.Proxy.class, "ORDER_BY_SIGNATURE_AND_SUBTYPE", BY_SIG_SUBTYPE);
     }
 
+    // [DAYU600] This ART's WeakCache/ProxyClassFactory Java path returns null before ever
+    // reaching the native generateProxy. Bypass it: collect methods ourselves and call the
+    // native `generateProxy` directly, then instantiate the generated class with our handler.
+    private static long sProxyNum = 0;
+    public static Object makeProxy(ClassLoader loader, Class<?>[] interfaces,
+                                   java.lang.reflect.InvocationHandler h) throws Throwable {
+        java.util.ArrayList<java.lang.reflect.Method> ml = new java.util.ArrayList<>();
+        for (Class<?> iface : interfaces)
+            for (java.lang.reflect.Method m : iface.getMethods()) ml.add(m);
+        ml.add(Object.class.getMethod("equals", Object.class));
+        ml.add(Object.class.getMethod("hashCode"));
+        ml.add(Object.class.getMethod("toString"));
+        java.lang.reflect.Method[] methods = ml.toArray(new java.lang.reflect.Method[0]);
+        Class<?>[][] exceptions = new Class<?>[methods.length][];
+        for (int i = 0; i < methods.length; i++) exceptions[i] = methods[i].getExceptionTypes();
+        java.lang.reflect.Method gen = Proxy.class.getDeclaredMethod("generateProxy",
+                String.class, Class[].class, ClassLoader.class,
+                java.lang.reflect.Method[].class, Class[][].class);
+        gen.setAccessible(true);
+        String name = "westlake.$Proxy" + (sProxyNum++);
+        Class<?> pc = (Class<?>) gen.invoke(null, name, interfaces, loader, methods, exceptions);
+        if (pc == null) throw new RuntimeException("native generateProxy returned null for "
+                + (interfaces.length > 0 ? interfaces[0].getName() : "?"));
+        java.lang.reflect.Constructor<?> ctor = pc.getConstructor(java.lang.reflect.InvocationHandler.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(h);
+    }
+
     public static void install() {
         try {
             repairProxyCache();
             repairProxyComparators();
             Class<?> iServiceManager = Class.forName("android.os.IServiceManager");
             ClassLoader loader = iServiceManager.getClassLoader();
+            // Use the normal (non-crashing) Proxy path; the native-direct makeProxy aborts the runtime.
             Object proxy = Proxy.newProxyInstance(loader, new Class<?>[] {iServiceManager},
                     new ServiceManagerHandler());
 
