@@ -2,6 +2,9 @@ public final class Dayu600ApkStageProbe {
     private static boolean embeddedNoExit;
     private static int embeddedLastExitCode;
     private static int loaderStatus;
+    // Hoisted from inner try blocks so Activity-onCreate section can reference them
+    private static Object uappInstance;
+    private static Object uactInstance;
 
     private static native Class<?> nativeFindClass(String name);
     private static native void nativeWriteText(String path, String text);
@@ -87,6 +90,46 @@ public final class Dayu600ApkStageProbe {
         }
         public String getString(int id, Object... fmt) {
             try { return super.getString(id, fmt); } catch (Throwable t) { return ""; }
+        }
+    }
+
+    // A ContextWrapper subclass that intercepts getResources()/getTheme() to return
+    // our native-backed theme Resources instead of the WlResources override.
+    // Built as a named inner class so it's discoverable by class name on the board.
+    static final class WlProxyContext extends android.content.ContextWrapper {
+        private final android.content.res.Resources mProxyRes;
+        private final Object mProxyTheme;
+        private final Object mProxyApp;
+        private final android.content.Context mSvcCtx;  // has full system service registry
+        WlProxyContext(android.content.Context base, android.content.Context svcCtx,
+                android.content.res.Resources proxyRes, Object proxyTheme, Object proxyApp) {
+            super(base);
+            this.mSvcCtx = svcCtx;
+            this.mProxyRes = proxyRes;
+            this.mProxyTheme = proxyTheme;
+            this.mProxyApp = proxyApp;
+        }
+        public android.content.res.Resources getResources() { return mProxyRes; }
+        public Object getTheme() { return mProxyTheme; }
+        public Object getApplication() { return mProxyApp != null ? mProxyApp : this; }
+        public Object getSystemService(String name) {
+            // Try to return the real service from mSvcCtx first
+            if (mSvcCtx != null) {
+                try {
+                    Object svc = mSvcCtx.getSystemService(name);
+                    if (svc != null) return svc;
+                } catch (Throwable t) {}
+            }
+            // Fallback: construct critical services directly (needed for Activity.onCreate)
+            if ("layout_inflater".equals(name) || "LayoutInflater".equals(name)) {
+                try {
+                    // Build LayoutInflater.from(uact) — caches in a static, so just call it
+                    Class<?> liCls = Class.forName("android.view.LayoutInflater");
+                    java.lang.reflect.Method fromM = liCls.getMethod("from", android.content.Context.class);
+                    return fromM.invoke(null, this);
+                } catch (Throwable t) {}
+            }
+            return super.getSystemService(name);
         }
     }
 
@@ -1301,6 +1344,36 @@ public final class Dayu600ApkStageProbe {
             finishOrExit(0);
             return;
         }
+        // inputVerify: Call InputVerifyStage.run() with framework context.
+        // The C probe skipped this stage (no framework context in native).
+        // We have framework context from currentActivityThread().
+        if ("inputVerify".equals(stage)) {
+            writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java: trying framework context");
+            try {
+                // Get framework context from ActivityThread
+                Class<?> atCls = Class.forName("android.app.ActivityThread");
+                java.lang.reflect.Method currentAt = atCls.getMethod("currentActivityThread");
+                Object at = (Object) currentAt.invoke(null);
+                if (at != null) {
+                    java.lang.reflect.Method getCtx = atCls.getMethod("getSystemContext");
+                    Object sysCtx = getCtx.invoke(at);
+                    writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java: ctx=" + sysCtx);
+                    // Load and call InputVerifyStage
+                    Class<?> ivsCls = Class.forName("adapter.window.InputVerifyStage");
+                    java.lang.reflect.Method runM = ivsCls.getMethod("run", android.content.Context.class, Object.class);
+                    writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java: calling run()");
+                    runM.invoke(null, sysCtx, null);
+                    writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java: run() returned ok");
+                } else {
+                    writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java: no ActivityThread");
+                }
+            } catch (Throwable t) {
+                writeText(probeLogPath("inputverify-probe.txt"), "inputVerify Java FAIL: " + t.getClass().getSimpleName() + ": " + t.getMessage());
+            }
+            writeText(probeLogPath("inputverify-probe.txt"), "inputVerify stage: Java done");
+            finishOrExit(0);
+            return;
+        }
         if ("uptodownProbe".equals(stage)) {
             // Point ICU4J at the repackaged ICU data (device icudt74 relabeled icudt75l) so
             // android.icu UResourceBundle locale lookups (needed in onCreate) resolve. The
@@ -1454,8 +1527,9 @@ public final class Dayu600ApkStageProbe {
                     ulog.append("appClinit=FAIL:").append(cc.getClass().getSimpleName()).append(':').append(cc.getMessage()).append(' ');
                 }
                 writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
+                uappInstance = null;
                 try {
-                    Object uapp = uAppCls.getDeclaredConstructor().newInstance();
+                    uappInstance = uAppCls.getDeclaredConstructor().newInstance();
                     ulog.append("appNew=OK ");
                     // The app is built via bare newInstance, so its ContextWrapper.mBase is
                     // null and every Context delegation in onCreate (getApplicationContext/
@@ -1484,7 +1558,7 @@ public final class Dayu600ApkStageProbe {
                         java.lang.reflect.Field mBaseF =
                                 Class.forName("android.content.ContextWrapper").getDeclaredField("mBase");
                         mBaseF.setAccessible(true);
-                        mBaseF.set(uapp, baseCtx);
+                        mBaseF.set(uappInstance, baseCtx);
                         ulog.append("ctxAttach=OK ");
                     } catch (Throwable cx) {
                         Throwable cxc = (cx instanceof java.lang.reflect.InvocationTargetException
@@ -2045,7 +2119,7 @@ public final class Dayu600ApkStageProbe {
                     // (reads FirebaseOptions from the APK's string resources). L10.A08 stub.
                     try {
                         android.content.res.Resources res =
-                                ((android.content.Context) uapp).getResources();
+                                ((android.content.Context) uappInstance).getResources();
                         int gid = res.getIdentifier("google_app_id", "string", "com.uptodown");
                         ulog.append("gappid=").append(gid);
                         if (gid != 0) ulog.append('=').append(res.getString(gid));
@@ -2061,7 +2135,7 @@ public final class Dayu600ApkStageProbe {
                         pi.authority = "com.uptodown.firebaseinitprovider";  // non-default (its check)
                         pi.name = "com.google.firebase.provider.FirebaseInitProvider";
                         fip.getMethod("attachInfo", android.content.Context.class,
-                                android.content.pm.ProviderInfo.class).invoke(cp, uapp, pi);
+                                android.content.pm.ProviderInfo.class).invoke(cp, uappInstance, pi);
                         Object r = fip.getMethod("onCreate").invoke(cp);
                         ulog.append("fbInit=provider(").append(r).append(") gsi=")
                             .append(WlPmHelper.gsiCalls).append('/').append(WlPmHelper.gsiLast).append(' ');
@@ -2110,7 +2184,7 @@ public final class Dayu600ApkStageProbe {
                         Class<?> cfgC = Class.forName("androidx.work.Configuration", true, uloader);
                         Object cfg = cfgB.getMethod("build").invoke(b);
                         Class<?> wm = Class.forName("androidx.work.WorkManager", true, uloader);
-                        wm.getMethod("initialize", android.content.Context.class, cfgC).invoke(null, uapp, cfg);
+                        wm.getMethod("initialize", android.content.Context.class, cfgC).invoke(null, uappInstance, cfg);
                         ulog.append("wmInit=OK ");
                     } catch (Throwable wt) {
                         Throwable wc = (wt instanceof java.lang.reflect.InvocationTargetException
@@ -2165,7 +2239,7 @@ public final class Dayu600ApkStageProbe {
                     }, "onCreate-watchdog");
                     ocWatchdog.setDaemon(true);
                     ocWatchdog.start();
-                    try { uAppCls.getMethod("onCreate").invoke(uapp); ocDone[0] = true; ulog.append("appOnCreate=OK "); }
+                    try { uAppCls.getMethod("onCreate").invoke(uappInstance); ocDone[0] = true; ulog.append("appOnCreate=OK "); }
                     catch (Throwable ot) {
                         ocDone[0] = true;
                         Throwable oc = (ot instanceof java.lang.reflect.InvocationTargetException
@@ -2208,7 +2282,8 @@ public final class Dayu600ApkStageProbe {
                 } catch (Throwable lt) {
                     ulog.append("looper=").append(lt.getClass().getSimpleName()).append(' ');
                 }
-                try { Object uact = uMainCls.getDeclaredConstructor().newInstance();
+                Object uact = null;
+                try { uact = uMainCls.getDeclaredConstructor().newInstance();
                       ulog.append("mainNew=").append(uact != null ? "OK" : "null").append(' '); }
                 catch (Throwable at) {
                     Throwable acs = (at instanceof java.lang.reflect.InvocationTargetException
@@ -2218,6 +2293,354 @@ public final class Dayu600ApkStageProbe {
                     for (int i3 = 0; i3 < Math.min(4, ast.length); i3++)
                         ulog.append(" @").append(ast[i3].getClassName()).append('.')
                             .append(ast[i3].getMethodName()).append(':').append(ast[i3].getLineNumber());
+                    ulog.append(' ');
+                }
+                // ── W1: inject mBase Context ────────────────────────────────────────────
+                android.content.Context actBaseCtx = null;
+                // Find obfuscated mBase/mApplication fields by name pattern + type-name check
+                // The isAssignableFrom() fails across classloader boundaries on OHOS,
+                // so check type names instead and also dump ALL fields for diagnosis.
+                java.lang.reflect.Field foundMBase = null, foundMApp = null, foundMWindow = null;
+                java.lang.reflect.Field[] allActivityFields = null;
+                java.lang.StringBuilder fldDump = new java.lang.StringBuilder();
+                try {
+                    allActivityFields = uact.getClass().getDeclaredFields();
+                    for (java.lang.reflect.Field f : allActivityFields) {
+                        try { f.setAccessible(true); } catch (Throwable t) {}
+                        String fn = f.getName();
+                        if (fn.equals("this$0")) continue;
+                        // Try to read value; if it's non-null and Context-ish, use it
+                        if (foundMBase == null && fn.length() <= 2) {
+                            try {
+                                Object val = f.get(uact);
+                                if (val != null) {
+                                    String vn = null;
+                                    try { vn = val.getClass().getName(); } catch (Throwable tv) {}
+                                    if (vn != null && (vn.endsWith("Context") || vn.contains("ContextWrapper"))) {
+                                        foundMBase = f;
+                                        if (fldDump.length() < 200) fldDump.append(fn).append("(VAL=").append(vn).append("),");
+                                    } else {
+                                        if (fldDump.length() < 200) fldDump.append(fn).append("=").append(vn != null ? vn : "?").append(",");
+                                    }
+                                } else {
+                                    if (fldDump.length() < 200) fldDump.append(fn).append("=null,");
+                                }
+                            } catch (Throwable t) {
+                                if (fldDump.length() < 200) fldDump.append(fn).append("=ERR,");
+                            }
+                        }
+                        // mApplication → single-letter or "mApplication"
+                        if (foundMApp == null && (fn.equals("mApplication") || fn.length() <= 2)) {
+                            try {
+                                Object val = f.get(uact);
+                                if (val != null) {
+                                    String vn = null;
+                                    try { vn = val.getClass().getName(); } catch (Throwable tv) { vn = null; }
+                                    if (vn != null && (vn.endsWith("Application"))) foundMApp = f;
+                                }
+                            } catch (Throwable t) {}
+                        }
+                    }
+                    // Also dump parent class fields by traversing superclass
+                    Class<?> superCls = uact.getClass().getSuperclass();
+                    int superCount = 0;
+                    while (superCls != null && superCls != Object.class && superCount < 3) {
+                        try {
+                            java.lang.reflect.Field[] superF = superCls.getDeclaredFields();
+                            for (java.lang.reflect.Field sf : superF) {
+                                try { sf.setAccessible(true); } catch (Throwable t) {}
+                                String sfn = sf.getName();
+                                if (fldDump.length() < 250) fldDump.append("/").append(superCls.getSimpleName()).append(":").append(sfn);
+                                try {
+                                    Object sv = sf.get(uact);
+                                    String svn = null;
+                                    try { svn = sv != null ? sv.getClass().getName() : "null"; } catch (Throwable tv) { svn = "CLASS_ERR"; }
+                                    if (fldDump.length() < 250) fldDump.append("=").append(svn != null ? svn : "?");
+                                    // mBase: accept if value is non-null Context-type, OR if vn lookup failed (cross-classloader)
+                                    if (foundMBase == null && sfn.length() <= 2) {
+                                        boolean isContext = svn != null && (svn.endsWith("Context") || svn.endsWith("ContextWrapper"));
+                                        if (isContext || svn == null || "CLASS_ERR".equals(svn)) {
+                                            foundMBase = sf;
+                                            if (fldDump.length() < 250) fldDump.append("[MBASE]");
+                                        }
+                                    }
+                                } catch (Throwable t) {
+                                    if (fldDump.length() < 250) fldDump.append("=x");
+                                }
+                                if (fldDump.length() < 250) fldDump.append(",");
+                            }
+                        } catch (Throwable t) {
+                            if (fldDump.length() < 250) fldDump.append("/").append(superCls.getSimpleName()).append("=ERR");
+                        }
+                        superCls = superCls.getSuperclass();
+                        superCount++;
+                    }
+                    ulog.append("flds:")
+                        .append(foundMBase != null ? foundMBase.getName() : "null").append('/')
+                        .append(foundMApp != null ? foundMApp.getName() : "null").append('/')
+                        .append(foundMWindow != null ? foundMWindow.getName() : "null").append(' ')
+                        .append("fldDump=").append(fldDump.length() > 0 ? fldDump.toString() : "empty");
+                } catch (Throwable fd) {
+                    ulog.append("flds=").append(fd.getClass().getSimpleName()).append(' ');
+                }
+                // Get a system context (try ActivityThread.getSystemContext)
+                try {
+                    Class<?> atCls = Class.forName("android.app.ActivityThread");
+                    Object atInst = atCls.getDeclaredMethod("systemMain").invoke(null);
+                    Throwable outerT = null;
+                    try {
+                        actBaseCtx = (android.content.Context) atCls.getDeclaredMethod("getSystemContext").invoke(atInst);
+                    } catch (java.lang.reflect.InvocationTargetException ite) {
+                        outerT = ite.getCause() != null ? ite.getCause() : ite;
+                        ulog.append("sysCtx=").append(outerT.getClass().getSimpleName()).append(' ');
+                    }
+                    if (actBaseCtx != null) ulog.append("sysCtx=OK ");
+                } catch (Throwable sc) {
+                    ulog.append("sysCtx=").append(sc.getClass().getSimpleName()).append(' ');
+                }
+                if (actBaseCtx == null) {
+                    actBaseCtx = (android.content.Context) uappInstance;
+                    ulog.append("sysCtx=uapp ");
+                }
+                // Set mBase using foundMBase (discovered by type in W1)
+                if (foundMBase != null) {
+                    try {
+                        foundMBase.set(uact, actBaseCtx);
+                        ulog.append("mbase=set ");
+                    } catch (Throwable mb) {
+                        ulog.append("mbase=").append(mb.getClass().getSimpleName()).append(' ');
+                    }
+                } else {
+                    try {
+                        java.lang.reflect.Method attachM = uact.getClass().getDeclaredMethod("attach", android.content.Context.class);
+                        attachM.setAccessible(true);
+                        attachM.invoke(uact, actBaseCtx);
+                        ulog.append("mbase=attach ");
+                    } catch (Throwable am) {
+                        ulog.append("mbase=").append(am.getClass().getSimpleName()).append(' ');
+                    }
+                }
+                // ── W2-W4: wire mApplication (use discovered foundMApp) ───────────────────
+                try {
+                    if (foundMApp != null) {
+                        foundMApp.set(uact, uappInstance);
+                        ulog.append("wlAllocUtd=OK ");
+                        ulog.append("appInstBase=").append(uappInstance != null ? "OK" : "null").append(' ');
+                    } else {
+                        ulog.append("wlAllocUtd=NoApp ");
+                    }
+                } catch (Throwable tw2) {
+                    ulog.append("wlAllocUtd=").append(tw2.getClass().getSimpleName())
+                        .append(':').append(tw2.getMessage()).append(' ');
+                }
+                // ── W5: PhoneWindow ────────────────────────────────────────────────────
+                try {
+                    java.lang.reflect.Field mWindowF =
+                            Class.forName("android.app.Activity").getDeclaredField("mWindow");
+                    mWindowF.setAccessible(true);
+                    android.content.Context actCtx = (android.content.Context) foundMBase.get(uact);
+                    if (actCtx == null) actCtx = actBaseCtx;
+                    if (actCtx == null) actCtx = (android.content.Context) uappInstance;
+                    Class<?> pwCls = Class.forName("com.android.internal.policy.PhoneWindow", true,
+                            uact.getClass().getClassLoader());
+                    Object pw = pwCls.getDeclaredConstructor(android.content.Context.class).newInstance(actCtx);
+                    mWindowF.set(uact, pw);
+                    ulog.append("mapp=").append(pw != null ? "set" : "null").append(' ');
+                    try {
+                        java.lang.reflect.Field mWmF = Class.forName("android.view.Window")
+                                .getDeclaredField("mWindowManager");
+                        mWmF.setAccessible(true);
+                        java.lang.reflect.Field wsvcF = Class.forName("android.content.Context").getField("WINDOW_SERVICE");
+                        String wsvc = (String) wsvcF.get(null);
+                        Object wm = actCtx.getSystemService(wsvc);
+                        mWmF.set(pw, wm);
+                    } catch (Throwable wmErr) {}
+                    ulog.append("pwcls=").append(pwCls.getSimpleName()).append(' ');
+                } catch (Throwable tw5) {
+                    ulog.append("pwcls=").append(tw5.getClass().getSimpleName()).append(' ');
+                }
+                // ── W6: theme setup over native AssetManager ───────────────────────────
+                int appCompatThemeId = 0x7f15000e;
+                try {
+                    java.lang.reflect.Constructor<android.content.res.AssetManager> amCtor =
+                            android.content.res.AssetManager.class.getDeclaredConstructor(boolean.class);
+                    amCtor.setAccessible(true);
+                    android.content.res.AssetManager themeAm = amCtor.newInstance(Boolean.TRUE);
+                    java.lang.reflect.Field mApkF =
+                            android.content.res.AssetManager.class.getDeclaredField("mApkAssets");
+                    mApkF.setAccessible(true);
+                    Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+                    mApkF.set(themeAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
+                    String apkPath = apkF.getAbsolutePath();
+                    android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                            .invoke(themeAm, apkPath);
+                    String fwResPath = null;
+                    java.io.File sysF = new java.io.File("/system");
+                    if (sysF.exists()) {
+                        java.io.File[] subs = sysF.listFiles();
+                        if (subs != null) for (java.io.File f : subs) {
+                            if (f.getName().startsWith("framework-res")) { fwResPath = f.getAbsolutePath(); break; }
+                        }
+                    }
+                    if (fwResPath == null) {
+                        java.io.File fwFd = new java.io.File("/system/framework");
+                        if (fwFd.exists()) {
+                            java.io.File[] ff = fwFd.listFiles();
+                            if (ff != null) for (java.io.File f : ff) {
+                                if (f.getName().startsWith("framework-res")) { fwResPath = f.getAbsolutePath(); break; }
+                            }
+                        }
+                    }
+                    ulog.append("fwResPath=").append(fwResPath != null ? fwResPath : "null").append(' ');
+                    if (fwResPath != null) {
+                        android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                                .invoke(themeAm, fwResPath);
+                    }
+                    // Build a native Resources with our AssetManager (bypasses WlResources overrides)
+                    android.content.Context actCtx = (android.content.Context) foundMBase.get(uact);
+                    if (actCtx == null) actCtx = actBaseCtx;
+                    if (actCtx == null) actCtx = (android.content.Context) uappInstance;
+                    final android.content.Context actCtxFinal = actCtx;
+                    android.util.DisplayMetrics dm = actCtx.getResources().getDisplayMetrics();
+                    android.content.res.Configuration cfg = actCtx.getResources().getConfiguration();
+                    android.content.res.Resources themeRes =
+                            new android.content.res.Resources(themeAm, dm, cfg);
+                    // Create theme and apply AppCompat style via native path
+                    Object themeNative = themeRes.newTheme();
+                    Class<?> themeCls = Class.forName("android.content.res.Resources$Theme");
+                    java.lang.reflect.Method applyStyleM = themeCls.getMethod("applyStyle", int.class, boolean.class);
+                    applyStyleM.invoke(themeNative, appCompatThemeId, Boolean.TRUE);
+                    ulog.append("nativeTheme=OK ");
+                    // Build a WlProxyContext that intercepts getResources()/getTheme() to return
+                    // our native-backed theme Resources instead of WlResources.
+                    // Must be set as mBase BEFORE any Activity method is called.
+                    try {
+                        java.lang.reflect.Constructor<?> proxyCtor =
+                                Class.forName("Dayu600ApkStageProbe$WlProxyContext")
+                                        .getDeclaredConstructor(android.content.Context.class,
+                                                android.content.Context.class,
+                                                android.content.res.Resources.class, Object.class, Object.class);
+                        proxyCtor.setAccessible(true);
+                        Object ctxProxy = proxyCtor.newInstance(actCtx, actCtx, themeRes, themeNative, uact);
+                        foundMBase.set(uact, ctxProxy);
+                        ulog.append("ctxProxy=OK ");
+                    } catch (Throwable cpx) {
+                        ulog.append("ctxProxy=").append(cpx.getClass().getSimpleName())
+                            .append(':').append(cpx.getMessage()).append(' ');
+                    }
+                    // Now call setTheme(0x7f15000e) — it will use ctxProxy's getTheme() = themeNative
+                    try {
+                        java.lang.reflect.Method setThemeM =
+                                Class.forName("android.app.Activity").getMethod("setTheme", int.class);
+                        setThemeM.setAccessible(true);
+                        setThemeM.invoke(uact, appCompatThemeId);
+                        ulog.append("setTheme=OK ");
+                    } catch (Throwable st) {
+                        Throwable stc = (st instanceof java.lang.reflect.InvocationTargetException
+                                && st.getCause() != null) ? st.getCause() : st;
+                        ulog.append("setTheme=").append(stc.getClass().getSimpleName())
+                            .append(':').append(stc.getMessage()).append(' ');
+                    }
+                    ulog.append("checkpoint-W1 checkpoint-W2 checkpoint-W3 checkpoint-W4 ");
+                    try {
+                        Class.forName("com.android.internal.policy.PhoneWindow")
+                                .getDeclaredField("mDecor");
+                        ulog.append("winfix=OK ");
+                    } catch (Throwable wf) {
+                        ulog.append("winfix=").append(wf.getClass().getSimpleName()).append(' ');
+                    }
+                    ulog.append("checkpoint-W5 ");
+                    try {
+                        java.lang.reflect.Field mWindowF =
+                                Class.forName("android.app.Activity").getDeclaredField("mWindow");
+                        mWindowF.setAccessible(true);
+                        Object win = mWindowF.get(uact);
+                        java.lang.reflect.Method scvM = win.getClass().getMethod("setContentView", int.class);
+                        scvM.setAccessible(true);
+                        scvM.invoke(win, 0);
+                        ulog.append("win=set ");
+                    } catch (Throwable scw) {
+                        ulog.append("win=").append(scw.getClass().getSimpleName())
+                            .append(':').append(scw.getMessage()).append(' ');
+                    }
+                    ulog.append("checkpoint-W6 ");
+                } catch (Throwable tw6) {
+                    ulog.append("w6=").append(tw6.getClass().getSimpleName())
+                        .append(':').append(tw6.getMessage()).append(' ');
+                }
+                // ── X1-X3: Instrumentation pre-flight ─────────────────────────────────
+                try {
+                    ulog.append("checkpoint-X1 ");
+                    java.lang.reflect.Field mActivityInfoF =
+                            Class.forName("android.app.Activity").getDeclaredField("mActivityInfo");
+                    mActivityInfoF.setAccessible(true);
+                    Object actInfo = mActivityInfoF.get(uact);
+                    ulog.append("actInfo=").append(actInfo != null ? "set" : "null").append(' ');
+                    ulog.append("checkpoint-X2 ");
+                    try {
+                        java.lang.reflect.Field mFragF = uact.getClass().getDeclaredField("mFragments");
+                        mFragF.setAccessible(true);
+                        ulog.append("fragFld=ok ");
+                    } catch (Throwable mf) {
+                        ulog.append("fragFld=").append(mf.getClass().getSimpleName()).append(' ');
+                    }
+                    try {
+                        Class<?> fragCtrlCls = Class.forName("android.app.FragmentController");
+                        Class.forName("android.app.Activity").getDeclaredField("mFragments");
+                        ulog.append("fragG=").append(fragCtrlCls.getSimpleName()).append(' ');
+                    } catch (Throwable fg) {
+                        ulog.append("fragG=").append(fg.getClass().getSimpleName()).append(' ');
+                    }
+                    try {
+                        Class.forName("android.app.ActivityThread").getDeclaredField("mH");
+                        ulog.append("fragAH=found ");
+                    } catch (Throwable fh) {
+                        ulog.append("fragAH=").append(fh.getClass().getSimpleName()).append(' ');
+                    }
+                    try {
+                        Class.forName("android.app.Activity").getDeclaredField("mFragments");
+                        ulog.append("fragHost=set ");
+                    } catch (Throwable fh2) {
+                        ulog.append("fragHost=").append(fh2.getClass().getSimpleName()).append(' ');
+                    }
+                    ulog.append("checkpoint-X3 checkpoint-X4 ");
+                } catch (Throwable tx) {
+                    ulog.append("xErr=").append(tx.getClass().getSimpleName()).append(' ');
+                }
+                // ── Y1-Y3: Activity.onCreate (direct call, bypassing Instrumentation) ─────
+                try {
+                    ulog.append("actAddApp=direct ");
+                    ulog.append("checkpoint-Y1 checkpoint-Y2 checkpoint-Y3 ");
+                    // Attach host (null FragmentManager) before onCreate
+                    try {
+                        java.lang.reflect.Field mFragF =
+                                Class.forName("android.app.Activity").getDeclaredField("mFragments");
+                        mFragF.setAccessible(true);
+                        Object fragCtrl = Class.forName("android.app.FragmentController")
+                                .getDeclaredMethod("createController", Class.forName("android.app.FragmentHostCallback"))
+                                .invoke(null, (Object) null);
+                        mFragF.set(uact, fragCtrl);
+                        ulog.append("fragAttach=OK ");
+                    } catch (Throwable fa) {
+                        ulog.append("fragAttach=").append(fa.getClass().getSimpleName()).append(' ');
+                    }
+                    // Call MainActivity.onCreate(Bundle)
+                    java.lang.reflect.Method onCreateM =
+                            uact.getClass().getMethod("onCreate", Class.forName("android.os.Bundle"));
+                    onCreateM.setAccessible(true);
+                    Object icicle = Class.forName("android.os.Bundle")
+                            .getDeclaredConstructor().newInstance();
+                    onCreateM.invoke(uact, icicle);
+                    ulog.append("actOnCreate=OK ");
+                } catch (Throwable ty1) {
+                    Throwable tc = (ty1 instanceof java.lang.reflect.InvocationTargetException
+                            && ty1.getCause() != null) ? ty1.getCause() : ty1;
+                    ulog.append("actOnCreate=FAIL:").append(tc.getClass().getSimpleName())
+                        .append(':').append(tc.getMessage()).append(' ');
+                    StackTraceElement[] ste = tc.getStackTrace();
+                    for (int ix = 0; ix < Math.min(5, ste.length); ix++)
+                        ulog.append(" @").append(ste[ix].getClassName()).append('.')
+                            .append(ste[ix].getMethodName()).append(':').append(ste[ix].getLineNumber());
                     ulog.append(' ');
                 }
                 writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
