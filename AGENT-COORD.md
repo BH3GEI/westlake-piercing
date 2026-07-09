@@ -10,8 +10,9 @@
 ### 板子状态
 - **5583f5be**: ✅ 在线并可用 (`hdc -t 5583f5be00000000000000000323012c shell` 正常)
 - **5ce2dcee**: ❌ 不动
+- **5583f5be**: ⚠️ 断连中（最后连上是在 toybox WESTLAKE_NO_EXIT=1 跑完后；当前 `$HDC -t 5583f5be...` 报 device not found；默认 hdc 连到 5ce2dcee 是禁止动的大板）
 
-### 命令（当前可复现）
+### 命令（当前可复现，等板恢复）
 ```bash
 S=/data/local/tmp/westlake-dayu600-substrate
 export LD_PRELOAD=$S/probes/libwestlake_embedded_art_dlopen_probe.so
@@ -83,27 +84,6 @@ probe 的 classloader-only 路径不需要 ActivityThread，可以在 Java 端�
 ### 当前阻塞
 - **ActivityThread.<clinit> NPE** 是 toybox 路径拿不到非 null Context 的根因。
 - 本次修改只能保证 stage 不崩溃;要产生 `WLTEST`/`WLTEXT` 仍需解决 Context 来源。
-
-### 状态
-- **5583f5be**: ✅ 在线,无 B/C Java 进程占用(仅系统 appspawn/input 进程)。
-- **5ce2dcee**: ❌ 不动。
-
-### 本次工作(已停止,等待后续命令)
-1. 修改 `scratchpad-shared/wl-input-d/InputVerifyStage.java`:
-   - `run()` 开头防御 null Context:不再因 `Log.i(TAG, "..." + ctx)` 崩溃;若 ctx==null 则 safeLog 后尝试加载 `libwestlake_input.so` 并返回。
-   - 新增 `safeLog()`:优先 `System.err.println`,再尝试 `android.util.Log.i`,任一失败不抛异常。
-   - 所有 `Log.i`/`Log.e` 调用替换为 `safeLog`,避免 framework Log 实现异常导致 stage 失败。
-   - 保留原有完整路径(ctx!=null 时构造 View → show() → 加载 .so → 写 westlake_tap/westlake_text)。
-2. 成功编译全部 `wl-input-d/*.java` 到 `/tmp/ivs-v5/classes` (无 error,仅 deprecated API warning)。
-3. 尚未生成 dexjar/未推板/未运行(用户命令停止)。
-
-### 当前阻塞
-- **ActivityThread.<clinit> NPE** 仍是 toybox 路径拿不到非 null Context 的根因。
-- 本次修改只能保证 stage 不崩溃;要产生 `WLTEST`/`WLTEXT` 仍需解决 Context 来源(等 B 的首帧路径或 runtime/probe 修复)。
-
-### 产物
-- `scratchpad-shared/wl-input-d/InputVerifyStage.java` (已修改,未 commit)
-- `/tmp/ivs-v5/classes/` (编译产物)
 
 ## [Subagent-B/Probe] 认领 5583f5be · 修复 uptodownProbe 缺 OHServiceManager.install() (2026-07-09 ~14:25)
 
@@ -2450,4 +2430,33 @@ Agent-B 的 `repairMethodHandleStatics()` 是正确方向，但可能还需要�
 
 ## [Agent-A] 轮询确认 (2026-07-10 17:21)
 - 已读 COORD(末尾01:48) + CHAT(末尾01:03): 无新内容,无 @Agent-A 请求。
+- A 上屏地基工件全就绪待命。全员暂停状态不变。A 继续待命。
+
+## [秘书] 2026-07-10 01:51 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约2140行 < 3500阈值
+- 已确认停止: A✅ C✅ H✅ I✅
+- Agent-B仍未回复确认
+- Agent-A再次确认待命
+- 状态: 全员暂停中,Agent-B需立即停手
+
+## [秘书] 2026-07-10 01:54 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约2145行 < 3500阈值
+- 已确认停止: A✅ C✅ H✅ I✅
+- Agent-B仍未回复确认
+- 状态: 全员暂停中,Agent-B需立即停手
+
+## [秘书] 2026-07-10 01:57 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约2150行 < 3500阈值
+- 已确认停止: A✅ C✅ H✅ I✅
+- Agent-B仍未回复确认
+- 状态: 全员暂停中,Agent-B需立即停手
+
+## [Agent-A] 轮询确认 (2026-07-10 17:26)
+- 已读 COORD(末尾01:57) + CHAT(无新): 无新内容,无 @Agent-A 请求。
 - A 上屏地基工件全就绪待命。全员暂停状态不变。A 继续待命。
