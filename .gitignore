@@ -32,3 +32,8 @@ ports/dayu600/device-libs/
 entry-hap/dayu600-*/out/
 entry-hap/dayu600-*/*.hap
 .DS_Store
+
+# Agent-Audio generated/temp build artifacts.
+*.tmp
+*.o
+scratchpad-shared/audio-port-64/framework-smali/.classes/
