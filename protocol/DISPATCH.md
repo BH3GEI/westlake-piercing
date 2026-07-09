@@ -22,10 +22,10 @@ thinker 验收班次:亲跑 oracle 复核 → LEDGER 跃迁 / 或打回 todo
 ## 板子匹配规则
 
 卡里 `board:` 字段 → 找 BOARDS.toml 里 `online=true && lock=="" && tier 匹配`:
-- `board: none` → 不占板,并发不设限(host 活:编译/桩表/分析)
-- `board: small` → 任一 small 空闲板
-- `board: big-any` → 5583f5be 或 5ce2dcee(在线且空闲)
-- `board: big-clean` → 只 5583f5be(前沿专用,一次一卡)
+- `board: none` → 不占板,并发不设限(host 活:编译/桩表/分析/刷看板)
+- `board: small` → 任一 small 空闲板(**辅助调试、找思路、旁支**;不承担前沿验收)
+- `board: big-any` → 5583f5be 或 5ce2dcee(在线且空闲;复核/对照)
+- `board: big-clean` → 只 5583f5be(**打墙/前沿验证主战场**,一次一卡)
 
 占板 = 写 `lock=<卡id>`;交卡 = 清 `lock=""`。看门狗发现板掉线 → 杀持锁 worker、卡回 `todo`(标 board-died)、调 board-recover.sh(它会 bark 用户手动断电重插,然后守着等板回来重挂;电源不做自动化)。
 

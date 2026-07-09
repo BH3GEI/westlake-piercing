@@ -14,26 +14,29 @@
 ```
 state/       ← 事实层,小而有界,一口读完
   FRONTIER.md   此刻在打哪道墙
-  LEDGER.md     53 墙全貌 + 复核状态(≤150 行)
+  LEDGER.md     53 墙全貌 + 复核状态(≤150 行)  ← 进度事实源
+  ATOM-MAP.md   #墙 ↔ L{NN}.A{NN} 规格对齐
   QUEUE.md      两条队列(穿刺/工厂)
   BOARDS.toml   四板 lane + 锁 + 恢复
   DECISIONS.md  为什么是现在这样(别推翻已定的)
 tasks/       ← 工作流,目录即状态机 todo→doing→done/blocked
-protocol/    ← 角色手册(本文件指向的三份)
-oracle/      ← "完成"的唯一定义(脚本说了算)
-evidence/    ← 证据指针
+protocol/    ← 角色手册(定稿后 chmod 只读;改纪律先开班次)
+oracle/      ← "完成"的唯一定义(脚本说了算) + refresh-dashboard.sh
+evidence/    ← 证据指针(只留对穿刺有帮助的事实)
 ammo/        ← 可复用成品 + 参照 oracle 路线
-docs/reference/ ← 架构/规格/方法论原件(坐标系、桥接总量、Unity oracle);按需定点取,勿整包读
+docs/dashboard/ ← 进度 HTML 视图(脚本生成,不手改);节约上下文
+docs/reference/ ← 架构/规格/方法论原件;按需定点取,勿整包读
 archive/     ← 史料,默认不读(白板时代 COORD/CHAT 等)
 ```
 
-## 五条合同(整套机制靠这个撑)
+## 六条合同(整套机制靠这个撑)
 
-1. **读取**：thinker 读 state/ 全部;worker 只读自己的卡;谁都不默认读 archive/。
+1. **读取**：thinker 读 state/ 全部(含 ATOM-MAP);worker 只读自己的卡;谁都不默认读 archive/。
 2. **写入**：worker 只写自己的卡 + evidence/<卡> + 自己的 git 分支;state/ 只有 thinker 验收班次能动。
 3. **完成**：LEDGER 状态跃迁只认 `oracle/` 脚本 PASS。worker 自述不算数。
 4. **落盘即 commit**：每班次结束一次 commit。**禁止空转 commit**(如 "polling: no new content")。
 5. **防膨胀**：state/ 各文件有行数预算,超限唯一出路是压缩进 archive/。绝不再长出 3000 行白板。
+6. **对齐与视图**：墙进度以 LEDGER 为准;规格坐标以 ATOM-MAP 对齐 HTML 原子。看板 `docs/dashboard/progress.html` 只是视图——改 state 后派力工跑 `oracle/refresh-dashboard.sh`,**禁止手改 HTML**。定稿的 `protocol/*.md` / `AGENTS.md` 用 unix 只读权限防误改。
 
 ## 原有工程纪律(保留)
 

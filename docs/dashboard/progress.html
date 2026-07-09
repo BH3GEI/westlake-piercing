@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>WestLake 穿刺进度看板</title>
+<style>
+:root {
+  --bg:#0f1419; --panel:#1a222c; --text:#e7ecf1; --muted:#8b9aab;
+  --pass:#2f9e44; --claimed:#748ffc; --contradict:#e03131;
+  --wip:#f59f00; --pending:#868e96; --line:#2a3542;
+  --font: "IBM Plex Sans", "Noto Sans SC", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 var(--font); }
+header { padding:20px 28px 8px; border-bottom:1px solid var(--line); }
+header h1 { margin:0 0 6px; font-size:22px; letter-spacing:.02em; }
+header .meta { color:var(--muted); font-size:12px; }
+.wrap { padding:20px 28px 48px; max-width:1280px; margin:0 auto; }
+.cards { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0 22px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 16px; min-width:110px; }
+.card b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+.card span { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+.card.pass b { color:var(--pass); }
+.card.claimed b { color:var(--claimed); }
+.card.contradict b { color:var(--contradict); }
+.card.wip b { color:var(--wip); }
+.card.pending b { color:var(--pending); }
+.boards { margin:8px 0 18px; display:flex; gap:8px; flex-wrap:wrap; }
+.board { padding:4px 10px; border-radius:999px; border:1px solid var(--line); font-family:var(--mono); font-size:12px; }
+.board.on { background:#14301f; color:#8ce99a; }
+.board.off { background:#2b1717; color:#ffa8a8; }
+.frontier { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:22px; white-space:pre-wrap; font-family:var(--mono); font-size:12px; color:#ced4da; }
+table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+th, td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; background:#121820; position:sticky; top:0; }
+tr.pass td.n { color:var(--pass); }
+tr.claimed td.n { color:var(--claimed); }
+tr.contradict td.n { color:var(--contradict); }
+tr.wip td.n { color:var(--wip); font-weight:700; }
+tr.pending td.n { color:var(--pending); }
+td.name { max-width:360px; }
+td.atom { font-family:var(--mono); font-size:11px; color:#adb5bd; max-width:280px; }
+.conf-exact { color:#8ce99a; }
+.conf-related { color:#ffd43b; }
+.conf-none { color:#ffa8a8; }
+.conf-pending { color:#868e96; }
+footer { margin-top:18px; color:var(--muted); font-size:11px; }
+code { font-family:var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>WestLake 穿刺进度</h1>
+  <div class="meta">生成于 2026-07-09 20:41 · 源: state/LEDGER.md + state/ATOM-MAP.md · 刷新: <code>oracle/refresh-dashboard.sh</code></div>
+</header>
+<div class="wrap">
+  <div class="cards">
+    <div class="card pass"><b>2</b><span>复核 PASS</span></div>
+    <div class="card claimed"><b>38</b><span>claimed 待复核</span></div>
+    <div class="card contradict"><b>3</b><span>矛盾</span></div>
+    <div class="card wip"><b>4</b><span>进行中</span></div>
+    <div class="card pending"><b>6</b><span>未开始</span></div>
+    <div class="card"><b>53</b><span>墙合计</span></div>
+  </div>
+  <div class="boards"><span class='board on'>5583f5be <small>big-clean</small></span><span class='board off'>5ce2dcee <small>big-any</small></span><span class='board on'>0971ac00 <small>small</small></span><span class='board on'>0404ac00 <small>small</small></span></div>
+  <h2 style="font-size:14px;color:var(--muted);font-weight:600;margin:0 0 8px;">FRONTIER</h2>
+  <div class="frontier"># 当前前沿 (FRONTIER)
+**更新**：2026-07-09 落盘班次 · thinker=fable(Cursor)
+## 代码前沿 = 墙 #43 AppCompat 双包 parent-chain 主题墙
+- **owner 域**：resource/L6(原 Agent-B)
+- **机理**：uptodown 是 AppCompatActivity，setContentView 走 createSubDecor，要 Theme.AppCompat 的 windowActionBar。app 主题 AppThemeBar(0x7f15000e) 的 parent chain 跨包走到 framework `@android:Theme.Material.Light.NoActionBar`(0x01)，但 uamShared 只挂了 app arsc(0x7f)、没挂 framework-res(0x01) → 链断、`uamHasWab=false`。
+- **已知修法**：给 uamShared **也** addAssetPath(76a92b8f)，让同一个 am 有 0x7f+0x01。**关键顺序坑**：addAssetPath+BuildDynamicRefTable 必须在 newTheme/applyStyle 之前，否则 bag 已冻结锁死断链(E 钉,COORD L2904)。
+- **最后板上状态**：正在测，未出结论。
+## 阻塞态
+- 板子 2026-07-09 15:42 已恢复(5583f5be/两块小板在线，5ce2dcee 仍离线)。**#43 现在可上板验证。**
+- ⚠️ 但恢复后尚未有人真正重跑 #43 —— 中间发生了&quot;停工重构&quot;(本次落盘)。
+## 下一步(严格依赖序，#43 解开后)
+1. #50 createSubDecor windowActionBar 解析出 → subDecor 产出</div>
+  <table>
+    <thead><tr><th>#</th><th>承重原子</th><th>层</th><th>状态</th><th>V</th><th>规格原子</th><th>映射</th></tr></thead>
+    <tbody>
+<tr class='claimed' data-n='1'><td class='n'>1</td><td class='name'>arm64 imageless ART 起板 → startReg,54 图形类注册</td><td>L1</td><td>✅</td><td>?</td><td class='atom'>L03.A09 ANDROIDRUNTIME-STARTREG</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='2'><td class='n'>2</td><td class='name'>Application.onCreate 过 SQLite REINDEX LOCALIZED(150→1362)</td><td>L1</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='claimed' data-n='3'><td class='n'>3</td><td class='name'>MainActivity.onCreate 反射 attach 入口</td><td>L1</td><td>✅</td><td>?</td><td class='atom'>L04.A01 ACTIVITY-CREATE</td><td class='conf conf-related'>related</td></tr>
+<tr class='contradict' data-n='4'><td class='n'>4</td><td class='name'>onCreate 越过全部框架墙进 APP 业务码</td><td>L1</td><td>✅</td><td>✗</td><td class='atom'>L04.A01 ACTIVITY-CREATE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='5'><td class='n'>5</td><td class='name'>渲染管线锁定策略 B(DecorView→RenderNode→RSSurfaceNode)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L05.A16 VIEWROOT-TRAVERSAL-DRAW</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='6'><td class='n'>6</td><td class='name'>R1 interposer 抢占 / .so 加载序</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L03.A12 NATIVE-SO-LOAD</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='7'><td class='n'>7</td><td class='name'>adapter libhwui 集成包(md5 504386b1)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A04 LIBHWUI-DLOPEN-REGISTER</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='8'><td class='n'>8</td><td class='name'>图形 native 注册(54 registrar,C linkage)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A03 KREGJNI-MODULE-REGISTER</td><td class='conf conf-related'>related</td></tr>
+<tr class='contradict' data-n='9'><td class='n'>9</td><td class='name'>WestlakeUpscreen.show() API 冻结 + attachForInput 内联</td><td>L5</td><td>✅</td><td>✗</td><td class='atom'>L05.A01 FIRST-FRAME-VISIBLE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='10'><td class='n'>10</td><td class='name'>Paint.nSetFlags @CriticalNative 不可派发</td><td>L2</td><td>✅</td><td>?</td><td class='atom'>L11.A08 PAINT-GRAPHICS-JNI</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='11'><td class='n'>11</td><td class='name'>InterpJni shorty 硬编码缺口 → 需通用派发器</td><td>L2</td><td>✅</td><td>?</td><td class='atom'>L03.A11 JNI-AUTO-SYMBOL-RESOLVE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='12'><td class='n'>12</td><td class='name'>调用约定二值分叉(@CriticalNative vs normal)</td><td>L2</td><td>✅</td><td>?</td><td class='atom'>L03.A11 / L11.A08</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='13'><td class='n'>13</td><td class='name'>通用 shorty 派发器 WestlakeGenericJni(host 全绿)</td><td>L2</td><td>✅</td><td>?</td><td class='atom'>L03.A11 JNI-AUTO-SYMBOL-RESOLVE</td><td class='conf conf-related'>related</td></tr>
+<tr class='pending' data-n='14'><td class='n'>14</td><td class='name'>class_linker kAccCriticalNative 根修</td><td>L2</td><td>⏳</td><td>-</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='claimed' data-n='15'><td class='n'>15</td><td class='name'>WlCriticalNoop 越过 Paint.nSetFlags</td><td>L2</td><td>✅</td><td>?</td><td class='atom'>L11.A08</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='16'><td class='n'>16</td><td class='name'>@CriticalNative SIGSEGV 根修(用解析出的 jni_entry)</td><td>L1</td><td>✅</td><td>?</td><td class='atom'>L11.A08 / L03.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='17'><td class='n'>17</td><td class='name'>framework-res 未进 AssetManager(合成 XmlResourceParser)</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A06 SYSTEM-ASSETMANAGER-INIT</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='18'><td class='n'>18</td><td class='name'>framework-res 文件级 openByPath 死路 → 绕过</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A01 APK-ASSET-OPEN</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='19'><td class='n'>19</td><td class='name'>screen_simple.xml 预抽 AXML(956B) + resid 映射</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='claimed' data-n='20'><td class='n'>20</td><td class='name'>XmlBlock.nativeCreate helper .so</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A07 / L10.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='21'><td class='n'>21</td><td class='name'>XmlBlock parse HANG → dlsym 真 libandroidfw(通用修法)</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A11 ANDROIDFW-MODERN-RESOURCE-API</td><td class='conf conf-related'>related</td></tr>
+<tr class='pass' data-n='22'><td class='n'>22</td><td class='name'>pureColorView 蓝像素引擎证(5583f5be,11 帧,md5 08f400a8)</td><td>L5</td><td>✅</td><td>✔</td><td class='atom'>L05.A01 FIRST-FRAME-VISIBLE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='23'><td class='n'>23</td><td class='name'>arsc 加载 native 全是桩(dladdr 审计)</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A07 APKASSETS-AOSP-REAL</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='24'><td class='n'>24</td><td class='name'>arsc 三件套打通,applyStyle 不再 hang</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A02 APK-RESOURCE-RESOLVE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='25'><td class='n'>25</td><td class='name'>零胶水 arsc 修(调 JNI_OnLoad 一次)</td><td>L3</td><td>✅</td><td>?</td><td class='atom'>L10.A07</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='26'><td class='n'>26</td><td class='name'>framework-res 76a92b8f — ID 99% 对齐</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A06</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='27'><td class='n'>27</td><td class='name'>Theme JNI 6 native 注册 6/6</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='28'><td class='n'>28</td><td class='name'>obtainStyledAttributes 补两 shorty,hasWidth=true</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='29'><td class='n'>29</td><td class='name'>theme.applyStyle HANG 诊断(异物 theme)</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='30'><td class='n'>30</td><td class='name'>nativeThemeCreate wrapper + 解释器重解析</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='31'><td class='n'>31</td><td class='name'>sSystem 根修(reinitialize=true,76a92b8f)</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A06 SYSTEM-ASSETMANAGER-INIT</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='32'><td class='n'>32</td><td class='name'>inflate 过 windowContentOverlay=TYPE_NULL</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='claimed' data-n='33'><td class='n'>33</td><td class='name'>迁干净板 5583f5be(vtable 非确定性仍在=解释器问题)</td><td>L1</td><td>✅</td><td>?</td><td class='atom'>L13.A07 HDC-DEPLOY-EVIDENCE</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='34'><td class='n'>34</td><td class='name'>?attr/windowContentOverlay 解析(out stride=7 A16)</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L10.A02</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='35'><td class='n'>35</td><td class='name'>框架装饰骨架出 View 树(headless 零像素,卡 nGetElevation)</td><td>L4</td><td>✅</td><td>?</td><td class='atom'>L05.A16 VIEWROOT-TRAVERSAL-DRAW</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='36'><td class='n'>36</td><td class='name'>force-raw nDrawColor 配方(后复核为 NORMAL)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A08</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='37'><td class='n'>37</td><td class='name'>RenderNode.nGetElevation ULE</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A04 / L11.A05</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='38'><td class='n'>38</td><td class='name'>nGetElevation register-and-use 不 stick(匿名 static)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A04</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='39'><td class='n'>39</td><td class='name'>RenderNode JNI 级联 SOLVED via Path B(~65 wrapper,过图形层)</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L11.A04 LIBHWUI-DLOPEN-REGISTER</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='40'><td class='n'>40</td><td class='name'>Surface/RenderThread renderer 4 native 自注册</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L05.A05 / L11.A04</td><td class='conf conf-related'>related</td></tr>
+<tr class='claimed' data-n='41'><td class='n'>41</td><td class='name'>createSubDecor 要 Theme.AppCompat(Material.Light 无 windowActionBar)</td><td>L6</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='claimed' data-n='42'><td class='n'>42</td><td class='name'>setTheme 换 AppThemeBar 0x7f15000e</td><td>L6</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='wip' data-n='43'><td class='n'>★43</td><td class='name'>★前沿:AppThemeBar 双包 parent-chain 断链(uamHasWab=false)</td><td>L6</td><td>🔧</td><td>-</td><td class='atom'>L10.A06 (+AppCompat 缺口)</td><td class='conf conf-related'>related</td></tr>
+<tr class='wip' data-n='44'><td class='n'>44</td><td class='name'>Canvas draw native 分类,show() crit 缩到 2</td><td>L5</td><td>🔧</td><td>-</td><td class='atom'>L11.A08 / L05.A01</td><td class='conf conf-related'>related</td></tr>
+<tr class='contradict' data-n='45'><td class='n'>45</td><td class='name'>onClick mAttachInfo 墙 → attachForInput 内联(已编未上板)</td><td>L6</td><td>✅</td><td>✗</td><td class='atom'>L06.A01 INPUT-CLICK-DISPATCH</td><td class='conf conf-related'>related</td></tr>
+<tr class='wip' data-n='46'><td class='n'>46</td><td class='name'>5ce2dcee ~50% 早停 lottery(板 vs bug,悬案)</td><td>L1</td><td>🔧</td><td>-</td><td class='atom'>L13.A01 PROCESS-ALIVE</td><td class='conf conf-related'>related</td></tr>
+<tr class='wip' data-n='47'><td class='n'>47</td><td class='name'>IME 文字输入(WestlakeTextPump)</td><td>L6</td><td>🔧</td><td>-</td><td class='atom'>L06.A04 INPUT-METHOD-SERVICE-LOOKUP</td><td class='conf conf-related'>related</td></tr>
+<tr class='pass' data-n='48'><td class='n'>48</td><td class='name'>硬外部墙:全板离线 → **已恢复 2026-07-09 15:42(5ce2dcee 除外)**</td><td>L1</td><td>✅</td><td>✔</td><td class='atom'>L13.A07</td><td class='conf conf-related'>related</td></tr>
+<tr class='pending' data-n='49'><td class='n'>49</td><td class='name'>WestlakeGenericJni 接线 :769+:2262(现 0 调用点)</td><td>L2/L6</td><td>⏳</td><td>-</td><td class='atom'>L03.A11</td><td class='conf conf-related'>related</td></tr>
+<tr class='pending' data-n='50'><td class='n'>50</td><td class='name'>createSubDecor windowActionBar 解析出 → subDecor</td><td>L6</td><td>⏳</td><td>-</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
+<tr class='pending' data-n='51'><td class='n'>51</td><td class='name'>setContentView(app R.layout.main) → content FrameLayout</td><td>L6</td><td>⏳</td><td>-</td><td class='atom'>L04.A01 / L05.A16</td><td class='conf conf-related'>related</td></tr>
+<tr class='pending' data-n='52'><td class='n'>52</td><td class='name'>tap → WLTEST CLICK(input .so bd6d2a77)</td><td>L6</td><td>⏳</td><td>-</td><td class='atom'>L06.A01 INPUT-CLICK-DISPATCH</td><td class='conf conf-related'>related</td></tr>
+<tr class='pending' data-n='53'><td class='n'>53</td><td class='name'>show() 真 DecorView 首帧 → 面板像素 r==2</td><td>L5/L6</td><td>⏳</td><td>-</td><td class='atom'>L05.A01 FIRST-FRAME-VISIBLE</td><td class='conf conf-related'>related</td></tr>
+    </tbody>
+  </table>
+  <footer>
+    颜色: 绿=已复核 · 蓝=claimed未复核 · 红=矛盾 · 橙=进行中 · 灰=未开始。
+    映射置信来自 ATOM-MAP（exact/related/none/pending）。规格进度≠本仓进度。
+  </footer>
+</div>
+</body>
+</html>

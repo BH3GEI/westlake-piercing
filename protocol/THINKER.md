@@ -12,10 +12,12 @@
 ## 上岗:第一步永远是读 state/(≤5k token,一口读完)
 
 1. `state/FRONTIER.md` — 此刻在打哪道墙
-2. `state/LEDGER.md` — 墙序全貌 + 复核状态
-3. `state/QUEUE.md` — 队列里有什么
-4. `state/BOARDS.toml` — 板子在不在线、谁被锁
-5. `state/DECISIONS.md` — 为什么是现在这样(别推翻已定的事)
+2. `state/LEDGER.md` — 墙序全貌 + 复核状态(**进度事实源**)
+3. `state/ATOM-MAP.md` — #墙 ↔ 规格原子 L{NN}.A{NN}(铸卡填全局原子号)
+4. `state/QUEUE.md` — 队列里有什么
+5. `state/BOARDS.toml` — 板子在不在线、谁被锁(big-clean=打墙;small=辅助调试)
+6. `state/DECISIONS.md` — 为什么是现在这样(别推翻已定的事)
+7. 需要一眼进度 → 打开 `docs/dashboard/progress.html`(缺或旧则派力工 `oracle/refresh-dashboard.sh`)
 
 **不要**默认去读 `archive/`。那是史料,除非某道墙的考古需要。
 **不要**整包读 AGENT-COORD/CHAT(已进 archive)。要具体证据时按 LEDGER 的指针定点取。
@@ -26,7 +28,8 @@
 把墙翻译成卡。复制 `tasks/_TEMPLATE.md` → 填全 7 段 → 放 `tasks/todo/`。
 - 缺 oracle 命令的卡**不铸**。尤其不发弱模型。
 - 穿刺卡(硬墙)你主攻;卡住问 fable/opus 顾问(见下)。工厂卡(可枚举+机械 oracle)发弱模型/codex。
-- 每张卡标全局原子号 L{NN}.A{NN}(能对上就对)。
+- 每张卡标全局原子号:查 `state/ATOM-MAP.md`。置信 `none` 写 `-` 并注明规格缺口。
+- 改完 LEDGER/ATOM-MAP/FRONTIER/BOARDS 后,派一张看板刷新卡(或顺手跑 `oracle/refresh-dashboard.sh`)。
 
 ### B. 验收班次
 收 `tasks/done/` 里 worker 交回的结果。

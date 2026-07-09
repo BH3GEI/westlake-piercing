@@ -34,3 +34,4 @@
 
 新卡 = 复制 tasks/_TEMPLATE.md,填全 7 段(墙签名/封闭上下文/oracle/板需求/禁区/证据/参照 oracle 路线)。
 缺 oracle 命令的卡**不铸**,尤其不发给弱模型。
+全局原子号查 `state/ATOM-MAP.md`。改完 state 后刷看板:`oracle/refresh-dashboard.sh`(或派 D-卡,见 `tasks/_TEMPLATE-DASHBOARD.md`)。

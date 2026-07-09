@@ -16,6 +16,7 @@
 - **2026-07-09** CLI 舰队逐条实测定格 → `docs/reference/cli-fleet.md`。要点:agent(-p --trust --mode ask --model fable/opus)=thinker 求助通道不当 worker;codex=稳定执行器(必须 </dev/null,守 stdin 会挂);kimi 本周期 403;mmx=内容 API 无文件工具不能领卡;claude=便宜力工(自家路由接 kimi/minimax 后端,settings.json 的 model 被路由重置,自报不可信)。thinker 型号不写死(用户在 Cursor UI 选)。
 - **2026-07-09** 顾问咨询纪律:thinker 主攻;卡住才问 fable/opus。必须 `--workspace` 挂本仓 + prompt 给具体上下文(先读哪些文件/问题/已尝试/约束)。空问一句禁止。见 `protocol/THINKER.md` 与 `docs/reference/cli-fleet.md`。
 - **2026-07-09** 证据纪律:只留对穿刺/复核有帮助的事实。推 GitHub/VPN/代理失败等基建噪音不进 `evidence/`。F-001 的 push 失败 log 已删;PASS 只记远程 SHA。见 `evidence/INDEX.md`。
+- **2026-07-09** 墙↔规格对齐:`state/ATOM-MAP.md` 映射 #1–53 到 L{NN}.A{NN}(多为 related;AppCompat 等为 none 规格缺口)。进度事实源仍是 LEDGER;看板 `docs/dashboard/progress.html` 由 `oracle/refresh-dashboard.sh` 生成,力工刷板,禁止手改 HTML。big-clean=打墙;small=辅助调试。定稿 protocol/AGENTS chmod 只读。
 
 ## 战略裁决 (值不值得打)
 

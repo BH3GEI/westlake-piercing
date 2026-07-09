@@ -5,7 +5,7 @@
 # WESTLAKE 墙序台账 (LEDGER)
 
 **穿刺目标**：未改的 com.uptodown (AppCompatActivity) 在 DAYU600 arm64 imageless ART / OpenHarmony 上，真机首帧上屏。
-**坐标系**：内部墙序 #1–53(app 真正撞到的运行时墙) · 层 L1–L6(见下) · 全局原子号 L{NN}.A{NN} 待对齐(AtomFunctionGit)。
+**坐标系**：内部墙序 #1–53(app 真正撞到的运行时墙) · 层 L1–L6(见下) · 全局原子号见 `state/ATOM-MAP.md`(对齐 AtomFunctionGit L{NN}.A{NN})。
 
 层：L1=启动/板 · L2=native 派发 · L3=资源/arsc · L4=主题/inflate · L5=渲染 · L6=AppCompat/内容/输入
 状态：✅PASS(claimed) · 🔧IN_PROGRESS · ⏳PENDING · ⚠️待复核

@@ -9,6 +9,8 @@
 - 两条 workstream 共享同一坐标系 `L{NN}.A{NN}`(来自 AtomFunctionGit)，但**设备/进度各自独立**，别混：
   - **WestLake 线**（本仓库主线）：uptodown 等标准 APK，DAYU600 `5583f5be`，imageless ART。状态看 `state/LEDGER.md`。
   - **Unity 线**（HanBing，`/opt/21.Game`）：Unity 游戏上屏，D600 `5bb5`。**不在本仓库 state 内**，这里只存其文档作方法论与 oracle 参照。
+- **对齐**：本仓墙序 #1–53 ↔ 规格原子 的映射在 `state/ATOM-MAP.md`(不是本目录)。进度一眼看 `docs/dashboard/progress.html`。
+- HTML 看板状态(M01-SPEC 等)**不是**本仓真机进度;真机进度只认 LEDGER。
 
 ---
 
