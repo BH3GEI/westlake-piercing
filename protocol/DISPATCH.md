@@ -27,19 +27,28 @@ thinker 验收班次:亲跑 oracle 复核 → LEDGER 跃迁 / 或打回 todo
 - `board: big-any` → 5583f5be 或 5ce2dcee(在线且空闲)
 - `board: big-clean` → 只 5583f5be(前沿专用,一次一卡)
 
-占板 = 写 `lock=<卡id>`;交卡 = 清 `lock=""`。看门狗发现板掉线 → 杀持锁 worker、卡回 `todo`(标 board-died)、调 board-recover.sh。
+占板 = 写 `lock=<卡id>`;交卡 = 清 `lock=""`。看门狗发现板掉线 → 杀持锁 worker、卡回 `todo`(标 board-died)、调 board-recover.sh(它会 bark 用户手动断电重插,然后守着等板回来重挂;电源不做自动化)。
 
-## worker 命令行(按成本挑,三个 CLI 当可互换 worker)
+## worker 命令行(实测 2026-07-09;坑与详情见 docs/reference/cli-fleet.md)
+
+headless 通用包装(mac 无 timeout;codex/claude 守 stdin 会挂):
 
 ```bash
-# Kimi(默认便宜手)
+( <worker-cmd> < /dev/null & P=$!; ( sleep 900 && kill $P 2>/dev/null ) & W=$!; wait $P 2>/dev/null; kill $W 2>/dev/null )
+```
+
+```bash
+# Kimi(便宜力工)⚠️ 2026-07-09 实测 403 额度尽,刷新前用 claude/codex
 kimi -p "$(cat protocol/WORKER.md tasks/doing/<card>.md)" -y
 
-# Claude Code 后台(需要强一点的手时)
+# Claude Code(便宜力工:自家路由接 kimi/minimax 后端,settings.json 的 model 会被路由重置,不作数)
 claude --bg -n "<card>" -p "$(cat protocol/WORKER.md tasks/doing/<card>.md)"
 
-# MiniMax:mmx 是内容生成 API 的 CLI(文/图/音/视),不是 coding agent。
-#   仅当有对应 coding CLI 时才作 worker;否则本项目 worker = kimi / claude。
+# Codex(稳定执行器,中价;必须 </dev/null;占板卡 sandbox 从 workspace-write 起试)
+codex exec "$(cat protocol/WORKER.md tasks/doing/<card>.md)" --skip-git-repo-check --sandbox workspace-write < /dev/null
+
+# mmx = 内容 API(无文件/shell 工具),不能领卡;只用于批量文本消化/搜索/媒体。
+# agent(cursor-agent)= thinker 求助通道,不当 worker(见 THINKER.md)。
 ```
 
 ## 并发与限额

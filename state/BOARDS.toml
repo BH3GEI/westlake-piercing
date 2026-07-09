@@ -1,6 +1,6 @@
 # 板池 · state 层 · 四板并行调度的资源真相
 # 锁 = tasks/doing 里领了此板的卡 id;dispatcher 领卡时写,交卡时清。
-# 恢复命令 = board-recover.sh <serial>,依赖遥控电源接口(待补)。
+# 恢复命令 = oracle/board-recover.sh <serial>:bark 用户手动断电重插 + 守着等板回来重挂。
 
 updated = "2026-07-09"
 
@@ -50,11 +50,12 @@ lock     = ""
 forbidden = ["wipe", "flash"]
 note     = ""
 
-# ---- 已知硬件病 ----
-# dalvikvm crash → USB daemon 崩 → USB gadget 未枚举 → hdc 掉线,需物理/断电重插。
-# 四板并行 = 崩板频率 ~x4。看门狗 + 遥控电源把"等人"变"自动复位"。
-# 两个物理前提:①每板独立可控插座 ②Mac 禁睡眠(pmset disablesleep,防 USB 句柄被杀)。
+# ---- 已知硬件病 + 恢复决策(2026-07-09 定) ----
+# dalvikvm crash → USB daemon 崩 → USB gadget 未枚举 → hdc 掉线,需物理断电重插。
+# 电源不做遥控自动化(用户裁决)。掉线 → board-recover.sh bark 用户手动重插,脚本守着等回来+重挂。
+# Mac 睡眠已核实无碍:pmset sleep=0(2026-07-09 实测)。
 
 [power]
-interface = "TODO"   # 待用户给:智能插座(米家/HomeKit/tasmota) or 网络 PDU?调用方式=curl or app 命令?
-mac_no_sleep = false # 待执行 pmset disablesleep
+automation = "none"  # 用户裁决:不接遥控电源;需要断电操作时 bark 喊人
+recover    = "oracle/board-recover.sh <serial> [wait-min]"
+mac_sleep  = "off"   # pmset sleep=0,2026-07-09 核实

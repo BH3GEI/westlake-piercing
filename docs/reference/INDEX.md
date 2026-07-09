@@ -12,6 +12,11 @@
 
 ---
 
+## 工具
+
+- **`cli-fleet.md`**
+  CLI 舰队速查（bark/agent/codex/claude/kimi/mmx），2026-07-09 逐条实测。headless 调用的坑（stdin 挂起、无 timeout、--trust）、求助通道命令、成本阶梯。**派活或求助前先翻它。**
+
 ## 坐标系与规格（跨线通用）
 
 - **`westlake-atom-function-board-L01-L14.html`** (267K)

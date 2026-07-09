@@ -6,7 +6,7 @@
 ## 我是谁？按角色翻到对应手册
 
 - **thinker(脑子 · Cursor 强模型)** → 读 `protocol/THINKER.md`。上岗先读 `state/` 全部五件(≤5k token)。
-- **worker(手 · kimi/minimax 一次性)** → 只读派给你的那张卡 + `protocol/WORKER.md`。别读 state/、别读别的卡、别读 archive/。
+- **worker(手 · kimi/codex/claude 一次性)** → 只读派给你的那张卡 + `protocol/WORKER.md`。别读 state/、别读别的卡、别读 archive/。
 - **派活** → `protocol/DISPATCH.md`。
 
 ## 状态在哪(事实源)

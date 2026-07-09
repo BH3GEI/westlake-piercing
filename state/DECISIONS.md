@@ -12,6 +12,8 @@
 - **2026-07-09** 采纳"oracle 路线"方法(Unity 显示综述):坏路线的每道墙,拿已跑通的路线当"本该长什么样"对照修(团结↔Unity;catalog/noice↔uptodown)。
 - **2026-07-09** 暂不建总线/数据库。任务卡=一目录一文件 Markdown,dispatcher=shell loop。等 todo/ 堆到管不过来再谈结构化存储。
 - **2026-07-09** 7 份架构/规格/方法论文档(桥接总量、167 原子看板+清单、Unity 分解/楼层/四路线、A1)落 `docs/reference/`,配 INDEX。定位=长期知识,按需定点取,勿整包读进上下文。Unity 线(D600-5bb5,HanBing)不进本仓库 state,仅存文档作 oracle/方法论参照。
+- **2026-07-09** 电源不做遥控自动化(用户裁决)。板掉线 → board-recover.sh **bark** 用户手动断电重插+守着等回来重挂。bark 只推:里程碑/只有用户能解的硬墙/被明确要求;普通汇报不推(Stop hook 已自动推)。
+- **2026-07-09** CLI 舰队逐条实测定格 → `docs/reference/cli-fleet.md`。要点:agent(-p --trust --mode ask --model fable/opus)=thinker 求助通道不当 worker;codex=稳定执行器(必须 </dev/null,守 stdin 会挂);kimi 本周期 403;mmx=内容 API 无文件工具不能领卡;claude=便宜力工(自家路由接 kimi/minimax 后端,settings.json 的 model 被路由重置,自报不可信)。thinker 型号不写死(用户在 Cursor UI 选)。
 
 ## 战略裁决 (值不值得打)
 
