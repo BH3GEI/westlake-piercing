@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="330701114" name="ALLOW_WEARABLE_SENSING_SERVICE_FILE_READ"><meta-data definedIn="android.app.wearable.WearableSensingManager" sourcePosition="frameworks/base/core/java/android/app/wearable/WearableSensingManager.java:183"/></compat-change></config>

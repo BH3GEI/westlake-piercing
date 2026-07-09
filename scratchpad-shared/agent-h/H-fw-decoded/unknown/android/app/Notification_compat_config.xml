@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="270551184" name="WEARABLE_EXTENDER_BACKGROUND_BLOCKED"><meta-data definedIn="android.app.Notification" sourcePosition="frameworks/base/core/java/android/app/Notification.java:313"/></compat-change></config>

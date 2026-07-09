@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableAfterTargetSdk="28" id="147600208" name="LISTEN_CODE_CHANGE"><meta-data definedIn="android.telephony.TelephonyRegistryManager" sourcePosition="frameworks/base/core/java/android/telephony/TelephonyRegistryManager.java:267"/></compat-change></config>

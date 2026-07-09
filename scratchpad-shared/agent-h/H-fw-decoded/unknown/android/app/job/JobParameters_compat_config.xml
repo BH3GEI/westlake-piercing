@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change disabled="true" id="372529068" name="OVERRIDE_HANDLE_ABANDONED_JOBS" overridable="true"><meta-data definedIn="android.app.job.JobParameters" sourcePosition="frameworks/base/apex/jobscheduler/framework/java/android/app/job/JobParameters.java:362"/></compat-change></config>

@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableAfterTargetSdk="31" id="146211400" name="CANNOT_INSTALL_WITH_BAD_PERMISSION_GROUPS"><meta-data definedIn="android.permission.PermissionManager" sourcePosition="frameworks/base/core/java/android/permission/PermissionManager.java:187"/></compat-change></config>

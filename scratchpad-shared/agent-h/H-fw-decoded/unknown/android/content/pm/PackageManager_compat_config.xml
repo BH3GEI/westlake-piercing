@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="30" id="135549675" name="FILTER_APPLICATION_QUERY"><meta-data definedIn="android.content.pm.PackageManager" sourcePosition="frameworks/base/core/java/android/content/pm/PackageManager.java:5685"/></compat-change></config>

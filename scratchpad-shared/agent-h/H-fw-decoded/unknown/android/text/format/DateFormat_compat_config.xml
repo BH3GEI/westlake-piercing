@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="34" id="170233598" name="DISALLOW_DUPLICATE_FIELD_IN_SKELETON"><meta-data definedIn="android.text.format.DateFormat" sourcePosition="frameworks/base/core/java/android/text/format/DateFormat.java:172"/></compat-change></config>

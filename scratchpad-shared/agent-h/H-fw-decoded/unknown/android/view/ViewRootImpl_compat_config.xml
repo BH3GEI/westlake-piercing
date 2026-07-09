@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="349153669" name="DISABLE_DRAW_WAKE_LOCK"><meta-data definedIn="android.view.ViewRootImpl" sourcePosition="frameworks/base/core/java/android/view/ViewRootImpl.java:359"/></compat-change></config>

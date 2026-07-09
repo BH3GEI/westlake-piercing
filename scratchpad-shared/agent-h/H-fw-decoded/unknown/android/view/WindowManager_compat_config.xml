@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="306666082" name="ENABLE_ACTIVITY_EMBEDDING_FOR_ANDROID_15"><meta-data definedIn="android.view.WindowManager" sourcePosition="frameworks/base/core/java/android/view/WindowManager.java:1500"/></compat-change></config>

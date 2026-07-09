@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="33" id="149254050" name="DUMP_IGNORES_SPECIAL_ARGS"><meta-data definedIn="android.app.Activity" sourcePosition="frameworks/base/core/java/android/app/Activity.java:827"/></compat-change></config>

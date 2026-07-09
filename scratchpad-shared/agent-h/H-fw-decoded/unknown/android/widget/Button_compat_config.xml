@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="36" id="376561342" name="WEAR_MATERIAL3_BUTTON"><meta-data definedIn="android.widget.Button" sourcePosition="frameworks/base/core/java/android/widget/Button.java:96"/></compat-change></config>

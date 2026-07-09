@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="34" id="258825825" name="NOTIFY_NODES_DISAPPEAR_NOW_SENDS_TREE_EVENTS"><meta-data definedIn="android.view.contentcapture.ContentCaptureSession" sourcePosition="frameworks/base/core/java/android/view/contentcapture/ContentCaptureSession.java:209"/></compat-change></config>

@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="307233716" name="IS_DEVICE_OWNER_USER_AWARE"><meta-data definedIn="android.app.admin.DevicePolicyManager" sourcePosition="frameworks/base/core/java/android/app/admin/DevicePolicyManager.java:9739"/></compat-change></config>

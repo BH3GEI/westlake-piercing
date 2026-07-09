@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="36" id="379365266" name="WEAR_MATERIAL3_ALERTDIALOG"><meta-data definedIn="com.android.internal.app.AlertController" sourcePosition="frameworks/base/core/java/com/android/internal/app/AlertController.java:76"/></compat-change></config>

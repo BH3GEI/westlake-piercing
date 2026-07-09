@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableAfterTargetSdk="33" id="236825255" name="DETACH_THROWS_ISE_ONLY"><meta-data definedIn="android.media.ImageReader" sourcePosition="frameworks/base/core/java/android/media/ImageReader.java:117"/></compat-change></config>

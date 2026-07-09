@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="34" id="3400644" name="DETECT_EXPLICIT_GC"><meta-data definedIn="android.os.StrictMode" sourcePosition="frameworks/base/core/java/android/os/StrictMode.java:370"/></compat-change></config>

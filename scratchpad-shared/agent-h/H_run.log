@@ -1,0 +1,61 @@
+[launcher] dlopen+dlsym OK, calling smoke 1200x1920 argb=ff3366cc 20s
+[skia-interposer] GrDirectContexts::MakeGL: fGpuPathRenderers=kNone (no AtlasPathRenderer -> empty onFlush list -> gate never armed) real=0x7efdcba598
+[egl-interposer] eglCreateWindowSurface win=0x7effaf7af0 unwrapped_oh=0x7f8005a0e0 (real=0x7efbe59978)
+[OH_SK_REPLAY] onDrawPaint #1 canvas=0x7efe9f0cd0 (canvas-wide)
+[OH_SK_DISPATCH_Paint_OK] Paint DISPATCHED #1 canvas=0x7efe9f0cd0
+[OH_SK_REPLAY] onDrawPaint #2 canvas=0x7efe9f0cd0 (canvas-wide)
+[OH_SK_DISPATCH_Paint_OK] Paint DISPATCHED #2 canvas=0x7efe9f0cd0
+[OH_SK_PREFLUSH_AtlasMgr] #1 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #1 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #1 failedInstantiation=0 fDAG.size=1 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #1 fDAG.size=1 inst_true=1 inst_false=0 null=0
+[OH_SK_GATE_EXEC_TASK] #1 task=0x7eff717c50 isInstantiated=1 isOpsTask=1
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7eff89f020 n_rects=1 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[OH_SK_PREFLUSH_AtlasMgr] #2 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #2 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #2 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #2 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #3 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #3 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #3 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #3 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #4 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #4 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #4 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #4 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #5 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #5 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #5 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #5 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #6 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #6 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #6 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #6 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #7 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #7 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #7 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #7 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #8 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #8 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #8 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #8 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #9 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #9 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #9 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #9 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #10 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #10 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #10 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #10 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #100 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #100 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #100 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #100 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[OH_SK_PREFLUSH_AtlasMgr] #200 this=0x7eff841010 ftc=0
+[OH_SK_GATE_PREFLUSH] #200 preFlushSuccessful=1 fOnFlushCBObjects.size=1
+[OH_SK_GATE_FLUSH_PRE_EXEC] #200 failedInstantiation=0 fDAG.size=0 usingReorderedDAG=0
+[OH_SK_GATE_EXEC_DAG] #200 fDAG.size=0 inst_true=0 inst_false=0 null=0
+[hwui-harness/ohos] RSSurfaceNode created id=547625703496
+[hwui-harness/ohos] attached to display, background flushed
+[hwui-harness/ohos] OHNativeWindow=0x7f8005a0e0
+[launcher] smoke returned 0

@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableSinceTargetSdk="35" id="263474465" name="SEND_CHOOSER_RESULT" overridable="true"><meta-data definedIn="android.service.chooser.ChooserResult" sourcePosition="frameworks/base/core/java/android/service/chooser/ChooserResult.java:57"/></compat-change></config>

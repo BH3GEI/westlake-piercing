@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableAfterTargetSdk="35" id="356174596" name="REMOVE_HIDDEN_SEND_INTENT_METHOD"><meta-data definedIn="android.content.IntentSender" sourcePosition="frameworks/base/core/java/android/content/IntentSender.java:74"/></compat-change></config>

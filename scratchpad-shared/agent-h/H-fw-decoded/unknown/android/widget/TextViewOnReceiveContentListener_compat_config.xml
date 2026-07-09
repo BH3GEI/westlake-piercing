@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><config><compat-change enableAfterTargetSdk="31" id="163400105" name="AUTOFILL_NON_TEXT_REQUIRES_ON_RECEIVE_CONTENT_LISTENER"><meta-data definedIn="android.widget.TextViewOnReceiveContentListener" sourcePosition="frameworks/base/core/java/android/widget/TextViewOnReceiveContentListener.java:176"/></compat-change></config>

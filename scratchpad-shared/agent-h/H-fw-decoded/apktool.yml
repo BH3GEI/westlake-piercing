@@ -1,0 +1,6 @@
+version: 2.12.1
+apkFileName: H-framework-5583.jar
+sdkInfo:
+  minSdkVersion: 23
+doNotCompress:
+- dex
