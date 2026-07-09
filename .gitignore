@@ -40,3 +40,7 @@ scratchpad-shared/audio-port-64/framework-smali/.classes/
 
 # 白板时代 agent 轮询日志(2026-07-09 冻结):空转产物,不入 git。
 scratchpad-shared/**/*-poll.log
+
+# 白板时代 agent 工作区(2026-07-09 冻结):整树不进远程。磁盘保留。
+scratchpad-shared/
+.claude/worktrees/

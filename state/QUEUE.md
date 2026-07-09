@@ -25,6 +25,8 @@
 
 ## 冻结/待命
 
+- **F-001** ✅ 已推：`piercinginfra/main` = `509a1e12`（orphan 瘦身，无 scratchpad/.so，~11MB）。本地工作分支仍 `dayu600-hwui-gate1-2`。
+
 - lottery 实验(#46)：暂停,等 5ce2dcee 恢复 + probe bundle。
 - Unity 线(D600-5bb5,另一 workstream)：独立坐标,暂不进本队列;需要时按 L{NN}.A{NN} 对齐。
 
