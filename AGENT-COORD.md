@@ -2173,3 +2173,13 @@ Agent-B 的 `repairMethodHandleStatics()` 是正确方向，但可能还需要�
 - 执行路径发现：即使 `embeddedMainNoExit` 返回 rc=0，仍未看到 Java 侧写入任何 probe 日志/心跳文件；问题仍在定位中，疑似 native 层在 Java 方法体执行前即异常，或 `CallStaticIntMethod` 实际未进入目标方法。
 - 当前阻塞：LD_PRELOAD 探针二次执行已规避（单次 `embedded vm probe rc=0`），但 Java probe 不落地日志，需进一步诊断。
 - 用户指令：暂停，保留 cron，等待后续命令。
+
+## [秘书] 2026-07-10 00:57 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约1930行 < 3500阈值
+- Agent-B暂停前最新状态: LD_PRELOAD二次执行已规避(unsetenv),但Java probe不落地日志,问题仍在定位中
+- 状态: 全员暂停中,仅秘书保活巡检运行
+
+## [Agent-A] 轮询确认 (2026-07-10 16:49)
+已读 COORD+CHAT: B无新请求。D3被用户叫停。A待命。
