@@ -1988,3 +1988,45 @@ D3 之前报告的 `Build.<clinit>` AIOOBE / `MethodType` NPE 与此 VerifyError
 - 等秘书派新活
 
 —— Agent-F
+
+## [Agent-C] 暂存报告 · 等待后续派活 (2026-07-10 00:25)
+
+### 用户指令
+用户要求：暂存工作；白板和 chat 交代好；把工作文档化、进展 commit 掉；等待后续命令。**明确保留 cron**，后续会通过白板派活。
+
+### Agent-C 当前状态
+- **职责**: Renderer/Window 线（Strategy B：decorView→RenderNode→RenderProxy→OHOS Surface→panel）。
+- **阻塞**: 项目公共墙 = boot image 与 framework.jar 版本不一致（MethodType clinit / Build.AIOOBE / VerifyError 循环）。B 已在新 probe dex `bcc1f16c...` 中尝试 `repairMethodHandleStatics()` 修复，但当前又遇到 LD_PRELOAD 探针触发 app_process64 二次执行、子进程二次创建 VM 失败的新问题。C 仍无法独立突破，等 B 解决。
+- **板子**: 5583f5be ✅ 存活；5ce2dcee ✅ 存活；C 不碰 5ce2dcee。
+
+### 已完成/就绪工件
+| 工件 | 位置/MD5 | 状态 |
+|------|----------|------|
+| upscreen-render dexjar | `/data/local/tmp/westlake-dayu600-substrate/apks/upscreen-render.dex.jar` (8c837fba) | ✅ 已在 5583f5be |
+| libwestlake_upscreen_renderer.so | 板上 + 源码 `scratchpad-shared/upscreen-render/` (ac2cb5ef) | ✅ 已验证可出首帧 |
+| libwestlake_input.so | 板上 + 源码 `scratchpad-shared/wl-input-d/` (4fdbd3e4) | ✅ D3 已验证 |
+| CriticalNative patcher | `framework.crit-stripped-20260708.jar` (00a1dac2) | ✅ 本地/板上就绪，备用 |
+| injectTouch 测试 harness | `scratchpad-shared/upscreen-render/WestlakeUpscreenTest.smali` + `.java` | ✅ 待命 |
+| WestlakeUpscreen 修复版 | D3 产出 `fixed-WestlakeUpscreen.java` (sDownTimeInitialized) | ✅ 已纳入 scratchpad |
+
+### 待验证清单（公共墙突破后）
+1. `WestlakeUpscreen.show(View, w, h)` 在 B 的 probe/uptodown 进程中出首帧到 OHOS panel。
+2. `WestlakeUpscreen.injectTouch(...)` 经 `WestlakeUpscreenTest.smali` 验证触摸链。
+3. 若仍出现 Paint.nSetFlags SIGBUS（未触及 CriticalNative 时），C 立即推送 `framework.crit-stripped-20260708.jar`。
+4. 若 B 的 probe 修复后仍缺 WMS stub，C 在 `libwestlake_upscreen_renderer.so` 里实现最小 `IWindowManager.Stub`。
+
+### Cron 状态
+- `scratchpad-shared/agent-c2-cron/agent-c2-poll.sh` **保留**，按用户要求不删除。
+- 后续用户通过白板派活时，cron 继续执行。
+
+### 下一步
+等待用户/白板指令。C 保持静默待命，收到派活后立即响应。
+
+—— Agent-C
+
+## [秘书] 2026-07-10 00:27 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约1700行 < 3500阈值
+- Agent-C暂存报告: 渲染/窗口工件已就绪,等B突破公共墙后验证首帧+触摸链
+- 全局阻塞不变: LD_PRELOAD二次执行 / VerifyError循环

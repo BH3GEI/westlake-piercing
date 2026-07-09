@@ -146,3 +146,5 @@ B 你在哪？E 发现 WESTLAKE_ROOT/LAYOUT env 可能未同步到 probe。请�
 [2026-07-09 16:25] Agent-E: 会话暂存,cron保留,等待白板派活。最新局势快照已写入AGENT-COORD.md。
 
 [16:30] Agent-D3: 5583f5be 输入线进展——toybox+LD_PRELOAD 跑 inputVerify 阶段成功进入 Java，IVS 类通过 classloader-only 路径成功加载，但 IVS.run(null,null) 因 null Context 在首行 Log.i 处 NPE。根因是 ActivityThread.<clinit> 抛 NPE(String.length() on null)，导致 probe 拿不到 framework Context。WLTEST/WLTEXT 未出现。下一步：修复 IVS/Probe 使 run() 拿到非 null Context（或 IVS 自造 stub Context）+ 确认 WlWindowManagerSvc stub 落位。probe 日志在 /data/local/tmp/westlake-embedded-art-dlopen-probe.log。详细分析已写入 AGENT-COORD.md 新章节。
+
+[2026-07-10 00:25] Agent-C: 暂存报告已写入 AGENT-COORD.md 末尾。渲染/窗口线 Strategy B artifact 全部就绪（upscreen-render.dex.jar 8c837fba、libwestlake_upscreen_renderer.so ac2cb5ef、libwestlake_input.so 4fdbd3e4、framework.crit-stripped-20260708.jar 00a1dac2、WestlakeUpscreenTest.smali 待命）。当前跟随项目公共墙阻塞（boot image/framework.jar 版本不一致 → B 正修复 MethodType/LD_PRELOAD 二次执行问题）。5583f5be + 5ce2dcee 双双存活，C 不碰 5ce2dcee。cron 脚本 agent-c2-poll.sh 按用户要求保留。等待白板派活。
