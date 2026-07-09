@@ -14,7 +14,9 @@ public final class WlPmHelper {
         "com.google.firebase.installations.FirebaseInstallationsRegistrar",
         "com.google.firebase.datatransport.TransportRegistrar",
         "com.google.firebase.messaging.FirebaseMessagingRegistrar",
-        "com.google.firebase.messaging.FirebaseMessagingKtxRegistrar" };
+        "com.google.firebase.messaging.FirebaseMessagingKtxRegistrar",
+        "com.google.firebase.crashlytics.CrashlyticsRegistrar",
+        "com.google.firebase.crashlytics.FirebaseCrashlyticsKtxRegistrar" };
 
     public static int gsiCalls = 0;
     public static String gsiLast = "none";
@@ -41,6 +43,20 @@ public final class WlPmHelper {
         ai.packageName = "com.uptodown";
         si.applicationInfo = ai;
         return si;
+    }
+
+    public static android.content.pm.ActivityInfo activityInfo(android.content.ComponentName cn, int flags) {
+        android.content.pm.ActivityInfo ai = new android.content.pm.ActivityInfo();
+        ai.packageName = "com.uptodown";
+        ai.name = cn == null ? "com.uptodown.activities.MainActivity" : cn.getClassName();
+        ai.parentActivityName = null;
+        ai.exported = true;
+        ai.enabled = true;
+        ai.metaData = new android.os.Bundle();
+        android.content.pm.ApplicationInfo appi = new android.content.pm.ApplicationInfo();
+        appi.packageName = "com.uptodown";
+        ai.applicationInfo = appi;
+        return ai;
     }
 
     public static android.content.pm.PackageInfo packageInfo(String pkg, int flags) {

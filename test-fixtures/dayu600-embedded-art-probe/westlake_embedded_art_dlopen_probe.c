@@ -82,6 +82,7 @@ static void *westlake_heavy_bridge_handle = 0;
 static void *westlake_android_runtime_handle = 0;
 static JavaVM *g_probe_vm = 0;
 static jobject g_ivs_ctx = 0;  /* framework Context for InputVerifyStage (global ref) */
+static const char *g_skip_marker_path = "/data/local/tmp/westlake-vmprobe-skip";
 __attribute__((visibility("default"))) char __sF[3 * 256];
 __attribute__((visibility("default"))) void *westlake_executils_vtable[16]
     __asm__("_ZTVN3art9ExecUtilsE") = {0};
@@ -2137,6 +2138,25 @@ __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init
 {
     log_text("embedded-art-dlopen-probe constructor");
 
+    // Skip if a marker file exists (written by parent process before exec).
+    // This prevents double-execution when app_process64 execs itself and the
+    // LD_PRELOAD constructor runs again in the child.
+    {
+        FILE *f = fopen(g_skip_marker_path, "r");
+        if (f != 0) {
+            char buf[64] = {0};
+            if (fgets(buf, sizeof(buf), f) != 0) {
+                long parent_pid = atol(buf);
+                if (parent_pid > 0 && parent_pid != (long)getpid()) {
+                    log_text("constructor: parent marker found, skipping (nested exec)");
+                    fclose(f);
+                    return;
+                }
+            }
+            fclose(f);
+        }
+    }
+
     char *create_vm_flag = getenv("WESTLAKE_CREATE_VM");
     char *dlopen_flag = getenv("WESTLAKE_DLOPEN_ON_LOAD");
     if (!streq(create_vm_flag, "1") && !streq(dlopen_flag, "1")) {
@@ -2152,6 +2172,15 @@ __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init
     if (!streq(create_vm_flag, "1")) {
         log_text("WESTLAKE_CREATE_VM not set; dlopen-only mode");
         return;
+    }
+
+    // Write marker so any child (exec'd process) skips the probe
+    {
+        FILE *f = fopen(g_skip_marker_path, "w");
+        if (f != 0) {
+            fprintf(f, "%ld", (long)getpid());
+            fclose(f);
+        }
     }
 
     int vm_rc = run_stage_probe(westlake_art_handle, westlake_create_vm_symbol, 0);

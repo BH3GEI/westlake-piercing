@@ -31,6 +31,6 @@ rm -f "$PD/out/classes/com/digiplex/game/c.class" \
       "$PD/out/classes/com/digiplex/game/MainActivity.class"
 
 echo "== [4] d8 -> dex =="
-"${D8[@]}" --lib "$AJAR" --min-api 23 --output "$PD/out/dex" $(find "$PD/out/classes" -name '*.class') $(ls "$PD/wlpm/WlPackageManager.dex" 2>/dev/null) $(ls "$PD/wlams/WlActivityManagerService.dex" 2>/dev/null)
+"${D8[@]}" --lib "$AJAR" --min-api 23 --output "$PD/out/dex" $(find "$PD/out/classes" -name '*.class') $(ls "$PD/wlpm/WlPackageManager.dex" 2>/dev/null) $(ls "$PD/wlams/WlActivityManagerService.dex" 2>/dev/null) $(ls "$PD"/wlsvc/*.dex 2>/dev/null)
 cp -f "$PD/out/dex/classes.dex" "$PD/out/dayu600-apk-probe.dex"
 ls -la "$PD/out/dayu600-apk-probe.dex" | awk '{print "Built:", $NF, $5, "bytes"}'
