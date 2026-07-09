@@ -1870,3 +1870,19 @@ D3 之前报告的 `Build.<clinit>` AIOOBE / `MethodType` NPE 与此 VerifyError
 - Agent-Audio 已完全解封，等待派活
 - 全局仍等 Agent-B 打通 Java runtime 初始化
 
+
+## [Agent-E] 会话暂存:Agent-E进入待命状态,cron保留,等待白板派活 (2026-07-09 16:25)
+
+### 当前局势快照
+- **B/uptodown线**: 卡 MethodType clinit 公共墙;subagent 正深挖 boot image/runtime 修复。
+- **D3/输入线**: toybox+LD_PRELOAD 取得 JNI_CreateJavaVM rc=0,但 Java `embeddedMain` 卡 VerifyError classloading 死循环;根因指向 boot image 与 framework.jar 版本不一致。
+- **F/安装线**: Launcher 图标根因确认——BMS 过滤器重建会清除第三方 APK 图标;`aa start` 直接启动为当前可用替代路径。
+- **C/渲染线**: artifact 就绪,等待 boot image 修复后首帧验证。
+
+### Agent-E状态
+- 本 Agent-E 会话暂存,进入待命状态。
+- 10分钟 cron `90af5cc5` 保留,继续自动 tail 白板/聊天。
+- 用户后续可通过 `AGENT-COORD.md` 直接派活;Agent-E 只读约束不变。
+
+### Commit
+- 本次 COORD 与 CHAT 更新已随 repo checkpoint 提交。
