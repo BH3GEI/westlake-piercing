@@ -26,18 +26,35 @@ some-cmd | bark "标题" - westlake
 - 普通汇报**不推**——每轮 Stop hook 已自动推摘要,别重复。
 - 板掉线已布线:`oracle/board-recover.sh <serial>` 自动 bark + 守着等板回来。
 
-## agent — Cursor Agent(求助通道,不当 worker)
+## agent — Cursor Agent(顾问通道,不当 worker)
+
+thinker 主攻;卡住才问。顾问**看不见聊天记忆**,必须给具体上下文,并挂上仓库。
 
 ```bash
-agent -p --trust --mode ask --model claude-fable-5-thinking-high "<一个具体问题>"   # 最强(实测 ~18s)
-agent -p --trust --mode ask --model claude-opus-4-8-medium "<问题>"                # 次强(实测 ~15s)
-agent --list-models        # 全部型号
+# 正确姿势(实测通):--workspace 挂仓 + prompt 里写路径/已读文件/问题/已尝试
+agent -p --trust --mode ask \
+  --workspace /Users/yao/Desktop/code/westlake-piercing \
+  --model claude-fable-5-thinking-high \
+  "$(cat <<'EOF'
+仓库: /Users/yao/Desktop/code/westlake-piercing
+先读: state/FRONTIER.md · <相关文件>
+问题: <一个边界清楚的具体问题>
+已尝试: <症状/日志关键行/已排除假说>
+约束: 只读;给可执行下一步
+EOF
+)"
+
+# 次强
+agent -p --trust --mode ask --workspace /Users/yao/Desktop/code/westlake-piercing \
+  --model claude-opus-4-8-medium "<同上结构的问题>"
+
+agent --list-models
 ```
 
-- `agent` 与 `cursor-agent` 是同一二进制(`~/.local/bin/`)。
-- headless 必须 `-p --trust`(否则卡在目录信任提示);求助用 `--mode ask`(只读)。
-- `-p` 默认带全部工具(写文件+shell),所以**不问 ask 就是能改仓库的**,当心。
-- **烧钱通道**:只丢想清楚边界的单个问题+最小上下文,不丢整个任务。
+- `agent` = `cursor-agent` 同一二进制。
+- headless 必须 `-p --trust`;顾问必须 `--mode ask`(只读)。不加 ask 就能改仓,当心。
+- **空问一句禁止**。缺仓库/缺文件路径/缺失败现场 = 无效咨询。
+- 完整纪律见 `protocol/THINKER.md`「顾问通道」。
 
 ## codex — 稳定执行器(ChatGPT 订阅,智商在线但不便宜)
 

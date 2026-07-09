@@ -25,7 +25,7 @@
 ### A. 铸卡班次
 把墙翻译成卡。复制 `tasks/_TEMPLATE.md` → 填全 7 段 → 放 `tasks/todo/`。
 - 缺 oracle 命令的卡**不铸**。尤其不发弱模型。
-- 穿刺卡(硬墙)你自己留着或交用户;工厂卡(可枚举+机械 oracle)发弱模型。
+- 穿刺卡(硬墙)你主攻;卡住问 fable/opus 顾问(见下)。工厂卡(可枚举+机械 oracle)发弱模型/codex。
 - 每张卡标全局原子号 L{NN}.A{NN}(能对上就对)。
 
 ### B. 验收班次
@@ -43,15 +43,37 @@
 
 ## 求助与通知(命令实测 2026-07-09,详见 docs/reference/cli-fleet.md)
 
-- **想不明白可以问更强的模型**(只读求助,不是转包):
+### 顾问通道(fable/opus)—你主攻,卡住再问
+
+你主攻硬墙。想不明白再问更强模型。**只读求助,不是转包整张卡。**
+
+**必须给足上下文,并挂上仓库。** 空问一句 = 浪费钱。顾问看不见你的聊天记忆,只看得见你塞进 prompt 的东西 + `--workspace` 指向的树。
 
 ```bash
-agent -p --trust --mode ask --model claude-fable-5-thinking-high "<一个具体问题>"   # 最强
-agent -p --trust --mode ask --model claude-opus-4-8-medium "<问题>"                # 次强
+# 最强顾问(fable)。次强把 model 换成 claude-opus-4-8-medium。
+agent -p --trust --mode ask \
+  --workspace /Users/yao/Desktop/code/westlake-piercing \
+  --model claude-fable-5-thinking-high \
+  "$(cat <<'EOF'
+仓库: /Users/yao/Desktop/code/westlake-piercing
+先读: state/FRONTIER.md · state/LEDGER.md(#相关墙) · <相关源码路径>
+问题: <一个边界清楚的具体问题>
+已尝试: <你做过什么、看到什么症状/日志关键行>
+约束: 只读分析,不要改文件;回答要给可执行下一步(文件+命令级)
+EOF
+)"
 ```
 
-  只丢**一个想清楚边界的问题**+最小上下文;别丢整个任务进去——烧钱。用前可先 hello 测通道。
-- **bark 手机推送**(`bark <标题> <内容> [分组]`):只在 ①重要里程碑 ②只有用户能解的硬墙(含板子要断电重插) ③被明确要求 时推。普通汇报不推,Stop hook 每轮已自动推摘要。
+纪律:
+- **一个问题**一次;别把整张卡/整条队列塞进去。
+- **仓库必给**:`--workspace` 指本仓根;prompt 里再写一遍绝对路径。
+- **上下文必给**:相关 `state/` 片段、文件路径、hash、板号、失败日志关键行、你已排除的假说。缺啥顾问就猜啥。
+- **不要**让顾问当 worker 改代码/跑 hdc;它给判断,你回来执行。
+- 用前可 hello 测通道(见 `docs/reference/cli-fleet.md`)。
+
+### bark 手机推送
+
+`bark <标题> <内容> [分组]`:只在 ①重要里程碑 ②只有用户能解的硬墙(含板子要断电重插) ③被明确要求 时推。普通汇报不推,Stop hook 每轮已自动推摘要。
 
 ## 下班:必须写回(否则这个班次白干)
 
