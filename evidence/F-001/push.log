@@ -1,0 +1,99 @@
+# F-001 push log — 2026-07-09
+# Branch: dayu600-hwui-gate1-2 (32bf68e3)
+
+## Attempt 1: SSH force push — TIMEOUT (>90s)
+Command:
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" \
+    git push --force -u piercinginfra dayu600-hwui-gate1-2:main
+Result: TIMEOUT
+
+## Attempt 2: SSH force push — TIMEOUT (6min)
+Command:
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=30" \
+    git push --force -u piercinginfra dayu600-hwui-gate1-2:main
+Result: TIMEOUT (empty log — SSH connected but push hung)
+
+## Attempt 3: SSH force push — "remote missing object" REJECTED
+Command:
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=30" \
+    git push --force --force-if-includes piercinginfra dayu600-hwui-gate1-2:main
+Result: REMOTE REJECTED
+Output:
+  remote: fatal: did not receive expected object a5e6c6d1ff80812be84d7f75c2f55e1897496781
+  error: remote unpack failed: index-pack failed
+  To github.com:a2hlab/PiercingInfra.git
+   ! [remote rejected]   dayu600-hwui-gate1-2 -> main (failed)
+
+## Attempt 4: SSH force push — CONNECTION CLOSED
+Command:
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=30" \
+    git push --force -u piercinginfra dayu600-hwui-gate1-2:main
+Result: CONNECTION CLOSED BY REMOTE
+Output:
+  Connection to github.com closed by remote host.
+  send-pack: unexpected disconnect while reading sideband packet
+  fatal: the remote end hung up unexpectedly
+
+## Attempt 5: HTTPS force push — SSL ERROR
+Command:
+  git push --force -u piercinginfra dayu600-hwui-gate1-2:main
+  (push URL temporarily changed to https://github.com/a2hlab/PiercingInfra.git)
+Result: SSL ERROR
+Output:
+  fatal: unable to access 'https://github.com/a2hlab/PiercingInfra.git/':
+  LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443
+
+## Root cause analysis
+
+### 1. NETWORK: SSH write blocked, HTTPS SSL intercepted
+
+- SSH READ to github.com: WORKS (git ls-remote, git fetch succeed)
+- SSH WRITE to github.com: BLOCKED (send-pack disconnects/times out)
+- HTTPS to github.com: BLOCKED by transparent proxy 198.18.0.61
+  (SSL_ERROR_SYSCALL in TLS handshake — proxy intercepts at SSL layer)
+- SSH port 443 (GitHub alternate): BLOCKED (connection timeout)
+- `ssh -T git@github.com`: WORKS — "Hi BH3GEI!" (auth succeeds, shell access blocked)
+- `curl -v https://github.com`: hangs at TLS Client hello (proxy blocks)
+
+### 2. REPO CORRUPTION: Missing historical object
+
+Object a5e6c6d1ff80812be84d7f75c2f55e1897496781 is referenced as parent by
+commit 2f4e5914e55a90b4687e0c6068e56c5a53e4ca9f ("Merge DAYU600 handoff").
+
+Evidence of missing object:
+- git cat-file -t a5e6c6d1 → "could not get object info" (NOT FOUND)
+- Searched all 5 pack files → NOT FOUND
+- Searched all loose objects → NOT FOUND
+- gh API repos/a2hlab/PiercingInfra/git/commits/a5e6c6d1 → 404
+- gh API repos/a2hlab/PiercingInfra/commits/a5e6c6d1 → 422
+
+Source of corruption:
+The local repo has two unrelated histories sharing objects:
+- dayu600-hwui-gate1-2 (32bf68e3): main agent work (77 commits, shared history)
+- worktree-dayu600-hwui-gate1-2 (afb71303 → 2f4e5914): starts from a donor repo's
+  merge commit whose parents include a5e6c6d1 — from the original donor's history.
+  Pack pack-dcaeda80a (2MB, 1 commit only) is "thin" — references external base objects.
+- The two histories have NO common ancestor (git merge-base returns error).
+
+Why this blocks force push of 32bf68e3:
+dayu600-hwui-gate1-2 (32bf68e3) does NOT include 2f4e5914 or a5e6c6d1, yet the
+remote keeps demanding a5e6c6d1. This is likely due to the git send-pack negotiation
+picking up the thin-pack-referenced commit during the negotiation phase.
+
+## What was tried to fix the missing object
+
+- git fetch from piercinginfra: remote is clean (only d09cacab)
+- Searched all 5 pack files for a5e6c6d1 → not found
+- Searched all loose objects → not found
+- Searched all git repos under ~/Desktop/code → not found
+- git fsck --full: no missing objects reported
+- git index-pack --fix-thin on pack-dcaeda80a → silent (did not recover)
+- Cloned piercinginfra bare via SSH: timed out (network write block)
+- Cloned piercinginfra bare via HTTPS: timed out (SSL block)
+- git remote set-url to HTTPS for push: SSL_ERROR_SYSCALL
+
+## Unable to proceed because
+
+1. Cannot push over SSH (write blocked at network layer — send-pack hangs/closes)
+2. Cannot push over HTTPS (SSL intercepted at proxy layer)
+3. Cannot recover missing object a5e6c6d1 (not in any pack, loose object, or remote)
