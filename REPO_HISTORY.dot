@@ -76,5 +76,17 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-04-dayu600-hwui-gate1-2.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2;
+  agent_d3_input_verify_progress [
+    commit="self",
+    base_commit="pending",
+    actor="Yao/Claude",
+    title="Agent-D3 input verification boot image and WM stub progress",
+    user_input="Continue Agent-D3 mission: verify WestLake input chain on DAYU600 board 5583f5be and produce WLTEST/WLTEXT markers in hilog.",
+    agent_action="Corrected the embedded-art probe's -Ximage option so ART loads the arm64 boot image; pushed a patched probe binary; confirmed InputVerifyStage installs a WindowManager stub before View construction; ran inputVerify stage via app_process64 + BOOTCLASSPATH + WESTLAKE_BOOT_IMAGE=1.",
+    code_delta="Modified westlake_embedded_art_dlopen_probe.c -Ximage suffix; added scratchpad-shared/wl-input-d/InputVerifyStage.java and WindowManagerAdapter.java; updated AGENT-COORD.md and AGENT-CHAT.md.",
+    verify="Boot image loaded successfully and Dayu600ApkStageProbe reached ActivityThread.systemMain(); new framework clinit failures (Build, ActivityManager/Random, MethodType) block InputVerifyStage.run; board 5583f5be disconnected after run.",
+    note=".repo-skill/turns/2026-07-09-agent-d3-input-verify-progress.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress;
 }

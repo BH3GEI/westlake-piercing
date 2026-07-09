@@ -1,4 +1,7 @@
 #include <jni.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <unistd.h>
 
 #define AT_FDCWD -100
 #define O_WRONLY 1
@@ -8,6 +11,7 @@
 #define LOG_MODE 438
 #define RTLD_NOW 2
 #define RTLD_GLOBAL 256
+#define RTLD_DEFAULT ((void*)0)
 
 extern void *dlopen(const char *filename, int flags);
 extern void *dlsym(void *handle, const char *symbol);
@@ -23,6 +27,49 @@ static void log_int(const char *prefix, int value);
 static unsigned long slen(const char *s);
 static int describe_pending_exception(JNIEnv *env, const char *prefix);
 
+/* MotionEvent native stub implementations for RegisterNatives */
+static jlong stub_MotionEvent_nativeInitialize(JNIEnv *env, jclass clazz,
+    jlong ptr, jint seqNum, jint action, jint flags,
+    jint metaState, jint buttonState, jint edgeFlags,
+    jint downTime, jint eventTime, jfloat x, jfloat y,
+    jfloat rawX, jfloat rawY, jlong metaState2, jlong windowHandle,
+    jint numPointers, jobjectArray props, jobjectArray coords)
+{
+    (void)env; (void)clazz; (void)ptr; (void)seqNum; (void)action;
+    (void)flags; (void)metaState; (void)buttonState; (void)edgeFlags;
+    (void)downTime; (void)eventTime; (void)x; (void)y;
+    (void)rawX; (void)rawY; (void)metaState2; (void)windowHandle;
+    (void)numPointers; (void)props; (void)coords;
+    return 0x1337L;
+}
+static void stub_MotionEvent_nativeGetFinalize(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+}
+
+/* JNIEXPORT C-linkage functions — OHOS ART finds these by symbol name (dlsym).
+ * These match the canonical JNI naming convention so nativeInitialize can be
+ * resolved without needing RegisterNatives. */
+__attribute__((visibility("default")))
+JNIEXPORT jlong JNICALL Java_android_view_MotionEvent_nativeInitialize(
+    JNIEnv *env, jclass clazz,
+    jlong ptr, jint seqNum, jint action, jint flags,
+    jint metaState, jint buttonState, jint edgeFlags,
+    jint downTime, jint eventTime, jfloat x, jfloat y,
+    jfloat rawX, jfloat rawY, jlong metaState2, jlong windowHandle,
+    jint numPointers, jobjectArray props, jobjectArray coords)
+{
+    return stub_MotionEvent_nativeInitialize(env, clazz, ptr, seqNum, action,
+        flags, metaState, buttonState, edgeFlags, downTime, eventTime,
+        x, y, rawX, rawY, metaState2, windowHandle, numPointers, props, coords);
+}
+__attribute__((visibility("default")))
+JNIEXPORT void JNICALL Java_android_view_MotionEvent_nativeGetFinalize(
+    JNIEnv *env, jclass clazz)
+{
+    stub_MotionEvent_nativeGetFinalize(env, clazz);
+}
+
 static int westlake_errno_slot = 0;
 static const char westlake_progname[] = "westlake-embedded-art-probe";
 static const char westlake_default_heavy_bridge_path[] =
@@ -33,6 +80,8 @@ static void *westlake_create_vm_symbol = 0;
 static void *westlake_find_class_symbol = 0;
 static void *westlake_heavy_bridge_handle = 0;
 static void *westlake_android_runtime_handle = 0;
+static JavaVM *g_probe_vm = 0;
+static jobject g_ivs_ctx = 0;  /* framework Context for InputVerifyStage (global ref) */
 __attribute__((visibility("default"))) char __sF[3 * 256];
 __attribute__((visibility("default"))) void *westlake_executils_vtable[16]
     __asm__("_ZTVN3art9ExecUtilsE") = {0};
@@ -334,25 +383,10 @@ __attribute__((visibility("default"))) int __system_property_get(const char *nam
     return 0;
 }
 
-__attribute__((visibility("default"))) int sigemptyset64(void *set)
-{
-    if (set != 0) {
-        char *p = (char *)set;
-        for (int i = 0; i < 16; i++) {
-            p[i] = 0;
-        }
-    }
-    return 0;
-}
+// sigemptyset64 / sigaddset64 / sigprocmask64 / pthread_sigmask64 / sigwait64
+// all provided by Android NDK (API 28+) — no stubs needed.
 
-__attribute__((visibility("default"))) int sigaddset64(void *set, int signum)
-{
-    (void)set;
-    (void)signum;
-    return 0;
-}
-
-__attribute__((visibility("default"))) int sigprocmask64(int how, const void *set, void *oldset)
+static int westlake_sigprocmask64(int how, const void *set, void *oldset)
 {
     (void)how;
     (void)set;
@@ -362,9 +396,9 @@ __attribute__((visibility("default"))) int sigprocmask64(int how, const void *se
     return 0;
 }
 
-__attribute__((visibility("default"))) int pthread_sigmask64(int how, const void *set, void *oldset)
+static int westlake_pthread_sigmask64(int how, const void *set, void *oldset)
 {
-    return sigprocmask64(how, set, oldset);
+    return westlake_sigprocmask64(how, set, oldset);
 }
 
 __attribute__((visibility("default"))) unsigned long westlake_vixl_cpu_features_combine4(
@@ -395,14 +429,7 @@ __attribute__((visibility("default"))) unsigned long westlake_vixl_acquire_next_
     return 0;
 }
 
-__attribute__((visibility("default"))) int sigwait64(const void *set, int *sig)
-{
-    (void)set;
-    if (sig != 0) {
-        *sig = 0;
-    }
-    return 0;
-}
+// sigwait64 provided by Android NDK (API 28+) — no stub needed
 
 __attribute__((visibility("default"))) unsigned long android_fdsan_create_owner_tag(int type, unsigned long tag)
 {
@@ -532,16 +559,17 @@ static char *build_art_path(void)
     return build_root_path(path, sizeof(path), "/art/libwestlake_art.so");
 }
 
-/* [DAYU600] -Ximage:<root>/arm64/boot.art — load the arm64 boot image (with the FieldVarHandle
- * fixup) so VarHandle-dependent classes are pre-initialized instead of hitting the broken
- * imageless clinit. Enabled only when WESTLAKE_BOOT_IMAGE=1. */
+/* [DAYU600] -Ximage:<root>/boot.art — ART expands this to <root>/arm64/boot.art, loading
+ * the arm64 boot image (with the FieldVarHandle fixup) so VarHandle-dependent classes are
+ * pre-initialized instead of hitting the broken imageless clinit. Enabled only when
+ * WESTLAKE_BOOT_IMAGE=1. */
 static char *build_image_option(void)
 {
     static char opt[512];
     unsigned long pos = 0;
     append_text(opt, sizeof(opt), &pos, "-Ximage:");
     append_text(opt, sizeof(opt), &pos, westlake_root());
-    append_text(opt, sizeof(opt), &pos, "/arm64/boot.art");
+    append_text(opt, sizeof(opt), &pos, "/boot.art");
     return opt;
 }
 
@@ -596,11 +624,15 @@ static char *build_bootclasspath_option(void)
         append_text(option, sizeof(option), &pos, root);
         append_text(option, sizeof(option), &pos, "/android/framework/adapter-runtime-bcp.jar:");
         append_text(option, sizeof(option), &pos, root);
-        append_text(option, sizeof(option), &pos, "/android/framework/oh-adapter-framework.jar:");
-        append_text(option, sizeof(option), &pos, root);
         append_text(option, sizeof(option), &pos, "/apks/dayu600-androidx-overlay-stub.dex:");
         append_text(option, sizeof(option), &pos, root);
         append_text(option, sizeof(option), &pos, "/apks/dayu600-apk-probe.dex:");
+        append_text(option, sizeof(option), &pos, root);
+        append_text(option, sizeof(option), &pos, "/apks/upscreen-render-ivs.dex.jar:");
+        append_text(option, sizeof(option), &pos, root);
+        append_text(option, sizeof(option), &pos, "/apks/upscreen-render.dex.jar:");
+        append_text(option, sizeof(option), &pos, root);
+        append_text(option, sizeof(option), &pos, "/android/framework/oh-adapter-framework.jar:");
         append_text(option, sizeof(option), &pos, root);
         append_text(option, sizeof(option), &pos, "/apks/icu-data.jar");
         if (westlake_includes_game_apk()) {
@@ -644,7 +676,7 @@ static char *build_bootclasspath_option(void)
 
 static char *build_classpath_value(void)
 {
-    static char value[2048];
+    static char value[4096];
     unsigned long pos = 0;
     const char *root = westlake_root();
     if (westlake_uses_substrate_layout()) {
@@ -658,6 +690,11 @@ static char *build_classpath_value(void)
         append_text(value, sizeof(value), &pos, "/apks/dayu600-androidx-overlay-stub.dex:");
         append_text(value, sizeof(value), &pos, root);
         append_text(value, sizeof(value), &pos, "/apks/dayu600-apk-probe.dex:");
+        // Agent-D3 input+upscreen harness: WestlakeUpscreen + InputVerifyStage
+        append_text(value, sizeof(value), &pos, root);
+        append_text(value, sizeof(value), &pos, "/apks/upscreen-render-ivs.dex.jar:");
+        append_text(value, sizeof(value), &pos, root);
+        append_text(value, sizeof(value), &pos, "/apks/upscreen-render.dex.jar:");
         append_text(value, sizeof(value), &pos, root);
         append_text(value, sizeof(value), &pos, "/apks/icu-data.jar");
         if (westlake_includes_game_apk()) {
@@ -675,6 +712,10 @@ static char *build_classpath_value(void)
     append_text(value, sizeof(value), &pos, "/apks/dayu600-androidx-overlay-stub.dex:");
     append_text(value, sizeof(value), &pos, root);
     append_text(value, sizeof(value), &pos, "/apks/dayu600-apk-probe.dex");
+    // Agent-D3: inputVerifyStage in upscreen-render-ivs.dex.jar
+    append_text(value, sizeof(value), &pos, ":");
+    append_text(value, sizeof(value), &pos, root);
+    append_text(value, sizeof(value), &pos, "/apks/upscreen-render-ivs.dex.jar");
     if (westlake_includes_game_apk()) {
         append_text(value, sizeof(value), &pos, ":");
         append_text(value, sizeof(value), &pos, root);
@@ -1071,9 +1112,11 @@ static int ensure_art_loaded(void)
 
     log_text("dlsym JNI_CreateJavaVM ok");
     westlake_find_class_symbol = dlsym(westlake_art_handle, "Westlake_FindClassInSystemLoader");
-    log_text(westlake_find_class_symbol == 0
-        ? "dlsym Westlake_FindClassInSystemLoader missing"
-        : "dlsym Westlake_FindClassInSystemLoader ok");
+    if (westlake_find_class_symbol != 0) {
+        log_text("dlsym Westlake_FindClassInSystemLoader ok");
+    } else {
+        log_text("dlsym Westlake_FindClassInSystemLoader missing");
+    }
     return 0;
 }
 
@@ -1240,6 +1283,15 @@ static int seed_system_properties(JNIEnv *env)
     return 0;
 }
 
+// Crash recovery state for sigsetjmp/longjmp around startReg
+static sigjmp_buf g_crash_jmp;
+static volatile sig_atomic_t g_in_crash_region = 0;
+static void g_crash_handler(int sig) {
+    if (g_in_crash_region) {
+        siglongjmp(g_crash_jmp, sig);
+    }
+}
+
 static int register_system_natives(JNIEnv *env)
 {
     jclass system_class = (*env)->FindClass(env, "java/lang/System");
@@ -1325,9 +1377,11 @@ static int call_framework_class_probe(JNIEnv *env)
 
 static int call_activity_thread_method_probe(JNIEnv *env, int invoke_main)
 {
-    log_text(invoke_main
-        ? "activityThreadMainProbe stage begin\n"
-        : "activityThreadMethodProbe stage begin\n");
+    if (invoke_main) {
+        log_text("activityThreadMainProbe stage begin\n");
+    } else {
+        log_text("activityThreadMethodProbe stage begin\n");
+    }
 
     jclass thread_class = (*env)->FindClass(env, "android/app/ActivityThread");
     if (thread_class == 0 || (*env)->ExceptionCheck(env)) {
@@ -1660,6 +1714,7 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     if (rc != JNI_OK || env == 0) {
         return (int)rc;
     }
+    g_probe_vm = vm;  // save for later use in stage probe
 
     call_optional_onload(handle, "JNI_OnLoad_icu", vm);
     call_optional_onload(handle, "JNI_OnLoad_javacore", vm);
@@ -1668,8 +1723,43 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     call_optional_onload(handle, "JNI_OnLoad_ohbridge", vm);
     log_int("register_system_natives rc=", register_system_natives(env));
     log_int("seed_system_properties rc=", seed_system_properties(env));
-    call_android_runtime_start_reg(env);
+    // Run android runtime startReg with signal-based crash recovery (sigsetjmp/siglongjmp).
+    // If startReg crashes (SIGTRAP etc), we longjmp back here and continue to stage branch.
+    int start_reg_rc = 0;
+    {
+        struct sigaction sa_old[5];
+        struct sigaction sa_new = { .sa_handler = g_crash_handler, .sa_flags = 0 };
+        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGABRT, SIGFPE };
+        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
+        g_in_crash_region = 1;
+        int saved_sig = sigsetjmp(g_crash_jmp, 1);
+        if (saved_sig == 0) {
+            // normal path
+            start_reg_rc = call_android_runtime_start_reg(env);
+        } else {
+            // crashed with signal saved_sig
+            char buf[64];
+            unsigned long pos = 0;
+            const char *pref = "startReg CRASH signal=";
+            for (int i = 0; pref[i]; i++) buf[pos++] = pref[i];
+            char dbuf[12]; int didx = 0;
+            int sv = saved_sig;
+            if (sv == 0) sv = SIGTRAP;
+            do { dbuf[didx++] = (char)('0' + (sv % 10)); sv /= 10; } while (sv > 0);
+            while (didx > 0) buf[pos++] = dbuf[--didx];
+            buf[pos] = 0;
+            log_text(buf);
+        }
+        g_in_crash_region = 0;
+        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+    }
+    if (start_reg_rc == 0) {
+        log_text("android runtime startReg returned 0 (skipped/ok)");
+    } else {
+        log_int("android runtime startReg rc=", start_reg_rc);
+    }
 
+    // Proceed even if startReg failed — do not abort the stage on framework registration errors
     int heavy_before_rc = load_heavy_bridge_if_requested("beforeStage");
     if (heavy_before_rc != 0) {
         return heavy_before_rc;
@@ -1682,6 +1772,249 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     if (stage == 0 || stage[0] == 0) {
         stage = "onCreateNullTrace";
     }
+    // Direct syscall write to stderr (fd=2) — bypasses stdio buffering
+    { char _dbg[128]; int _pos = 0;
+      const char *_pref = "DBG stage=";
+      for (int _i = 0; _pref[_i]; _i++) _dbg[_pos++] = _pref[_i];
+      if (stage) { for (int _i = 0; stage[_i] && _pos < 120; _i++) _dbg[_pos++] = stage[_i]; }
+      _dbg[_pos++] = '\n';
+      (void)write(2, _dbg, _pos);
+    }
+
+    // inputVerify stage: handled by Java in Dayu600ApkStageProbe.embeddedMainNoExit
+    // (which has access to framework Context). Just log and fall through to Java call.
+    if (streq(stage, "inputVerify")) {
+        log_text("inputVerify: falling through to Java");
+    }
+
+    // Skip inputVerify for uptodownProbe — IVS class not on classpath
+    if (streq(stage, "uptodownProbe")) {
+        log_text("inputVerify SKIPPED for uptodownProbe stage");
+    } else {
+    // Agent-D3: inputVerify — call InputVerifyStage.run() via reflection
+    // Uses ActivityThread.systemMain().getSystemContext() + Class.forName from app classloader
+    // Class: adapter.window.InputVerifyStage (in upscreen-render-ivs.dex.jar on board)
+    log_text("inputVerify block entered");
+    // Wrap all JNI calls with crash recovery (siglongjmp) since systemMain/run can crash
+    {
+        struct sigaction sa_old[5];
+        struct sigaction sa_new = { .sa_handler = g_crash_handler, .sa_flags = 0 };
+        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGABRT, SIGFPE };
+        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
+        g_in_crash_region = 1;
+        int ivs_saved_sig = sigsetjmp(g_crash_jmp, 1);
+        if (ivs_saved_sig == 0) {
+            // --- normal path: JNI calls ---
+            log_text("inputVerify stage: calling InputVerifyStage.run() via reflection");
+            // Find app classloader via Dayu600ApkStageProbe.targetClassLoader()
+            jclass probe_cls = (*env)->FindClass(env, "Dayu600ApkStageProbe");
+            if (probe_cls == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "FindClass Dayu600ApkStageProbe failed");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 100;
+            }
+            jmethodID target_cl_m = (*env)->GetStaticMethodID(env, probe_cls,
+                "targetClassLoader", "()Ljava/lang/ClassLoader;");
+            if (target_cl_m == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "targetClassLoader not found");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 101;
+            }
+            jobject app_cl_obj = (*env)->CallStaticObjectMethod(env, probe_cls, target_cl_m);
+            if ((*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "targetClassLoader threw");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 102;
+            }
+
+            // Build ActivityThread.systemMain().getSystemContext() for framework context
+            jclass at_cls = (*env)->FindClass(env, "android/app/ActivityThread");
+            if (at_cls == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "ActivityThread class failed");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 103;
+            }
+            // Try ActivityThread.currentActivityThread() first (returns sCurrentActivityThread static)
+            // This works even without systemMain() creating a thread
+            jmethodID current_at = (*env)->GetStaticMethodID(env, at_cls,
+                "currentActivityThread", "()Landroid/app/ActivityThread;");
+            if (current_at != 0 && !(*env)->ExceptionCheck(env)) {
+                jobject at = (*env)->CallStaticObjectMethod(env, at_cls, current_at);
+                if (at != 0 && !(*env)->ExceptionCheck(env)) {
+                    log_text("got ActivityThread via currentActivityThread()");
+                    jmethodID get_ctx = (*env)->GetMethodID(env, at_cls,
+                        "getSystemContext", "()Landroid/app/ContextImpl;");
+                    if (get_ctx == 0 || (*env)->ExceptionCheck(env)) {
+                        describe_pending_exception(env, "getSystemContext not found");
+                        g_in_crash_region = 0;
+                        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                        return 106;
+                    }
+                    jobject sys_ctx = (*env)->CallObjectMethod(env, at, get_ctx);
+                    if (sys_ctx == 0 || (*env)->ExceptionCheck(env)) {
+                        describe_pending_exception(env, "getSystemContext returned null");
+                        g_in_crash_region = 0;
+                        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                        return 107;
+                    }
+                    log_text("got system context from currentActivityThread");
+                    g_ivs_ctx = (*env)->NewGlobalRef(env, sys_ctx);
+                    goto load_ivs_with_context;
+                }
+                (*env)->ExceptionClear(env);
+            }
+            // currentActivityThread() returned null — try systemMain() which creates
+            // ActivityThread + SystemContext without needing services
+            log_text("currentActivityThread() null — trying systemMain()...");
+            jmethodID system_main = (*env)->GetStaticMethodID(env, at_cls,
+                "systemMain", "()Landroid/app/ActivityThread;");
+            if (system_main != 0 && !(*env)->ExceptionCheck(env)) {
+                jobject at_sm = (*env)->CallStaticObjectMethod(env, at_cls, system_main);
+                if (at_sm != 0 && !(*env)->ExceptionCheck(env)) {
+                    log_text("ActivityThread.systemMain() ok");
+                    jmethodID get_ctx = (*env)->GetMethodID(env, at_cls,
+                        "getSystemContext", "()Landroid/app/ContextImpl;");
+                    if (get_ctx != 0 && !(*env)->ExceptionCheck(env)) {
+                        jobject sys_ctx = (*env)->CallObjectMethod(env, at_sm, get_ctx);
+                        if (sys_ctx != 0 && !(*env)->ExceptionCheck(env)) {
+                            log_text("got system context from systemMain()");
+                            g_ivs_ctx = (*env)->NewGlobalRef(env, sys_ctx);
+                            goto load_ivs_with_context;
+                        }
+                    }
+                    (*env)->ExceptionClear(env);
+                log_text("systemMain() fallback failed");
+            }
+            // All bootstraps failed — use classloader-only path
+            log_text("ActivityThread bootstrap failed — using classloader-only path");
+            goto load_ivs_no_context;
+
+load_ivs_no_context:
+            {
+                // Fallback: load IVS and call run(null, null) — IVS should handle null context
+                log_text("loading InputVerifyStage without context");
+                jclass cls_cls = (*env)->FindClass(env, "java/lang/Class");
+                if (cls_cls == 0 || (*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "Class class failed");
+                    g_in_crash_region = 0;
+                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    return 108;
+                }
+                jmethodID forname_m = (*env)->GetStaticMethodID(env, cls_cls,
+                    "forName", "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;");
+                if (forname_m == 0 || (*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "Class.forName(Str,bool,CL) not found");
+                    g_in_crash_region = 0;
+                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    return 109;
+                }
+                jstring ivs_name = (*env)->NewStringUTF(env, "adapter.window.InputVerifyStage");
+                if (ivs_name == 0 || (*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "NewStringUTF failed");
+                    g_in_crash_region = 0;
+                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    return 110;
+                }
+                jclass ivs_cls = (*env)->CallStaticObjectMethod(env, cls_cls, forname_m,
+                    ivs_name, JNI_TRUE, app_cl_obj);
+                if (ivs_cls == 0 || (*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "InputVerifyStage.forName failed");
+                    g_in_crash_region = 0;
+                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    return 114;
+                }
+                log_text("IVS class loaded (no-context path)");
+                // For inputVerify stage: call IVS.run(null,null) directly.
+                // IVS handles null context by creating its own minimal Context.
+                jmethodID run_m = (*env)->GetStaticMethodID(env, ivs_cls,
+                    "run", "(Landroid/content/Context;Ljava/lang/Object;)V");
+                if (run_m == 0 || (*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "InputVerifyStage.run not found");
+                    (*env)->DeleteLocalRef(env, ivs_cls);
+                    g_in_crash_region = 0;
+                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    return 115;
+                }
+                log_text("calling InputVerifyStage.run(null,null)...");
+                (*env)->CallStaticVoidMethod(env, ivs_cls, run_m, (jobject)0, (jobject)0);
+                if ((*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "IVS.run threw");
+                    (*env)->ExceptionClear(env);
+                }
+                (*env)->DeleteLocalRef(env, ivs_cls);
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                log_text("inputVerify: IVS.run done, exiting");
+                return 0;
+            }
+
+load_ivs_with_context:
+            {
+            // g_ivs_ctx must be set before reaching here via goto
+            if (g_ivs_ctx == 0) {
+                log_text("load_ivs_with_context: g_ivs_ctx == null");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 117;
+            }
+            log_text("load_ivs_with_context: g_ivs_ctx available, calling IVS.run(ctx, null)...");
+            // Load IVS and call run(g_ivs_ctx, null)
+            jclass cls_cls = (*env)->FindClass(env, "java/lang/Class");
+            if (cls_cls == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "Class class failed");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 108;
+            }
+            jmethodID forname_m = (*env)->GetStaticMethodID(env, cls_cls,
+                "forName", "(Ljava/lang/String;)Ljava/lang/Class;");
+            if (forname_m == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "Class.forName not found");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 109;
+            }
+            jstring ivs_name = (*env)->NewStringUTF(env, "adapter.window.InputVerifyStage");
+            if (ivs_name == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "NewStringUTF failed");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 110;
+            }
+            jclass ivs_cls = (*env)->CallStaticObjectMethod(env, cls_cls, forname_m, ivs_name);
+            if (ivs_cls == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "InputVerifyStage.forName failed");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 114;
+            }
+            jmethodID run_m = (*env)->GetStaticMethodID(env, ivs_cls,
+                "run", "(Landroid/content/Context;Ljava/lang/Object;)V");
+            if (run_m == 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "IVS.run not found");
+                g_in_crash_region = 0;
+                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                return 115;
+            }
+            log_text("calling InputVerifyStage.run(g_ivs_ctx, null)...");
+            (*env)->CallStaticVoidMethod(env, ivs_cls, run_m, g_ivs_ctx, (jobject)0);
+            if ((*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "IVS.run threw");
+                (*env)->ExceptionClear(env);
+            }
+            g_in_crash_region = 0;
+            for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+            log_text("load_ivs_with_context: IVS.run done, exiting");
+            return 0;
+            }  // end if (g_ivs_ctx == 0) early-return block
+            }  // end load_ivs_with_context block
+        }  // end IVS try block (ivs_saved_sig == 0)
+    }  // end else (skip inputVerify for uptodownProbe)
+
     if (streq(stage, "appSpawnXInit")) {
         int init_rc = call_appspawnx_init_child(env);
         if (init_rc != 0) {
@@ -1773,15 +2106,20 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
         (*env)->CallStaticVoidMethod(env, probe_class, main_method, arg0, arg1, arg2);
     }
     if ((*env)->ExceptionCheck(env)) {
-        describe_pending_exception(env, no_exit
-            ? "Dayu600ApkStageProbe.embeddedMainNoExit threw"
-            : "Dayu600ApkStageProbe.embeddedMain threw");
+        if (no_exit) {
+            describe_pending_exception(env, "Dayu600ApkStageProbe.embeddedMainNoExit threw");
+        } else {
+            describe_pending_exception(env, "Dayu600ApkStageProbe.embeddedMain threw");
+        }
         return 27;
     }
 
-    log_text(no_exit
-        ? "Dayu600ApkStageProbe.embeddedMainNoExit ok"
-        : "Dayu600ApkStageProbe.embeddedMain ok");
+    if (no_exit) {
+        log_text("Dayu600ApkStageProbe.embeddedMainNoExit ok");
+    } else {
+        log_text("Dayu600ApkStageProbe.embeddedMain ok");
+    }
+    }
     return load_heavy_bridge_if_requested("afterStage");
 }
 
