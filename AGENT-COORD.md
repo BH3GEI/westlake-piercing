@@ -1832,3 +1832,41 @@ D3 之前报告的 `Build.<clinit>` AIOOBE / `MethodType` NPE 与此 VerifyError
 - Launcher图标: 维持此前结论 — BMS注册✅, 运行期图标✅, 重启后被过滤器清除❌
 - 当前可用路径: `aa start`直接启动
 - 阻塞: 无新增阻塞, 等待Agent-B/runtime修复
+
+## [Agent-H] 2026-07-10 00:2x 暂存工作·保持待命
+
+- 用户指令：暂存工作，白板/CHAT 交代，进度 commit；保留 cron 待后续派活。
+- 当前无 B/C/D 新首帧/上屏/出像素里程碑；最新 COORD 显示 B 已修复 MethodType/MethodHandle boot-image 静态字段 null 问题，新 probe dex `bcc1f16c` 部署，当前卡在 LD_PRELOAD 探针二次执行导致 `JNI_CreateJavaVM rc=-1`。
+- 双板 (`5583f5be`, `5ce2dcee`) 在 00:18 巡检均存活；本 Agent-H 本次未做板侧复现。
+- 已验证 md5 留底不变（C 引擎蓝屏 `504386b1`/截图 `08f400a8`、D3 crit-stripped `00a1dac2`、Audio `0029b62c`、F noice BMS 注册等）。
+- Lottery 实验仍缺 B 自包含 probe bundle，未触发。
+- cron 巡检 **保留**；Agent-H 进入待命，后续白板派活即恢复板端验证。
+
+## [Agent-E] 2026-07-10 00:21 交叉分析
+
+### 新进展解读
+
+**Agent-B 的 `repairMethodHandleStatics()` 是重大正向进展：**
+- 直接针对 MethodType/MethodHandle boot-image 静态字段为 null 的根因
+- 与 Agent-D3 之前报告的 `MethodType$ConcurrentWeakInternSet.get` NPE 同源
+- 理论上也能缓解 Agent-D3 toybox 路径的 VerifyError classloading 循环（因为 VerifyError 可能源于 static layout 与 MethodType 初始化错位）
+
+**LD_PRELOAD 二次执行新阻塞分析：**
+- 原因：`app_process64` 被 probe 的 constructor 拦截后，可能 fork/exec 了自身，子进程再次触发 constructor
+- 或 probe 的 `__attribute__((constructor))` 没有过滤"已初始化"状态
+- 解法方向：
+  1. 在 probe constructor 中检测环境变量/全局锁，避免重复创建 VM
+  2. 只拦截首次启动，对子进程直接放行
+  3. 用 `WESTLAKE_BOOT_IMAGE=1` + 专用 imgboot probe（Agent-D3 提示的路径）
+
+**两条主线对比：**
+| 路径 | 状态 | 下一步 |
+|------|------|--------|
+| Agent-B: appspawn-x embed + probe | MethodType修复✅, LD_PRELOAD二次执行❌ | 加防重入锁/环境变量过滤 |
+| Agent-D3: toybox+LD_PRELOAD | JNI_CreateJavaVM rc=0✅, VerifyError循环❌ | 试WESTLAKE_LAYOUT=substrate + symlink |
+
+### 阻塞评估
+- 无新增需要 bark 的升级阻塞（LD_PRELOAD 二次执行为首次出现）
+- Agent-Audio 已完全解封，等待派活
+- 全局仍等 Agent-B 打通 Java runtime 初始化
+
