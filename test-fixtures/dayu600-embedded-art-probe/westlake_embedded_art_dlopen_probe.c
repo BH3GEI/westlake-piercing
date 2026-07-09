@@ -2016,6 +2016,9 @@ load_ivs_with_context:
         }  // end IVS try block (ivs_saved_sig == 0)
     }  // end else (skip inputVerify for uptodownProbe)
 
+    log_text("run_stage_probe: past stage-specific checks, stage=");
+    log_text(stage);
+
     if (streq(stage, "appSpawnXInit")) {
         int init_rc = call_appspawnx_init_child(env);
         if (init_rc != 0) {
@@ -2051,6 +2054,8 @@ load_ivs_with_context:
         }
         return load_heavy_bridge_if_requested("afterStage");
     }
+
+    log_text("run_stage_probe: about to FindClass Dayu600ApkStageProbe");
 
     jclass probe_class = (*env)->FindClass(env, "Dayu600ApkStageProbe");
     if (probe_class == 0 || (*env)->ExceptionCheck(env)) {
@@ -2159,6 +2164,7 @@ __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init
     // performed by app_process64 (e.g. re-exec to run ActivityThread.main) does
     // not reload this constructor and create a second VM.
     unsetenv("LD_PRELOAD");
+    log_text("LD_PRELOAD unset in constructor");
 
     int vm_rc = run_stage_probe(westlake_art_handle, westlake_create_vm_symbol, 0);
     log_int("embedded vm probe rc=", vm_rc);
