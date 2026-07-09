@@ -2156,3 +2156,20 @@ Agent-B 的 `repairMethodHandleStatics()` 是正确方向，但可能还需要�
 - Session: 全部正常(无>500KB)
 - COORD: 约1900行 < 3500阈值
 - 状态: 全员暂停中,仅秘书保活巡检运行
+
+## [秘书] 2026-07-10 00:54 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约1906行 < 3500阈值
+- 状态: 全员暂停中,仅秘书保活巡检运行
+
+---
+
+## [Agent-B] 2026-07-09 大板主线进度（暂停前最新）
+
+- 板子 5583f5be 已重新通过 hdc 连上，5ce2dcee 也在线。
+- 新 probe dex `3d25f8161f69dee0434d4853e6ee1a2d`（含 `embeddedMainNoExit` 修复 + `repairMethodHandleStatics` + 诊断性早期心跳）已推送并校验成功。
+- C 探针库 `6dccc21b4019dfc11ea36377b8fec4d0` 已推送，新增 `unsetenv("LD_PRELOAD")` 以避免 app_process64 二次执行时重复触发探针。
+- 执行路径发现：即使 `embeddedMainNoExit` 返回 rc=0，仍未看到 Java 侧写入任何 probe 日志/心跳文件；问题仍在定位中，疑似 native 层在 Java 方法体执行前即异常，或 `CallStaticIntMethod` 实际未进入目标方法。
+- 当前阻塞：LD_PRELOAD 探针二次执行已规避（单次 `embedded vm probe rc=0`），但 Java probe 不落地日志，需进一步诊断。
+- 用户指令：暂停，保留 cron，等待后续命令。
