@@ -1080,6 +1080,13 @@ public final class Dayu600ApkStageProbe {
     }
 
     public static int embeddedMainNoExit(String target, String stage, String directionArg) throws Exception {
+        // Absolute-path heartbeat: confirms the method was entered before any probeLogPath
+        // or reflection work that might silently fail.
+        try {
+            java.io.FileOutputStream direct = new java.io.FileOutputStream("/data/local/tmp/embedded-direct.txt");
+            direct.write(("embeddedMainNoExit entered target=" + target + " stage=" + stage + " dir=" + directionArg).getBytes());
+            direct.close();
+        } catch (Throwable ignored) {}
         try {
             writeText(probeLogPath("embedded-entry.txt"),
                     "embeddedMainNoExit entered target=" + target + " stage=" + stage + " dir=" + directionArg);
@@ -1483,6 +1490,17 @@ public final class Dayu600ApkStageProbe {
             return;
         }
         if ("uptodownProbe".equals(stage)) {
+            // Absolute-path heartbeat for the uptodownProbe block.
+            try {
+                java.io.FileOutputStream direct = new java.io.FileOutputStream("/data/local/tmp/uptodown-direct.txt");
+                direct.write(("uptodownProbe block entered pid=" + android.os.Process.myPid()).getBytes());
+                direct.close();
+            } catch (Throwable ignored) {}
+            // Early heartbeat: confirm we entered the uptodownProbe stage before any
+            // reflection/ICU/ServiceManager work that might crash on boot-image skew.
+            try {
+                writeText(probeLogPath("uptodown-probe.txt"), "ENTRY:uptodownProbe pid=" + android.os.Process.myPid());
+            } catch (Throwable ignored) {}
             // Point ICU4J at the repackaged ICU data (device icudt74 relabeled icudt75l) so
             // android.icu UResourceBundle locale lookups (needed in onCreate) resolve. The
             // dataPath property is read once at ICUBinary.<clinit> (already run at boot with an
