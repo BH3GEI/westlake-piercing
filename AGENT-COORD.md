@@ -67,6 +67,29 @@ export WESTLAKE_STAGE=inputVerify WESTLAKE_LAYOUT=substrate
 - `/data/local/tmp/westlake-embedded-art-dlopen-probe.log`（板上运行日志，34KB）
 - 本地未修改 Java 源码；待修复点已明确。
 
+## [Agent-D3] 继续输入线: InputVerifyStage 防御 null Context + safeLog (2026-07-09 ~16:40)
+
+### 状态
+- **5583f5be**: ✅ 在线,无 B/C Java 进程占用(仅系统 appspawn/input 进程)。
+- **5ce2dcee**: ❌ 不动。
+
+### 本次工作(已停止,等待后续命令)
+1. 修改 `scratchpad-shared/wl-input-d/InputVerifyStage.java`:
+   - `run()` 开头防御 null Context:不再因 `Log.i(TAG, "..." + ctx)` 崩溃;若 ctx==null 则 safeLog 后尝试加载 `libwestlake_input.so` 并返回。
+   - 新增 `safeLog()`:优先 `System.err.println`,再尝试 `android.util.Log.i`,任一失败不抛异常。
+   - 所有 `Log.i`/`Log.e` 调用替换为 `safeLog`,避免 framework Log 实现异常导致 stage 失败。
+   - 保留原有完整路径(ctx!=null 时构造 View → show() → 加载 .so → 写 westlake_tap/westlake_text)。
+2. 成功编译全部 `wl-input-d/*.java` 到 `/tmp/ivs-v5/classes` (无 error,仅 deprecated API warning)。
+3. 尚未生成 dexjar/未推板/未运行(用户命令停止)。
+
+### 当前阻塞
+- **ActivityThread.<clinit> NPE** 仍是 toybox 路径拿不到非 null Context 的根因。
+- 本次修改只能保证 stage 不崩溃;要产生 `WLTEST`/`WLTEXT` 仍需解决 Context 来源(等 B 的首帧路径或 runtime/probe 修复)。
+
+### 产物
+- `scratchpad-shared/wl-input-d/InputVerifyStage.java` (已修改,未 commit)
+- `/tmp/ivs-v5/classes/` (编译产物)
+
 ## [Subagent-B/Probe] 认领 5583f5be · 修复 uptodownProbe 缺 OHServiceManager.install() (2026-07-09 ~14:25)
 
 ### 板子认领
