@@ -1,0 +1,397 @@
+<title>Unity 上屏 · 原子问题攻关分解</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --panel-2:#eef1f6; --ink:#141922; --ink-soft:#48566b;
+    --line:#d5dce6; --line-soft:#e6ebf2; --accent:#0e7c86; --accent-ink:#0a5a62;
+    --done:#1f8f57; --done-bg:#e4f4ea; --work:#b9761b; --work-bg:#fbefdc;
+    --deep:#c03a3a; --deep-bg:#fbe6e6; --pred:#5566a8; --pred-bg:#e9edf8;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI","Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0c0f16; --panel:#141a24; --panel-2:#1a212d; --ink:#e6ecf5; --ink-soft:#94a3b8;
+      --line:#26303e; --line-soft:#1d2630; --accent:#39c6d4; --accent-ink:#7ee0ea;
+      --done:#48d18a; --done-bg:#12291d; --work:#e6a94a; --work-bg:#2b2110;
+      --deep:#f0736f; --deep-bg:#2c1414; --pred:#93a4e6; --pred-bg:#171d2f;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6f9; --panel:#ffffff; --panel-2:#eef1f6; --ink:#141922; --ink-soft:#48566b;
+    --line:#d5dce6; --line-soft:#e6ebf2; --accent:#0e7c86; --accent-ink:#0a5a62;
+    --done:#1f8f57; --done-bg:#e4f4ea; --work:#b9761b; --work-bg:#fbefdc;
+    --deep:#c03a3a; --deep-bg:#fbe6e6; --pred:#5566a8; --pred-bg:#e9edf8;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c0f16; --panel:#141a24; --panel-2:#1a212d; --ink:#e6ecf5; --ink-soft:#94a3b8;
+    --line:#26303e; --line-soft:#1d2630; --accent:#39c6d4; --accent-ink:#7ee0ea;
+    --done:#48d18a; --done-bg:#12291d; --work:#e6a94a; --work-bg:#2b2110;
+    --deep:#f0736f; --deep-bg:#2c1414; --pred:#93a4e6; --pred-bg:#171d2f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;-webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:1120px;margin:0 auto;padding:48px 24px 96px}
+  code,.hex{font-family:var(--mono);font-size:.88em}
+  .hex{color:var(--accent-ink);background:var(--panel-2);padding:.05em .4em;border-radius:4px;
+    border:1px solid var(--line-soft);white-space:nowrap}
+  h1{font-size:clamp(26px,4vw,40px);line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;text-wrap:balance}
+  .sub{color:var(--ink-soft);font-size:16px;max-width:70ch;margin:0 0 4px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 14px;font-weight:600}
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:18px;font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+  .meta b{color:var(--ink);font-weight:600}
+  h2{font-size:20px;letter-spacing:-.01em;margin:52px 0 6px;display:flex;align-items:baseline;gap:12px}
+  h2 .n{font-family:var(--mono);color:var(--accent);font-size:14px;font-weight:700}
+  .lead{color:var(--ink-soft);margin:0 0 22px;max-width:74ch}
+
+  /* staircase */
+  .stair{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:8px 0 4px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 16px;position:relative;overflow:hidden}
+  .step .ph{font-family:var(--mono);font-size:12px;color:var(--ink-soft);letter-spacing:.08em}
+  .step .tt{font-weight:650;font-size:14.5px;margin:3px 0 10px}
+  .step .bar{height:6px;border-radius:99px;background:var(--line-soft);overflow:hidden}
+  .step .bar i{display:block;height:100%;border-radius:99px}
+  .step .cnt{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);margin-top:8px}
+  .step.done .tt{color:var(--done)} .step.done .bar i{background:var(--done)}
+  .step.work .tt{color:var(--work)} .step.work .bar i{background:var(--work)}
+  .step.pred .tt{color:var(--pred)} .step.pred .bar i{background:var(--pred)}
+  .step .flag{position:absolute;top:12px;right:12px;font-family:var(--mono);font-size:10px;
+    text-transform:uppercase;letter-spacing:.1em;padding:2px 7px;border-radius:99px;font-weight:700}
+  .step.work .flag{background:var(--work-bg);color:var(--work)}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:22px 0 0;font-size:12.5px;font-family:var(--mono);color:var(--ink-soft)}
+  .dot{display:inline-flex;align-items:center;gap:6px}
+  .dot b{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0;overflow:hidden;
+    display:flex;flex-direction:column}
+  .card .top{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line-soft)}
+  .card .id{font-family:var(--mono);font-weight:700;font-size:13px;padding:3px 8px;border-radius:6px;
+    background:var(--panel-2);border:1px solid var(--line-soft);letter-spacing:.02em}
+  .card .name{font-weight:650;font-size:15px;flex:1;letter-spacing:-.01em}
+  .badge{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+    padding:3px 9px;border-radius:99px;font-weight:700;white-space:nowrap}
+  .b-done{background:var(--done-bg);color:var(--done)} .b-work{background:var(--work-bg);color:var(--work)}
+  .b-deep{background:var(--deep-bg);color:var(--deep)} .b-pred{background:var(--pred-bg);color:var(--pred)}
+  .card .body{padding:6px 16px 16px;display:flex;flex-direction:column;gap:11px;flex:1}
+  .row{display:grid;grid-template-columns:64px 1fr;gap:10px;align-items:start}
+  .row .k{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-soft);padding-top:2px}
+  .row .v{font-size:13.5px;line-height:1.5}
+  .row .v.gate{color:var(--done)}
+  .card.deep{border-color:color-mix(in srgb,var(--deep) 40%,var(--line))}
+  .card.work{border-color:color-mix(in srgb,var(--work) 45%,var(--line))}
+  .idlist{font-family:var(--mono);font-size:12px;color:var(--accent-ink)}
+
+  /* critical path */
+  .path{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;overflow-x:auto}
+  .chain{display:flex;align-items:center;gap:0;min-width:640px}
+  .node{font-family:var(--mono);font-size:12.5px;font-weight:700;padding:9px 12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--panel-2);white-space:nowrap}
+  .node.done{background:var(--done-bg);color:var(--done);border-color:transparent}
+  .node.work{background:var(--work-bg);color:var(--work);border-color:transparent}
+  .node.pred{background:var(--pred-bg);color:var(--pred);border-color:transparent}
+  .arr{flex:0 0 26px;text-align:center;color:var(--ink-soft);font-size:14px}
+  .starrow{color:var(--work);font-weight:700}
+
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:4px}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-soft);
+    background:var(--panel-2);position:sticky;top:0}
+  tr:last-child td{border-bottom:none}
+  td .tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;font-weight:700}
+  .t-free{background:var(--pred-bg);color:var(--pred)} .t-dev{background:var(--work-bg);color:var(--work)}
+
+  .note{background:var(--panel-2);border:1px solid var(--line-soft);border-left:3px solid var(--accent);
+    border-radius:10px;padding:16px 18px;margin-top:20px;font-size:13.5px;color:var(--ink-soft)}
+  .note b{color:var(--ink)}
+  .fin{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);font-family:var(--mono);
+    font-size:12px;color:var(--ink-soft);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  @media (max-width:860px){.stair{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:560px){.stair{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:56px 1fr}}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">HanBing · AOSP-on-OH · D600-5bb5 · Unity 2023.2.8f1 il2cpp</p>
+  <h1>Unity 上屏 · 原子问题攻关分解</h1>
+  <p class="sub">把「让 Unity 引擎把第一帧画到屏幕上」这个复合目标，沿进程→生命周期→引擎-init→图形→持续渲染五段，拆成依赖排序的原子子课题。每个原子含精确症状、符号化根因、铁律合规修法、验收闸与弹药。</p>
+  <div class="meta">
+    <span><b>应用</b> betweentwoworlds / com.route3.game1</span>
+    <span><b>设备</b> D600-5bb5 aarch64 OH6.1.0.31</span>
+    <span><b>当前前沿</b> D0 · 前台-ack + gfx-init（WALL8）</span>
+    <span><b>距上屏</b> ~6 原子</span>
+    <span><b>距自动测试完成</b> +9 原子</span>
+  </div>
+</header>
+
+<h2><span class="n">§0</span> 当前位置 · 五段进度阶梯</h2>
+<p class="lead">本 session 从「0 像素、崩在进程 bring-up」一路推到 onResume 之后的引擎-init。A/B 两段已实质打通，C 段是活跃前沿，D 段（真正的"上屏"）已有 B 线弹药待用，E 段是"正常运行"，<b>F 段是自动化测试收口——从上屏到全自动验收出报告的最后环节</b>。全链共 6 段 · 31 原子。</p>
+<div class="stair">
+  <div class="step done"><div class="ph">Phase A</div><div class="tt">进程 Bring-up</div><div class="bar"><i style="width:100%"></i></div><div class="cnt">3 / 3 原子 ✓</div></div>
+  <div class="step done"><div class="ph">Phase B</div><div class="tt">Java 生命周期</div><div class="bar"><i style="width:100%"></i></div><div class="cnt">5 / 5 原子 ✓</div></div>
+  <div class="step work"><div class="ph">Phase C</div><div class="tt">引擎-init</div><div class="bar"><i style="width:55%"></i></div><div class="cnt">C3✓ · C1 band-aid</div></div>
+  <div class="step work"><div class="flag">前沿</div><div class="ph">Phase D</div><div class="tt">图形 / EGL 上屏</div><div class="bar"><i style="width:8%"></i></div><div class="cnt">D0 攻关 · 弹药就绪</div></div>
+  <div class="step pred"><div class="ph">Phase E</div><div class="tt">持续渲染 / 交互</div><div class="bar"><i style="width:0%"></i></div><div class="cnt">0 / 4 预测</div></div>
+  <div class="step pred"><div class="ph">Phase F</div><div class="tt">自动化测试收口</div><div class="bar"><i style="width:0%"></i></div><div class="cnt">0 / 6 · 弹药可搬</div></div>
+</div>
+<div class="legend">
+  <span class="dot"><b style="background:var(--done)"></b>已破</span>
+  <span class="dot"><b style="background:var(--work)"></b>攻关中</span>
+  <span class="dot"><b style="background:var(--deep)"></b>深水 / 待判</span>
+  <span class="dot"><b style="background:var(--pred)"></b>预测（依赖上游）</span>
+</div>
+
+<h2><span class="n">§1</span> 已达成基座 · Phase A + B（8 原子全绿）</h2>
+<p class="lead">这 8 个原子本 session 已逐个符号化破解，构成 Unity 能跑到 onResume 的连贯基座。均属 IPC/适配边界修（铁律 3），非 ART 内部。</p>
+<div class="grid">
+  <div class="card"><div class="top"><span class="id">A1</span><span class="name">二进制连贯 · 治漂移</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v"><code>/system/android</code> 直挂 <span class="hex">sda62</span> 持久 f2fs 而非 bind-mount → deploy 的 cp 落到 child 不加载的 fs，对错 fs 核 md5 = 假"漂移"</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">钉死 canonical 集：libart <span class="hex">3390d679</span> / bridge <span class="hex">048b7576</span> / runtime <span class="hex">8394d433</span> / jar <span class="hex">9cb1a0ee</span> / boot <span class="hex">33258b7f</span>；改件落 sda62</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">CANONICAL_SETS manifest + gate_manifest/gate_boot 全 PASS</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">A2</span><span class="name">soname 劫持</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v"><code>/system/android/lib64</code> 里 stray Unity 引擎 .so 在 LD_LIBRARY_PATH 最前劫持 <code>__errno</code> soname → libunity 早期加载 FATAL</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">删 stray（备份），soname 只解到 app ULP 副本</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate"><code>__errno: symbol not found</code> 消失</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">A3</span><span class="name">child fork + ART natives</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">appspawn-x specialize / OHEnvironment / registerNativeMethodsInChild</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">EGL14 / GLES20·30·31 natives 全注册；child alive</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">B1</span><span class="name">handleLaunchActivity</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">曾误判 <code>[B47-SLA]=0 / LIFECYCLE_TIMEOUT</code>——实为打在错 fs 上（见 A1）</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">sda62 base 的 bridge 048b7576 本含 B47 臂；纠正 fs 即通</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate"><code>[B43-BIND] handleBindApplication OK</code></span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">B2·B3</span><span class="name">bindApplication + onCreate</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">验收</span><span class="v gate">进入 Application.onCreate，无 provider/classloader 墙</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">B4</span><span class="name">content-service prime</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v"><code>UnityPlayer.resume → AudioVolumeHandler → registerContentObserver → NPE: IContentService null</code>（ServiceManager 没 prime content）</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">新写 <code>ContentServiceAdapter</code>（IContentService.Stub 全 no-op，41 方法，镜像 UserManagerAdapter）+ OHServiceManager <code>case "content"</code>；单变量 dexlib2 graft（49 类 0-diff）→ jar <span class="hex">9cb1a0ee</span> + 27 段连贯 boot 重烤 <span class="hex">33258b7f</span></span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">content-NPE 0 复现；ValidateOat 过、无 boot-loop</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">B5</span><span class="name">UnityPlayer 构造 + libunity 加载</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">验收</span><span class="v gate">onResume → libunity 加载 → UnityPlayer 建成 → UnityMain 引擎线程起</span></div>
+    </div></div>
+</div>
+
+<h2><span class="n">§2</span> 引擎-init · Phase C（活跃前沿）</h2>
+<p class="lead">Unity 在 UnityMain（native attach 线程）上初始化时，反复经 JNI 回调 Java 边界拿 Context / 包信息 / asset-pack 路径。这一段的原子墙全是"边界返回 null / 畸形串，Unity 不 null-check 就用"——治本在适配层把边界喂对，而非改 ART。</p>
+<div class="grid">
+  <div class="card work"><div class="top"><span class="id">C1</span><span class="name">Context receiver 接线</span><span class="badge b-work">攻关中</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">UnityMain 崩于 <code>musl strlen(NULL)</code>：<code>Context.getPackageName()</code>（jmethodID holder+<span class="hex">0x670</span>）返 null jstring → Unity 生产者 <code>sub_c44e4c</code> 置 <code>String.data=NULL</code> 不检查即 strlen</span></div>
+      <div class="row"><span class="k">根因</span><span class="v">非 ContextImpl 主体（适配层 <code>OhApplicationInfoConverter:56</code> 已设 packageName，空也是 <code>""</code>→strlen 0 不崩）。强推断 = <b>receiver（Unity 缓存的 Context/Activity jobject，<span class="hex">.bss 0xe3c140</span>）在 UnityMain 线程为 NULL</b> → 传 NULL 给 CallObjectMethod → ART 返 null jstring。解释"主线程 onResume 正常、native 线程崩"</span></div>
+      <div class="row"><span class="k">修法</span><span class="v"><b>治本</b>：activity 桥修 UnityMain 缓存的"当前 Activity"接线（AbilitySchedulerBridge / LifecycleAdapter handleLaunchActivity + UnityPlayer 构造时序）令 receiver 非 NULL。<b>兜底</b>（铁律3合规）：JNI 边界把 Context String getter 的 null 归一化为真包名/真 apk 路径</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">strlen(NULL) 过；getPackageName 返合法串</span></div>
+      <div class="row"><span class="k">现状</span><span class="v">strlen band-aid 临时过（设备确证 wall1，child 过 onResume→foregrounded）；<b>真修 = bridge JNIEnv <code>CallObjectMethodV</code> null-receiver 归一化</b>（需 bridge 重编，native 深水待做）</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← B5</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">unity_assetpack_boundary_RE.md（符号化铁证）</span></div>
+    </div></div>
+
+  <div class="card"><div class="top"><span class="id">C2</span><span class="name">asset-pack / data-path 解析</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">同一引擎-init 函数 <code>0x57ad20</code> 解析 <code>UnityDataAssetPack / UnityStreamingAssetsPack / UnityTextureCompressionsAssetPack</code>；姊妹边界 <code>getPackageCodePath</code>（holder+<span class="hex">0x650</span>）走完全相同 null→strlen 模式</span></div>
+      <div class="row"><span class="k">根因</span><span class="v">与 C1 同源（receiver NULL 或 apk 路径边界 null）——很可能随 C1 一并解</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">C1 的边界归一化须<b>同时覆盖 getPackageCodePath</b>；返真 apk 路径（非空串，否则 asset-pack 拼路径再崩）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">asset-pack 4 串解析无 strlen 崩，data-path 有效</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← C1</span></div>
+    </div></div>
+
+  <div class="card"><div class="top"><span class="id">C3</span><span class="name">GC-Finalizer pthread（翻案已破）</span><span class="badge b-done">已破</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v"><code>SIGSEGV</code> 野 pc <span class="hex">0x7e10000004</span>，曾误判为 ART entrypoint 损坏 / 铁律1 禁区</span></div>
+      <div class="row"><span class="k">真相</span><span class="v"><b>决定性翻案 = il2cpp 自带 Boehm GC(bdwgc) 的 "GC Finalizer" 线程</b>：<code>pthread_create</code> 用 bionic-layout <code>pthread_attr_t</code>，在 OH-musl flat namespace 直落 musl（bionic→musl box shim 从不触发）→ 畸形子栈 → musl <code>__clone blr</code> 垃圾 entry-fn。<b>非 ART、非 entrypoint、非禁区、非 strlen-shim artifact</b></span></div>
+      <div class="row"><span class="k">修法</span><span class="v"><b>AonB 修（铁律3 合规）</b>：<code>liboh_pthread_gotpatch.so</code>（<span class="hex">23f64111</span>，GOT-patch libil2cpp 5 个 pthread 槽到 libbionic_compat box）+ <code>GC_DONT_GC=1</code></span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">truly-cold ×2：PTCGOT 5 槽全 patch，0 复现，Unity worker Init returned 1 连发</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← 独立（il2cpp 运行时）</span></div>
+    </div></div>
+
+  <div class="card"><div class="top"><span class="id">C4</span><span class="name">JNI 边界 null 系统审计</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">C1/C2 是"边界返 null，Unity 不检查"这一<b>类</b>墙的头两个实例。libunity 缓存整张 Context / AssetManager / PackageManager 方法表，任一 getter 返 null 都同样崩</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">一次性审计 libunity 引擎-init 缓存的全部 JNI getter（Context/AssetManager/ApplicationInfo/Resources/PackageManager），在适配层统一保证<b>非 null 非畸形</b>返回——把"逐个崩逐个修"变成"一次覆盖"</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">引擎-init 全程无边界-null strlen/deref 崩</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← C1（模式确立）</span></div>
+    </div></div>
+</div>
+
+<h2><span class="n">§3</span> 图形 / EGL 上屏 · Phase D（真正的"上屏"，B 线弹药就绪）</h2>
+<p class="lead">过了引擎-init（C 段），当前真前沿是 <b>D0 前台-ack + gfx-init（WALL8）</b>。关键已知利好：<b>adapter 自己的 hwui EGL 是通的</b>（drawContent #1 1200×1920、画红 <code>readPixels=0xff0000ff</code>、swapBuffers ENTRY）。且 B 线（5eab tuanjie）曾用 EglHijack 到过 <code>eglCreateWindowSurface SUCCESS</code> + makeCurrent，弹药已存档。</p>
+<div class="grid">
+  <div class="card work"><div class="top"><span class="id">D0</span><span class="name">前台-ack + gfx-init（WALL8）</span><span class="badge b-work">当前前沿</span></div>
+    <div class="body">
+      <div class="row"><span class="k">症状</span><span class="v">C 段两墙修好后，主线程 <code>LIFECYCLE_TIMEOUT</code>：冻结栈 <code>epoll_wait ← MQ_nativePollOnce ← art_jni_trampoline</code>（Looper idle 空转），<b>无 Unity gfx 线程阻塞</b>——gfx-init 根本没起</span></div>
+      <div class="row"><span class="k">根因</span><span class="v">前台-ack 未完成（Unity 等前台信号）+ 最小 harness <b>缺整套 gfx+bridge shim 栈</b>；Unity gfx 线程未拉起</span></div>
+      <div class="row"><span class="k">修法</span><span class="v">组装 <b>cardwords 60fps 配方</b>的 gfx+bridge shim 栈（<code>swappy_kill</code> / <code>datapath</code> / <code>unity_bridge</code> / <code>egl_damage</code>）到 btw harness；参 noice 前台-ack（reportForegroundNow 单发 latch）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">前台超时消失，Unity gfx 线程起，进 EGL 路径（D1）</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← C1 · C3 · C4</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">D1</span><span class="name">ANativeWindow 交接</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">SurfaceView 的 Surface → Unity 引擎线程拿到有效 ANativeWindow（geometry 1200×1920、format、生产者绑定正确）</span></div>
+      <div class="row"><span class="k">风险</span><span class="v">anw 生命周期 / 线程归属（UnityMain vs 主线程）；BLASTBufferQueue 签名（noice/早期 unity 曾撞 nativeUpdate 签名不匹配）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">Unity 侧 ANativeWindow_getWidth/Height 返 1200/1920</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← C1·C2·C4</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">D2</span><span class="name">Unity EGL createWindowSurface</span><span class="badge b-pred">预测·弹药</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">Unity 自己的 EGL 栈在拿到的 anw 上 <code>eglCreateWindowSurface</code>（区别于 adapter hwui 的 EGL）</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">B 线 EglHijack：<code>liboh_unity_bridge</code> / <code>egl_damage_shim</code>（wall7_egl_anw_unwrap，md5 <span class="hex">2e7f0637</span>/<span class="hex">73c94fe6</span>），5eab tuanjie 上到过 SUCCESS。移植到 btw 需改游戏差异</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">Mali EGLSurface 创建 SUCCESS</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← D1</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">D3</span><span class="name">eglMakeCurrent</span><span class="badge b-pred">预测·弹药</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">Unity GL context 绑定到 EGLSurface + display</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">B 线同批到过 makeCurrent SUCCESS（real Mali r32p0）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">eglMakeCurrent 返 EGL_TRUE，GL 可发命令</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← D2</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">D4</span><span class="name">首帧 GL draw + present</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">Unity 渲染首帧（splash / 引擎 logo / 场景）→ glDraw → eglSwapBuffers</span></div>
+      <div class="row"><span class="k">风险</span><span class="v">GLES 扩展/格式协商、shader 编译（Mali）、damage rect（noice 曾负 rect 崩 RS）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">eglSwapBuffers 成功，Unity buffer 入队</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← D3</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">D5</span><span class="name">合成上屏 · occlusion / zOrder</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">Unity buffer 经 RS/SurfaceFlinger 合成到显示，且 Unity 窗口 zOrder 在 launcher 之上、非被 occlusion 裁掉</span></div>
+      <div class="row"><span class="k">风险</span><span class="v">noice 同类墙已知：会话从不 Disconnect 的孤儿 occlusion、窗口 zOrder、critical service 崩重启。可复用 noice 的 occlusion 裁决经验</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate"><b>截图见 Unity 像素</b>（splash/纯色/画面）= 上屏达成</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← D4</span></div>
+    </div></div>
+</div>
+
+<h2><span class="n">§4</span> 持续渲染 / 交互 · Phase E（"正常运行"后续）</h2>
+<p class="lead">上屏（首帧可见）之后，要"正常运行"还需渲染循环稳定 + 交互。这四个原子大多能复用 noice 已验证的弹药。</p>
+<div class="grid">
+  <div class="card"><div class="top"><span class="id">E1</span><span class="name">渲染循环 / vsync 稳定</span><span class="badge b-pred">未来</span></div>
+    <div class="body"><div class="row"><span class="k">课题</span><span class="v">Choreographer / vsync 回调驱动 Unity 持续出帧，非单帧后停</span></div>
+    <div class="row"><span class="k">依赖</span><span class="v idlist">← D5</span></div></div></div>
+  <div class="card"><div class="top"><span class="id">E2</span><span class="name">输入注入</span><span class="badge b-pred">未来·弹药</span></div>
+    <div class="body"><div class="row"><span class="k">课题</span><span class="v">触摸 → Unity（Unity 用自己的 InputManager 读 MotionEvent）</span></div>
+    <div class="row"><span class="k">弹药</span><span class="v">noice 已完整闭环的 OHTouchInjector / InputEventBridge.dispatchOnMainThread 模式可搬</span></div>
+    <div class="row"><span class="k">依赖</span><span class="v idlist">← D5</span></div></div></div>
+  <div class="card"><div class="top"><span class="id">E3</span><span class="name">音频</span><span class="badge b-pred">未来</span></div>
+    <div class="body"><div class="row"><span class="k">课题</span><span class="v">AudioTrack / OpenSL·AAudio → OH 音频（B4 已 stub AudioVolumeHandler 的 content 侧）</span></div>
+    <div class="row"><span class="k">依赖</span><span class="v idlist">← D5</span></div></div></div>
+  <div class="card"><div class="top"><span class="id">E4</span><span class="name">生命周期稳定</span><span class="badge b-pred">未来·同墙</span></div>
+    <div class="body"><div class="row"><span class="k">课题</span><span class="v">relayout churn / 失焦 killProcessByPid（noice 同款墙，正并行攻关）</span></div>
+    <div class="row"><span class="k">依赖</span><span class="v idlist">← D5 · 与 noice E4 共享解</span></div></div></div>
+</div>
+
+<h2><span class="n">§5</span> 自动化测试收口 · Phase F（上屏 → 全自动验收出报告）</h2>
+<p class="lead">"上屏"只是可见首帧；到"最终自动测试完成"还需把冷启、上屏断言、交互脚本、稳定 soak、回归门、报告生成全部自动化——一条命令 reboot→truly-cold→跑完→出结构化 pass/fail + 证据。这 6 个原子大量复用 noice 已验证的 harness 弹药（cold_launch_robust / screenCap / tap 侧信道）。</p>
+<div class="grid">
+  <div class="card"><div class="top"><span class="id">F1</span><span class="name">自动冷启 harness</span><span class="badge b-pred">弹药可搬</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">一键：reboot → 屏常亮 → param abilist64 → merged daemon Phase4 → bm install → truly-cold(NO_JIT) 冷启 → 等 ready marker。可复现、幂等</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">noice <code>cold_launch_noice_robust.sh</code> 换包名/Activity；unity <code>launch_btw_harness.sh</code> 已有雏形</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">脚本退出码=0 且 child alive + UnityMain 起</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← D5（先有上屏才值得自动化）</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">F2</span><span class="name">上屏自动断言</span><span class="badge b-pred">弹药可搬</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">自动 <code>uitest screenCap</code> → 判"是 Unity 画面非 launcher"：像素聚类 / 期望色 / OCR。给确定性 上屏 yes/no 裁决</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">noice tab 验证用的 render 截图像素聚类法（1200×1920 分区）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">非-launcher 判据命中；帧计数器 &gt; 0</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← F1</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">F3</span><span class="name">交互自动化 · 脚本驱动</span><span class="badge b-pred">弹药可搬</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">脚本化点击（tap 侧信道 / uiInput）驱动 Unity UI（开始/暂停/菜单）+ 前后帧 diff 断言状态变化；GIF/截图证据</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">noice <code>/data/local/tmp/noice_tap</code> 侧信道 + OHTouchInjector 已闭环；Unity 侧改喂 Unity InputManager（见 E2）</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">脚本 tap → 帧 diff &gt; 阈值 = 交互生效</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← F2 · E2</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">F4</span><span class="name">稳定性 soak</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">跑 N 分钟：断言无 <code>killProcessByPid</code>、无 tombstone、帧计数器持续推进、无 RS/foundation 崩</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v">noice E4 relayout 稳定性解一旦成，soak 判据同款可搬</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">soak &gt; 目标时长，0 崩、帧持续</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← F2 · E1 · E4</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">F5</span><span class="name">回归门 · canonical gate</span><span class="badge b-pred">弹药就绪</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">上设备前先过 device-free gate（manifest/jar/so/boot）+ 设备 smoke，全绿=可部署。防漂移回归</span></div>
+      <div class="row"><span class="k">弹药</span><span class="v"><code>CANONICAL_SETS/gates/</code> 4 个 gate 已落地实测；unity_5bb5.manifest 已钉死</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate">gate_manifest/jar/so/boot 全 PASS + smoke 过</span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← 独立（护栏，贯穿）</span></div>
+    </div></div>
+  <div class="card"><div class="top"><span class="id">F6</span><span class="name">报告自动生成</span><span class="badge b-pred">预测</span></div>
+    <div class="body">
+      <div class="row"><span class="k">课题</span><span class="v">结构化 pass/fail 报告 + 证据（截图/GIF/child stderr/gate 结果）自动收集归档。= "自动测试完成"的交付物</span></div>
+      <div class="row"><span class="k">验收</span><span class="v gate"><b>一条命令 → 报告落地，人只读结论</b></span></div>
+      <div class="row"><span class="k">依赖</span><span class="v idlist">← F1·F2·F3·F4·F5</span></div>
+    </div></div>
+</div>
+
+<h2><span class="n">§6</span> 关键路径 · 从"上屏"到"自动测试完成"全链</h2>
+<p class="lead">两段主链：先 8 原子到 D5（截图见像素 = 上屏），再经 E + F 共 9 原子到自动化验收出报告。C4 是"把逐个崩收敛成一次覆盖"的加速器（可折叠 C2 及 D1 前的隐藏边界墙）。</p>
+<div class="path">
+  <div class="chain">
+    <span class="node done">B5</span><span class="arr">→</span>
+    <span class="node work">C1</span><span class="arr">→</span>
+    <span class="node done">C3✓</span><span class="arr">→</span>
+    <span class="node pred">C4</span><span class="arr">→</span>
+    <span class="node work">D0★</span><span class="arr">→</span>
+    <span class="node pred">D1</span><span class="arr">→</span>
+    <span class="node pred">D2</span><span class="arr">→</span>
+    <span class="node pred">D3·D4</span><span class="arr">→</span>
+    <span class="node pred">D5 · 像素</span>
+  </div>
+  <div class="chain" style="margin-top:14px">
+    <span class="node pred">D5 · 像素</span><span class="arr">→</span>
+    <span class="node pred">E1</span><span class="arr">→</span>
+    <span class="node pred">E2</span><span class="arr">→</span>
+    <span class="node pred">E4</span><span class="arr">→</span>
+    <span class="node pred">F1</span><span class="arr">→</span>
+    <span class="node pred">F2</span><span class="arr">→</span>
+    <span class="node pred">F3</span><span class="arr">→</span>
+    <span class="node pred">F4</span><span class="arr">→</span>
+    <span class="node pred">F5·F6 · 报告</span>
+  </div>
+</div>
+<div class="note"><b>C3（GC Finalizer 野 pc）不在主链上</b>——它疑为 strlen band-aid 的 artifact。用 C1 治本（不注 preload）后大概率消失；只有它在治本后仍复现，才升级为独立深水原子（铁律1，落 base 最小修，不碰 vtable）。<b>F5 回归门贯穿全链</b>：每个原子的设备部署都先过它，不是终点才做。</div>
+
+<h2><span class="n">§7</span> 攻关并行性 · device-free vs 设备串行</h2>
+<p class="lead">加速的关键：能离线预构建的原子（RE / 弹药编译 / 边界审计）与只能设备串行验证的原子分离。一台 5bb5 是设备验证瓶颈；离线线可无限并行。</p>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>原子</th><th>可离线部分（device-free）</th><th>设备串行部分</th><th>类型</th></tr></thead>
+  <tbody>
+    <tr><td>C1</td><td>边界符号化✓（已完成）、activity 桥修源、兜底归一化 shim 编译</td><td>部署 + truly-cold 验 strlen 过</td><td><span class="tag t-dev">设备收尾</span></td></tr>
+    <tr><td>C2</td><td>getPackageCodePath 归一化并入 C1 修源</td><td>随 C1 同验</td><td><span class="tag t-free">折叠入 C1</span></td></tr>
+    <tr><td>C4</td><td><b>全 JNI getter 表静态审计</b>（libunity 缓存的 Context/AssetManager/PM 方法表逐个列 + 预置边界返回）</td><td>一次部署验多墙</td><td><span class="tag t-free">离线主导</span></td></tr>
+    <tr><td>D2·D3</td><td>EglHijack 从 tuanjie 移植到 btw（源改 + nm gate + 编 arm64）</td><td>部署验 createWindowSurface/makeCurrent</td><td><span class="tag t-free">弹药就绪</span></td></tr>
+    <tr><td>D5</td><td>复用 noice occlusion 裁决经验（离线定策略）</td><td>合成/zOrder 设备实验</td><td><span class="tag t-dev">设备主导</span></td></tr>
+    <tr><td>E2</td><td>OHTouchInjector 模式从 noice 移植</td><td>点击验 Unity 收 MotionEvent</td><td><span class="tag t-free">弹药就绪</span></td></tr>
+    <tr><td>F1·F2·F3</td><td>harness 脚本 / 像素断言 / 交互脚本从 noice cold_launch·screenCap·tap 侧信道改写</td><td>跑一遍冷启+断言</td><td><span class="tag t-free">弹药可搬</span></td></tr>
+    <tr><td>F5·F6</td><td>4 个 device-free gate 已落地；报告模板 + 证据收集器纯离线</td><td>设备 smoke 一次</td><td><span class="tag t-free">离线主导</span></td></tr>
+  </tbody>
+</table>
+</div>
+<div class="note"><b>铁律护栏（全程）：</b>所有修落 <b>适配边界</b>——bridge（liboh_adapter_bridge）/ BCP jar（单变量 dexlib2 graft + 27 段连贯 boot 重烤）/ JNI 边界归一化 shim。<b>不打 class_linker / vtable / entrypoint</b>（C3 若成真墙也须落 base 最小修）。每次上设备前先过 device-free gate 核 canonical manifest（治漂移护栏已落地）。</div>
+
+<div class="fin">
+  <span>HanBing · Unity-on-OH 原子攻关分解 · 2026-07-08</span>
+  <span>源：unity_game1r_runbook.md · unity_assetpack_boundary_RE.md · CANONICAL_UNITY_SET_5bb5.md</span>
+</div>
+</div>

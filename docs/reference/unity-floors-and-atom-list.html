@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unity-on-OH 楼层与原子功能清单</title>
+<style>
+  :root {
+    --ground: #eef0f4;
+    --surface: #ffffff;
+    --surface-2: #f7f8fb;
+    --ink: #1a1e28;
+    --muted: #5b6577;
+    --faint: #8892a2;
+    --line: #dde1e9;
+    --line-strong: #c7cdda;
+    --accent: #3d5a9e;
+    --accent-soft: #eaeff8;
+    --ok: #1f9d5b;
+    --ok-bg: #e6f5ec;
+    --warn: #c07d14;
+    --warn-bg: #fbf1dc;
+    --crit: #c23c37;
+    --crit-bg: #fbe7e5;
+    --todo: #7d8798;
+    --todo-bg: #eceef3;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #10131a;
+      --surface: #181c26;
+      --surface-2: #1f2430;
+      --ink: #e7eaf1;
+      --muted: #9aa4b6;
+      --faint: #6d7789;
+      --line: #2a3040;
+      --line-strong: #39415440;
+      --accent: #8aa6ec;
+      --accent-soft: #23304d;
+      --ok: #46c684;
+      --ok-bg: #16311f;
+      --warn: #e0a94a;
+      --warn-bg: #38290f;
+      --crit: #e8756e;
+      --crit-bg: #3a1c1a;
+      --todo: #8892a2;
+      --todo-bg: #242a36;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10131a; --surface: #181c26; --surface-2: #1f2430; --ink: #e7eaf1;
+    --muted: #9aa4b6; --faint: #6d7789; --line: #2a3040; --line-strong: #39415440;
+    --accent: #8aa6ec; --accent-soft: #23304d;
+    --ok: #46c684; --ok-bg: #16311f; --warn: #e0a94a; --warn-bg: #38290f;
+    --crit: #e8756e; --crit-bg: #3a1c1a; --todo: #8892a2; --todo-bg: #242a36;
+  }
+  :root[data-theme="light"] {
+    --ground: #eef0f4; --surface: #ffffff; --surface-2: #f7f8fb; --ink: #1a1e28;
+    --muted: #5b6577; --faint: #8892a2; --line: #dde1e9; --line-strong: #c7cdda;
+    --accent: #3d5a9e; --accent-soft: #eaeff8;
+    --ok: #1f9d5b; --ok-bg: #e6f5ec; --warn: #c07d14; --warn-bg: #fbf1dc;
+    --crit: #c23c37; --crit-bg: #fbe7e5; --todo: #7d8798; --todo-bg: #eceef3;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    font-size: 15px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 96px; }
+
+  /* ---- header ---- */
+  header { padding: 52px 0 30px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(26px, 4.2vw, 40px); line-height: 1.12; margin: 0 0 16px;
+    letter-spacing: -.015em; text-wrap: balance; font-weight: 700;
+  }
+  .lede { max-width: 68ch; color: var(--muted); font-size: 16px; margin: 0; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  /* ---- stat row ---- */
+  .stats { display: flex; flex-wrap: wrap; gap: 14px; margin: 30px 0 8px; }
+  .stat {
+    flex: 1 1 150px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .stat .n { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .stat.good .n { color: var(--ok); }
+  .stat.warn .n { color: var(--warn); }
+  .stat.crit .n { color: var(--crit); }
+
+  /* ---- section ---- */
+  section { margin-top: 52px; }
+  h2 {
+    font-size: 22px; margin: 0 0 6px; letter-spacing: -.01em;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  h2 .tag { font-family: var(--mono); font-size: 12px; color: var(--faint); font-weight: 500; letter-spacing: .04em; }
+  .sub { color: var(--muted); margin: 0 0 22px; max-width: 74ch; font-size: 14.5px; }
+
+  /* ---- floor stack diagram ---- */
+  .stack { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 6px;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+  .floor {
+    display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 16px;
+    padding: 13px 18px; border-left: 4px solid var(--accent);
+    background: var(--surface);
+  }
+  .floor + .floor { border-top: 1px solid var(--line); }
+  .floor .fid { font-family: var(--mono); font-weight: 600; font-size: 15px; color: var(--accent); }
+  .floor .fname { font-weight: 600; }
+  .floor .fname small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; letter-spacing: 0; }
+  .floor .fcount { font-family: var(--mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .floor.app { border-left-color: var(--ok); background: linear-gradient(90deg, var(--ok-bg), var(--surface) 60%); }
+  .floor.base { border-left-color: var(--line-strong); }
+  .stack-note { font-size: 12.5px; color: var(--faint); font-family: var(--mono); margin: 8px 2px 0; }
+
+  /* ---- legend ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 20px 0 10px; font-size: 13px; align-items: center; }
+  .legend .k { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }
+  .dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
+  .dot.crit { background: var(--crit); } .dot.todo { background: var(--todo); }
+
+  /* ---- tables ---- */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+  thead th {
+    text-align: left; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; padding: 11px 14px; background: var(--surface-2);
+    border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+  }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { background: var(--surface); }
+  tbody tr:hover { background: var(--surface-2); }
+  td.id { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+  td .fn { font-family: var(--mono); font-size: 11.5px; color: var(--accent); background: var(--accent-soft);
+    padding: 1px 6px; border-radius: 4px; margin-right: 4px; white-space: nowrap; }
+  td.desc { color: var(--muted); }
+  td.desc b { color: var(--ink); font-weight: 600; }
+  .md5 { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+  /* status pill */
+  .pill { display: inline-block; font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 2px 9px; border-radius: 20px; white-space: nowrap; letter-spacing: .02em; }
+  .pill.ok { color: var(--ok); background: var(--ok-bg); }
+  .pill.warn { color: var(--warn); background: var(--warn-bg); }
+  .pill.crit { color: var(--crit); background: var(--crit-bg); }
+  .pill.todo { color: var(--todo); background: var(--todo-bg); }
+  /* left priority stripe */
+  tr.pri-warn td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+  tr.pri-crit td:first-child { box-shadow: inset 4px 0 0 var(--crit); }
+  tr.pri-todo td:first-child { box-shadow: inset 4px 0 0 var(--todo); }
+
+  /* ---- test priority cards ---- */
+  .cards { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 16px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .card .head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .card .head .rank { font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 6px; }
+  .card.p1 .head .rank { color: #fff; background: var(--crit); }
+  .card.p2 .head .rank { color: #fff; background: var(--warn); }
+  .card.p3 .head .rank { color: var(--muted); background: var(--todo-bg); }
+  :root[data-theme="dark"] .card.p1 .head .rank, :root[data-theme="dark"] .card.p2 .head .rank { color: #12151a; }
+  @media (prefers-color-scheme: dark) { .card.p1 .head .rank, .card.p2 .head .rank { color: #12151a; } }
+  .card .head h3 { margin: 0; font-size: 15.5px; }
+  .card .head .loc { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .card .body { padding: 6px 18px 16px; }
+  .card .body p { margin: 10px 0 0; font-size: 13.5px; color: var(--muted); }
+  .card .body p b { color: var(--ink); font-weight: 600; }
+  .card .why { display: inline-block; font-size: 12px; color: var(--crit); font-weight: 600; margin-top: 12px;
+    background: var(--crit-bg); padding: 2px 9px; border-radius: 5px; }
+  .card.p2 .why { color: var(--warn); background: var(--warn-bg); }
+  .card.p3 .why { color: var(--todo); background: var(--todo-bg); }
+
+  footer { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--faint); font-family: var(--mono); line-height: 1.9; }
+  footer b { color: var(--muted); font-weight: 600; }
+  a.src { color: var(--accent); text-decoration: none; }
+  a.src:hover { text-decoration: underline; }
+  .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface-2);
+    border-radius: 8px; padding: 14px 18px; margin: 18px 0; font-size: 13.5px; color: var(--muted); }
+  .callout b { color: var(--ink); }
+  @media (max-width: 560px) {
+    .floor { grid-template-columns: 64px 1fr; }
+    .floor .fcount { grid-column: 2; }
+  }
+</style>
+<style>*{box-sizing:border-box}img,svg{max-width:100%}</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="eyebrow">西湖 · Unity-on-OpenHarmony · 楼层与原子功能账本</p>
+  <h1>从空白鸿蒙 6.1 到 Unity 完整上屏：楼层结构与原子功能清单</h1>
+  <p class="lede">把一台<b>纯净 OpenHarmony 6.1 发布版</b>变成能<b>流畅玩起未修改的 Android Unity 游戏（60fps）</b>，需要在两套坐标系里各自成体系的原子功能：<b>构造楼层 B0–B5</b>（从两份源码树往上构建）与<b>上屏能力楼层 L01–L07</b>（引擎穿透 gfx-init 到首帧）。本页把两者对齐，并标出<b>为让各种 Unity 游戏都跑得理想、哪些楼层的哪些原子还需要完善测试</b>。</p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">6</div><div class="l">构造楼层 B0–B5</div></div>
+    <div class="stat"><div class="n">39</div><div class="l">构造原子（B1–B5）</div></div>
+    <div class="stat good"><div class="n">11</div><div class="l">上屏关键原子（L01–L06）</div></div>
+    <div class="stat warn"><div class="n">8</div><div class="l">需完善测试的原子</div></div>
+    <div class="stat crit"><div class="n">1</div><div class="l">当前阻塞（Q2 几何）</div></div>
+  </div>
+</header>
+
+<div class="callout">
+  <b>两套坐标系是同一份工作的两个视角。</b> <span style="font-family:var(--mono)">B4（Unity 能力原子）≡ L01–L06 里的 G/A/Q</span>；底座类 F1–F5 分散在 B2/B3/B5。上屏用 <b>L 视角</b>看得清（引擎穿透的墙序），复现用 <b>B 视角</b>看得清（从 clean 源的构建依赖序）。当前状态：cardwords（Unity 2022.3.62f2）在 D600 两台设备实测 <b>≈59.9fps 冷启动零崩</b>。
+</div>
+
+<!-- ============ FLOOR STACK ============ -->
+<section>
+  <h2>一、构造楼层剖面 <span class="tag">B0 地基 → B5 顶层 · 构建顺序自底向上</span></h2>
+  <p class="sub">每层依赖其下所有层的产物（依赖方向铁律）。三套构建系统贯穿：① OH build（~/oh clang15+musl）② adapter build（GZ05 Docker）③ shim build（Mac DevEco NDK，libc-only LD_PRELOAD）。</p>
+
+  <div class="stack">
+    <div class="floor app">
+      <span class="fid">B5</span>
+      <span class="fname">app + 数据<small>APK 壳 + 安装期解包 data.unity3d → 20 loose · font_prime · 启动装配 env/mount</small></span>
+      <span class="fcount">5 原子</span>
+    </div>
+    <div class="floor">
+      <span class="fid">B4</span>
+      <span class="fname">Unity 能力原子<small>引擎穿透 gfx-init / 音频 / present 到首帧 · = 能力包 G/A/Q · 全为 libc-only shim</small></span>
+      <span class="fcount">6 原子</span>
+    </div>
+    <div class="floor">
+      <span class="fid">B3</span>
+      <span class="fname">AOSP-on-OH adapter<small>Activity / Window / Surface / Binder / JNI 语义翻译到 OH · runtime + bridge + jars</small></span>
+      <span class="fcount">11 原子</span>
+    </div>
+    <div class="floor">
+      <span class="fid">B2</span>
+      <span class="fname">bionic → musl 翻译层<small>pthread / signal / rwlock / stdio / TLS 等 ABI 在 OS 边界翻译（box + gotpatch）</small></span>
+      <span class="fcount">12 原子</span>
+    </div>
+    <div class="floor base">
+      <span class="fid">B1</span>
+      <span class="fname">OH base 平台<small>appspawn-x 孵化器 · ART/libart · BCP jars + boot image · OH 图形系统 · sysandroid $A</small></span>
+      <span class="fcount">5 原子</span>
+    </div>
+    <div class="floor base">
+      <span class="fid">B0</span>
+      <span class="fname">两份纯净源<small>OpenHarmony 6.1 Beta1（API24/SDK26.0.0.18）+ AOSP（14 构建输入 / V15 API oracle / V11 bionic oracle）</small></span>
+      <span class="fcount">源基线</span>
+    </div>
+  </div>
+  <p class="stack-note">↑ 用户看到的是 B5（游戏画面）；工程从 B0 往上盖。红线：不改 APK / libunity(55f7e3dd) / libil2cpp(6adf9e1b)，全部修在 adapter/翻译层，任何未修改 Unity app 受益。</p>
+</section>
+
+<!-- ============ 上屏能力楼层 L01-L07 ============ -->
+<section>
+  <h2>二、上屏能力楼层 L01–L07 <span class="tag">引擎穿透的墙序 · F/D/G/A/Q · 11 上屏原子 + 4 功耗原子</span></h2>
+  <p class="sub">这是"把 Unity 玩起来"最直接的阶梯——每个原子对应引擎撞的一堵墙及其普适修法。左侧色条 = 测试完善优先级。</p>
+
+  <div class="legend">
+    <span class="k"><span class="dot ok"></span>已充分验证（跨机/机制确定）</span>
+    <span class="k"><span class="dot warn"></span>需完善测试（泛化风险）</span>
+    <span class="k"><span class="dot crit"></span>阻塞 / 绕过非根治</span>
+    <span class="k"><span class="dot todo"></span>待补 UT / 待验</span>
+  </div>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>原子 ID</th><th>能力 / 墙签名</th><th>普适修法</th><th>产物 md5</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L01 · 底座基础</td></tr>
+      <tr><td class="id">L01.A01 <span class="fn">F1</span></td><td class="desc"><b>sigaction</b> 绑 musl，sigset 8B↔128B 冲 canary → __stack_chk_fail</td><td class="desc">GOT 两槽重指向 signal box</td><td class="md5">sig_gotpatch 0bc7b9cf</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr><td class="id">L01.A02 <span class="fn">F2</span></td><td class="desc"><b>statfs</b> 误读磁盘 0 空间 → 解包 FatalError</td><td class="desc">字段级翻译（本会话被 D2 覆盖）</td><td class="md5">入 dddd6cd6</td><td><span class="pill ok">PASS</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L02 · 生命周期与环境基座</td></tr>
+      <tr><td class="id">L02.A01 <span class="fn">F3</span></td><td class="desc"><b>getpwuid / HOME</b> NULL-deref（libunity+0x4a243c）</td><td class="desc">注入 HOME env</td><td class="md5">launch env</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr class="pri-crit"><td class="id">L02.A02 <span class="fn">F4</span></td><td class="desc"><b>GC Finalizer</b> setjmp 野指针 0x7e10000004（Boehm GC × musl）</td><td class="desc">env <code>GC_DONT_GC=1</code> 绕过</td><td class="md5">launch env</td><td><span class="pill crit">绕过</span></td></tr>
+      <tr><td class="id">L02.A03 <span class="fn">F5</span></td><td class="desc"><b>FGGUARD</b>：AMS 伪 STOPPED 打断引擎 init → 2s pause 超时 FatalError</td><td class="desc">ScheduleAbilityTransaction 否决 grace 内伪 BACKGROUND</td><td class="md5">入 53962ceb</td><td><span class="pill ok">PASS</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L03 · 数据通路</td></tr>
+      <tr><td class="id">L03.A01 <span class="fn">D1</span></td><td class="desc"><b>data.unity3d 解包</b>：loader 返 false → "No GlobalGameManagers" 模态</td><td class="desc">安装期 unpack UnityFS → 9/20 loose 文件</td><td class="md5">unpack.py 9a9f24fa</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr><td class="id">L03.A02 <span class="fn">D2</span></td><td class="desc"><b>datapath-redirect</b>：引擎 open 走错源路径 base.apk/assets/bin/Data</td><td class="desc">拦 open/stat/statfs 重写到真实 Data</td><td class="md5">datapath bd8ed722</td><td><span class="pill ok">PASS</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L04 · 图形初始化（EGL / GLES）</td></tr>
+      <tr><td class="id">L04.A01 <span class="fn">G1</span></td><td class="desc"><b>EGL surface unwrap</b>（WALL7）：ANativeWindow_getFormat SIGSEGV（AdapterAnw 二次包装）</td><td class="desc">拦 eglCreateWindowSurface 解回裸 OHNativeWindow</td><td class="md5">入 d5dcb5cd</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr class="pri-warn"><td class="id">L04.A02 <span class="fn">G2</span></td><td class="desc"><b>GLES3 空派发</b>（WALL8）：glGetStringi 派发槽 NULL（libunity+0x8411e4）</td><td class="desc">libGLESv2→v3 symlink + dlopen/eglGetProcAddress 重定向到 v3 超集</td><td class="md5">egl_damage d5dcb5cd</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr><td class="id">L04.A03 <span class="fn">G3</span></td><td class="desc"><b>Swappy 帧节拍</b>：SwappyGL::swap 解引用 null（libunity+0x9c6658）</td><td class="desc">dlopen-interpose patch isEnabled→return 0</td><td class="md5">swappy_kill e01c8156</td><td><span class="pill ok">PASS</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L05 · 几何窗口</td></tr>
+      <tr><td class="id">L05.A01 <span class="fn">Q1</span></td><td class="desc"><b>present-XCOM / Z-order</b>：Unity surface 被 launcher 透出 / 非前台</td><td class="desc">RS 树 XCOM selfDrawingType[2] + app leash 前台</td><td class="md5">入 53962ceb</td><td><span class="pill ok">PASS</span></td></tr>
+      <tr class="pri-crit"><td class="id">L05.A02 <span class="fn">Q2</span></td><td class="desc"><b>buffer 几何（0×0）</b>：getWidth/getHeight 返 0 → 0 帧 + 透明 surface</td><td class="desc">拦 getWidth/getHeight/setBuffersGeometry 兜底 <b>硬编码 1200×1920</b></td><td class="md5">geomfix cf46c22b</td><td><span class="pill crit">BLOCK*</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L06 · 音频</td></tr>
+      <tr class="pri-warn"><td class="id">L06.A01 <span class="fn">A1</span></td><td class="desc"><b>FMOD 音频 JNI</b>：native_getMaxChannelCount UnsatisfiedLinkError → AMS kill</td><td class="desc">纯 JNI RegisterNatives 补 16 个 Audio* 空设备 stub</td><td class="md5">unity_bridge ab6b5e9b</td><td><span class="pill ok">PASS</span></td></tr>
+
+      <tr><td class="id" colspan="5" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">L07 · HWC 直通（功耗优化，非上屏必需）</td></tr>
+      <tr><td class="id">L07.A02</td><td class="desc"><b>RS 建 device 层</b>：绕 reason-6 背景透明门（render_service ~80% CPU）</td><td class="desc">SetHardwareEnableHint + opaque-black + 删 NO_SCALE_CROP</td><td class="md5">bridge 034ba724</td><td><span class="pill ok">PASS 6%</span></td></tr>
+      <tr class="pri-todo"><td class="id">L07.A01</td><td class="desc"><b>overlay plane 直扫能力</b>验证（DPU 能否扫非 primary plane）</td><td class="desc">最小 DRM 测试 + drmModeAtomicCommit</td><td class="md5">—</td><td><span class="pill todo">待验</span></td></tr>
+      <tr class="pri-todo"><td class="id">L07.A03</td><td class="desc"><b>composer 阈值补丁</b>：层数≤3→≤11 + supportLayers（UNISOC 闭源，字节补丁）</td><td class="desc">3 等长字节补丁 P1/P2/P3</td><td class="md5">P1+P2 36796cc6</td><td><span class="pill todo">设计中</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="stack-note">* Q2 状态 BLOCK：60fps 已达成，但兜底是<b>硬编码分辨率</b>；正解（mint 加 SET_BUFFER_GEOMETRY 参数化）待收尾——见测试清单 P1。</p>
+</section>
+
+<!-- ============ 构造原子 B1-B3 ============ -->
+<section>
+  <h2>三、底座构造原子 B1–B3 <span class="tag">28 原子 · 让 bionic Unity 进程能在 OH 上起来的承载底座</span></h2>
+  <p class="sub">这三层是 HanBing/Yue 既有的庞大代码库（数十万行、数月工作）。上屏关键原子只用到其中一部分接口，但"各种游戏都理想"依赖它们的完整度。</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>原子 ID</th><th>功能</th><th>关键机制 / 边界翻译</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td class="id" colspan="4" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">B1 · OH base 平台（5）</td></tr>
+      <tr><td class="id">B1.A01</td><td class="desc"><b>appspawn-x</b> AonB 进程孵化器</td><td class="desc">OH 侧 fork+exec bionic Android child · socket AppSpawnX · sandbox</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B1.A02</td><td class="desc"><b>ART / libart</b> 运行时（dex→oat, JNI host）</td><td class="desc">libart.so + BCP boot.art/oat/vdex（ARM32）</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B1.A03</td><td class="desc"><b>BCP jars + boot image</b>（Android framework Java）</td><td class="desc">framework-minus-apex/core-oj/core-libart + 烤 boot</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B1.A04</td><td class="desc"><b>OH 图形系统底座</b>（RenderService/SceneSession/BufferQueue/EGL/GLESv3）</td><td class="desc">RSSurfaceNode · ISceneSessionManager · libGLESv3（v2 超集）</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B1.A05</td><td class="desc"><b>sysandroid 根 $A</b>=/system/android（lib64 60+ / framework / icu）</td><td class="desc">sda62 f2fs 直挂（reboot 不丢）</td><td><span class="pill ok">✓</span></td></tr>
+
+      <tr><td class="id" colspan="4" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">B2 · bionic → musl 翻译层（12）</td></tr>
+      <tr class="pri-warn"><td class="id">B2.A01</td><td class="desc"><b>pthread / sem boxing</b>（mutex/cond/信号量）</td><td class="desc">非对齐安全 boxing；cond_wait 无 REQUEUE；lost-wakeup 字节根因</td><td><span class="pill warn">QEMU sound</span></td></tr>
+      <tr><td class="id">B2.A02</td><td class="desc"><b>signal ABI</b> 翻译（sigaction 32B + sigset 8B↔128B）= F1</td><td class="desc">GOT 重指向 + FaultGuard 关联</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A03</td><td class="desc"><b>rwlock 语义</b>（有界写者优先门，修 EXIT124 写者饥饿）</td><td class="desc">短自旋 + 带超时 futex + 硬预算 2ms + 四护栏（codex 闭环）</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A04</td><td class="desc"><b>stdio FILE ABI</b>（__sF 152↔248 stride）</td><td class="desc">FILE 结构 stride 翻译</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A05</td><td class="desc"><b>errno / locale / FORTIFY</b> libc 翻译</td><td class="desc">pthread_atfork 前向</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A06</td><td class="desc"><b>_ctype_</b> 数据符号翻译</td><td class="desc">字符分类表布局对齐</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A07</td><td class="desc"><b>TLS stack-guard ABI</b>（应用无关原语）</td><td class="desc">pthread_create trampoline · canary reseed</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A08</td><td class="desc"><b>system property</b>（__system_property_* → OH sysparam）</td><td class="desc">libbegetutil.z 桥接</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A09</td><td class="desc"><b>liblog</b> 补充（__ANDROID__ gated → hilog）</td><td class="desc">Android log 宏 → OH hilog</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A10</td><td class="desc"><b>bionic 专有 libc 扩展 stub</b>（fdsan/malloc_compat/minizip）</td><td class="desc">musl 缺失符号补齐</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A11</td><td class="desc"><b>ARM 编译器 / zlib builtin</b> 翻译</td><td class="desc">__sync_* / 内建函数</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B2.A12</td><td class="desc"><b>ART-on-musl 胶水</b>（appspawn-x/BCP 路径）</td><td class="desc">art_quick_entrypoints_arm64.S · bionic_tls_abi</td><td><span class="pill ok">✓</span></td></tr>
+
+      <tr><td class="id" colspan="4" style="background:var(--surface-2);color:var(--accent);font-family:var(--mono)">B3 · AOSP-on-OH adapter（11）</td></tr>
+      <tr class="pri-warn"><td class="id">B3.A01</td><td class="desc"><b>AndroidRuntime JNI 层</b>（startReg + 逐类 RegisterNatives）</td><td class="desc">注：android.media.Audio* 族 DISABLED → 埋 W15 音频墙（A1 修）</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B3.A02</td><td class="desc"><b>adapter_bridge 核心</b> + 回调 / 日志 / 环境</td><td class="desc">JavaVM 管理 · JNI bootstrap · Skia/typeface 预热</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B3.A03</td><td class="desc"><b>window / session 桥</b>（WindowManager ↔ SceneSessionManager）</td><td class="desc">OHWindowManagerClient · 单源 RSSurfaceNode 规则</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B3.A04</td><td class="desc"><b>ANativeWindow 兼容 shim</b>（C-ABI 10 函数表 ↔ OH RefBase）</td><td class="desc">AdapterAnw magic 'ANW1' · G1 依赖它解回裸窗口</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B3.A05</td><td class="desc"><b>surface / present 桥</b> + present-XCOM（Q1）</td><td class="desc">RSSurfaceNode + BufferQueue producer · XCOM 上物理屏</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B3.A06</td><td class="desc"><b>activity / lifecycle 桥 + FGGUARD</b>（F5）</td><td class="desc">FgGuardShouldVeto · grace 默认 3s（OH_FGGUARD_INIT_GRACE_MS）</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B3.A07</td><td class="desc"><b>package-manager 桥</b>（+ APK→HAP 壳安装 libapk_installer）</td><td class="desc">.apk 走 adapter 分流跳过签名流水线</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B3.A08</td><td class="desc"><b>hwui-shim</b>（choreographer/display/minikin/skia AHB/typeface）</td><td class="desc">vsync / buffer / 字体边界补齐</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B3.A09</td><td class="desc"><b>broadcast 桥</b>（BroadcastReceiver ↔ CommonEventService）</td><td class="desc">Intent 广播 ↔ CES</td><td><span class="pill ok">✓</span></td></tr>
+      <tr><td class="id">B3.A10</td><td class="desc"><b>contentprovider 桥</b>（ContentProvider ↔ DataShare）</td><td class="desc">provider 查询 ↔ DataShare</td><td><span class="pill ok">✓</span></td></tr>
+      <tr class="pri-warn"><td class="id">B3.A11</td><td class="desc"><b>adapter framework jar</b>（Java 侧 BCP 补丁）</td><td class="desc">fixDataDirs / primeMountService · InputEventBridge.dispatchOnMainThread</td><td><span class="pill ok">✓</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 测试完善清单 ============ -->
+<section>
+  <h2>四、测试完善清单 <span class="tag">为让"各种 Unity 游戏"都跑得理想 · 按优先级</span></h2>
+  <p class="sub">当前全部验证建立在 <b>单一游戏 cardwords（竖屏 1080×1920）</b>之上。从"一个游戏 60fps"到"各种游戏理想"，缺口不在已破的墙，而在<b>泛化覆盖</b>——参数化、多分辨率、多线程压力、跨引擎、跨部署路径。下列按风险排序。</p>
+
+  <div class="cards">
+
+    <div class="card p1">
+      <div class="head"><span class="rank">P1</span><h3>Q2 buffer 几何 — 多分辨率 / 多方向参数化</h3><span class="loc">L05.A02 · B4.A05</span></div>
+      <div class="body">
+        <p>兜底值是<b>硬编码 1200×1920</b>，只对 cardwords 竖屏成立。GAME1 是横屏 1920×1080，own-staging 路径下几何链行为已不同。任何非此分辨率/方向的游戏都会拿到错误 swapchain 尺寸 → 拉伸、黑边或 0 帧。</p>
+        <p><b>测什么：</b>竖屏/横屏 × 常见分辨率（1080p/1200p/2K/异形屏）矩阵；正解方向是 mint 处加 <code>SET_BUFFER_GEOMETRY</code> 参数化（从窗口真实尺寸派生），替换硬编码，再跑矩阵回归。</p>
+        <span class="why">状态 = BLOCK · 阻塞可玩态泛化</span>
+      </div>
+    </div>
+
+    <div class="card p1">
+      <div class="head"><span class="rank">P1</span><h3>GC Finalizer — 长时稳定性 + 根治替代</h3><span class="loc">L02.A02 · F4</span></div>
+      <div class="body">
+        <p><code>GC_DONT_GC=1</code> 是<b>绕过而非根治</b>：全禁 GC collection 会导致<b>内存无界泄漏</b>。短会话 demo 无碍，但真实游戏长时间玩下去会 OOM。根因是 Boehm GC × musl 的 setjmp 栈扫描不兼容。</p>
+        <p><b>测什么：</b>长时（30min+）内存曲线压测判 OOM 边界；验证更干净的 <code>GC_DISABLE_INCREMENTAL=1</code>（保留 GC 只禁 musl 不兼容的增量 write-barrier）是否可替代；对内存密集型游戏尤其关键。</p>
+        <span class="why">绕过非根治 · 内存泄漏风险</span>
+      </div>
+    </div>
+
+    <div class="card p1">
+      <div class="head"><span class="rank">P1</span><h3>pthread box — 真机弱内存序（G7）</h3><span class="loc">B2.A01 · A1 基建</span></div>
+      <div class="body">
+        <p>pthread/mutex/cond boxing 在 <b>QEMU aarch64 判 SOUND（9/9 绿）</b>，但负控第 5 例 <code>neg_mtx_relaxed</code> 被 <b>QEMU 的 TSO 强序掩盖</b>——真实 ARM 弱序机器上的内存序回归<b>尚未验证</b>。多线程 Unity 游戏（job system、多 worker）正是弱序踩坑高发区。</p>
+        <p><b>测什么：</b>真机 G7 弱序压测（device_g7_run.sh 就绪待放行）；高并发 mutex/cond 混用、broadcast 栅栏、生产者-消费者在真机上跑到 1e6+ 迭代验无丢唤醒/无序违例。</p>
+        <span class="why">QEMU 掩盖弱序 · 多线程游戏高发</span>
+      </div>
+    </div>
+
+    <div class="card p2">
+      <div class="head"><span class="rank">P2</span><h3>B4 全部能力 shim — 跨游戏泛化矩阵</h3><span class="loc">B4 全层 · L04/L06</span></div>
+      <div class="body">
+        <p>swappy_kill / egl_damage / geomfix / unity_bridge / font_prime 全部<b>只在 cardwords 一个游戏验证过</b>。GLES3 派发（G2）只补齐了 cardwords 用到的 proc 子集；FMOD stub（A1）只覆盖 FMOD 触碰的 16 个 native。</p>
+        <p><b>测什么：</b>建游戏矩阵（HelloWorld / noice / 重图形 / 3D / URP / 不同 Unity 版本）逐一冷启动跑通；重图形游戏会命中更多 GLES3 扩展枚举 / compute / vulkan 路径；不同音频引擎（Wwise / 原生 AudioTrack）会命中 A1 未覆盖的 native。</p>
+        <span class="why">单游戏验证 · N-app 复用未验</span>
+      </div>
+    </div>
+
+    <div class="card p2">
+      <div class="head"><span class="rank">P2</span><h3>跨部署路径 — GAME1 own-staging 5 墙</h3><span class="loc">B3 + B5 部署链</span></div>
+      <div class="body">
+        <p>自编游戏走独立部署路径（route3 壳 + own-staging）级联撞出 5 面墙，前 4 已修、第 5 待修——这些正是"各种游戏各自装"会遇到的泛化缺陷：①aapt2 资源包名错配 ②il2cpp bind 目标不存在（overlayfs 修）③input-bridge NSME runtime 版本敏感 ④HWUI Minikin 字体 reprime 时序 ⑤<b>RS 事务并发崩（待修，native present-wall）</b>。</p>
+        <p><b>测什么：</b>把这 4 个普适修法（资源包名 / overlayfs / 47bb82aa runtime / child reprime）纳入安装期标准流程并对新包回归；第 5 墙 RS flush 串行化需恢复 sysroot 构建后验证。</p>
+        <span class="why">部署路径泛化 · 第 5 墙 native 待修</span>
+      </div>
+    </div>
+
+    <div class="card p2">
+      <div class="head"><span class="rank">P2</span><h3>FGGUARD grace 窗口 — 首帧时长分布</h3><span class="loc">L02.A03 · B3.A06</span></div>
+      <div class="body">
+        <p>FGGUARD 的 grace 默认 3s——重游戏（大 il2cpp、多资源）首帧可能超过 3s，导致伪 STOPPED 未被吞掉、引擎仍被 pause 打断。</p>
+        <p><b>测什么：</b>采集不同游戏的首帧时长分布，确认 3s 覆盖长尾；必要时把 <code>OH_FGGUARD_INIT_GRACE_MS</code> 按包大小/首帧预算参数化。</p>
+        <span class="why">重游戏首帧长尾</span>
+      </div>
+    </div>
+
+    <div class="card p3">
+      <div class="head"><span class="rank">P3</span><h3>L07 HWC 直通 — overlay 直扫 + composer 补丁验证</h3><span class="loc">L07.A01 / A03 / A04</span></div>
+      <div class="body">
+        <p>功耗优化层（非上屏必需）：RS 侧已达 6% CPU，但硬件 DPU overlay plane 直扫（A01）、UNISOC composer 字节补丁（A03）、Unity 整合验收（A04）都待真机验证。</p>
+        <p><b>测什么：</b>A01 最小 DRM 测试确认非 primary plane 可扫；A03 按 L0→L3 安全阶梯逐级 truly-cold 验（先只改 P2 supportLayers）；A04 整合后 render_service &lt;10% 且仍 60fps。每级需 restore 可回滚。</p>
+        <span class="why">功耗优化 · 硬件路径待验</span>
+      </div>
+    </div>
+
+    <div class="card p3">
+      <div class="head"><span class="rank">P3</span><h3>Q1 present-XCOM — 多窗口 / 旋转 / 弹窗场景</h3><span class="loc">L05.A01 · B3.A05</span></div>
+      <div class="body">
+        <p>present-XCOM 在单一全屏静态场景验过；多 window、运行时旋转、系统弹窗抢前台、split-screen 等场景的 Z-order / surface 交接未系统覆盖。</p>
+        <p><b>测什么：</b>旋转 / 弹窗 / 后台-前台往返 / 多 Activity 切换下的 present 正确性与无并发崩（与 GAME1 第 5 墙 RS 并发同源，建议合并验）。</p>
+        <span class="why">复杂窗口场景未覆盖</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="callout" style="margin-top:40px">
+  <b>已验证的"不需要"（负结果，省测试力气）：</b> libunity pthread 锁 boxing / 内联访问（cardwords 全程零使用，真墙全在数据/图形/音频/几何，不在 libunity pthread 深水）· force-gfx-direct / threading-mode patch（证伪，真墙在上游）。这三项<b>不必</b>为每个游戏投入测试。
+</div>
+
+<footer>
+  <b>数据来源</b>　REPRODUCIBILITY_FROM_CLEAN_SOURCES.md（B0–B5 构造谱系）· atomics/原子功能清单_LxxAxx.md（L01–L06）· REPRODUCIBILITY_B2_bionic_musl_DEEPENING.md（B2.A01–A12）· L07_HWC直通_前置原子清单.md · 00-能力矩阵总览.md<br>
+  <b>验证态</b>　cardwords / Unity 2022.3.62f2 / IL2CPP / arm64 · D600 5bb5b + 5eab 实测 ≈59.9fps 冷启动零崩 · 红线：不改 APK / libunity 55f7e3dd / libil2cpp 6adf9e1b<br>
+  <b>楼层小结</b>　构造楼层 6 层（B0–B5）· 构造原子 39（B1:5 + B2:12 + B3:11 + B4:6 + B5:5）· 上屏关键原子 11（L01–L06）· 功耗原子 4（L07）· 需完善测试 8 项（P1×3 / P2×3 / P3×2）
+</footer>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    try {
+      var t = localStorage.getItem('theme');
+      if (t) root.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+</body>
+</html>

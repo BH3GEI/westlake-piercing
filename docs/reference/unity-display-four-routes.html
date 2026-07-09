@@ -1,0 +1,369 @@
+<title>Unity 显示专题综述 · 四路线对齐大表</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --bg:#f5f7fa; --panel:#ffffff; --panel2:#eef1f6; --ink:#161b26; --mut:#5a6577; --faint:#8a94a6;
+  --line:#dde2ea; --accent:#0e8fa8; --accent2:#6a5cff;
+  --pass:#1f9d63; --warn:#c47f16; --wall:#d1453f; --info:#3b74c4;
+  --r0:#3b74c4; --r1:#8a6d3b; --r2:#1f9d63; --r3:#d1453f; --evalc:#6a5cff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0d1016; --panel:#151a22; --panel2:#1b212b; --ink:#e7ebf2; --mut:#a3adbe; --faint:#6d7789;
+  --line:#28303c; --accent:#38b8cf; --accent2:#9c8dff;
+  --pass:#3fbf7f; --warn:#e0a23e; --wall:#e5675f; --info:#6fa0e6;
+  --r0:#6fa0e6; --r1:#c9a866; --r2:#3fbf7f; --r3:#e5675f; --evalc:#9c8dff;
+}}
+:root[data-theme="light"]{--bg:#f5f7fa;--panel:#fff;--panel2:#eef1f6;--ink:#161b26;--mut:#5a6577;--faint:#8a94a6;--line:#dde2ea;--accent:#0e8fa8;--accent2:#6a5cff;--pass:#1f9d63;--warn:#c47f16;--wall:#d1453f;--info:#3b74c4;--r0:#3b74c4;--r1:#8a6d3b;--r2:#1f9d63;--r3:#d1453f;--evalc:#6a5cff}
+:root[data-theme="dark"]{--bg:#0d1016;--panel:#151a22;--panel2:#1b212b;--ink:#e7ebf2;--mut:#a3adbe;--faint:#6d7789;--line:#28303c;--accent:#38b8cf;--accent2:#9c8dff;--pass:#3fbf7f;--warn:#e0a23e;--wall:#e5675f;--info:#6fa0e6;--r0:#6fa0e6;--r1:#c9a866;--r2:#3fbf7f;--r3:#e5675f;--evalc:#9c8dff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;font-size:15px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1320px;margin:0 auto;padding:0 20px 80px}
+h1,h2,h3{line-height:1.2;text-wrap:balance;margin:0}
+code,.mono{font-family:var(--mono)}
+a{color:var(--accent);text-decoration:none}
+header{padding:44px 0 24px;border-bottom:1px solid var(--line);margin-bottom:28px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
+h1{font-size:33px;font-weight:750;letter-spacing:-.01em}
+.sub{color:var(--mut);font-size:16px;margin-top:12px;max-width:74ch}
+.metabar{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:18px;font-size:12.5px;color:var(--mut)}
+.metabar b{color:var(--ink);font-weight:600}
+section{margin-top:44px}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.sec-h .n{font-family:var(--mono);font-size:12px;color:var(--faint)}
+h2{font-size:23px;font-weight:700;letter-spacing:-.01em}
+.lead{color:var(--mut);max-width:82ch;margin:10px 0 20px}
+/* route cards */
+.routes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.rc{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 15px 13px;position:relative;overflow:hidden}
+.rc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+.rc .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--c);font-weight:700}
+.rc h3{font-size:15px;margin:6px 0 5px}
+.rc p{margin:0;font-size:12px;color:var(--mut)}
+.rc .st{display:inline-block;margin-top:9px;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600}
+.rc .st.ok{color:var(--pass);background:color-mix(in srgb,var(--pass) 15%,transparent)}
+.rc .st.no{color:var(--wall);background:color-mix(in srgb,var(--wall) 15%,transparent)}
+.rc .st.rf{color:var(--info);background:color-mix(in srgb,var(--info) 15%,transparent)}
+.align-note{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-top:16px;font-size:12.5px;color:var(--mut)}
+.align-note b{color:var(--ink)}
+/* big matrix */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:1120px;font-size:12px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);vertical-align:top}
+th:last-child,td:last-child{border-right:0}
+thead th{background:var(--panel2);font-size:11px;letter-spacing:.03em;font-weight:700;position:sticky;top:0;z-index:2}
+th.c0{color:var(--r0)} th.c1{color:var(--r1)} th.c2{color:var(--r2)} th.c3{color:var(--r3)} th.ce{color:var(--evalc)}
+.atomcol{white-space:nowrap;width:1%}
+.atomcol .code{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent)}
+.grp td{background:color-mix(in srgb,var(--accent) 7%,transparent);font-weight:700;font-size:12px;color:var(--ink);border-right:0;letter-spacing:.02em}
+.grp td .lc{font-family:var(--mono);color:var(--accent2);margin-right:8px}
+td .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;flex:0 0 auto;vertical-align:middle}
+.d-pass{background:var(--pass)} .d-warn{background:var(--warn)} .d-wall{background:var(--wall)} .d-info{background:var(--info)} .d-stub{background:var(--faint)}
+td.eval{background:color-mix(in srgb,var(--evalc) 6%,transparent);font-size:11.5px}
+tr.hot td{background:color-mix(in srgb,var(--wall) 8%,transparent)}
+tr.hot td.eval{background:color-mix(in srgb,var(--wall) 13%,transparent)}
+tr.hot .atomcol .code{color:var(--wall)}
+.tlegend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 2px 0;font-size:11.5px;color:var(--mut)}
+.tlegend span{display:inline-flex;align-items:center;gap:6px}
+/* crux */
+.crux{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--wall);border-radius:12px;padding:20px 22px;margin-top:8px}
+.crux.g{border-left-color:var(--pass)}
+.crux h3{font-size:16px;margin-bottom:10px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.crux .chip{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:5px;background:color-mix(in srgb,var(--wall) 14%,transparent);color:var(--wall);font-weight:600}
+.crux .chip.g{background:color-mix(in srgb,var(--pass) 15%,transparent);color:var(--pass)}
+.crux p{margin:8px 0 0;font-size:13px;color:var(--mut)}
+.crux code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11.5px;color:var(--ink)}
+.crux b{color:var(--ink)}
+/* strategic pros/cons */
+.dirs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:6px}
+.dir{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;position:relative}
+.dir.pick{border-color:var(--pass);box-shadow:0 0 0 1px var(--pass) inset}
+.dir .badge{position:absolute;top:-9px;right:14px;font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--pass);color:#fff}
+.dir h3{font-size:15px;margin-bottom:3px}
+.dir .role{font-family:var(--mono);font-size:10.5px;color:var(--mut);margin-bottom:11px}
+.dir .pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px}
+.dir .pc .h{font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.dir .pro .h{color:var(--pass)} .dir .con .h{color:var(--wall)}
+.dir ul{margin:0;padding-left:15px;color:var(--mut)}
+.dir li{margin:2px 0}
+.verdict{font-size:11.5px;font-weight:600;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.verdict.y{color:var(--pass)} .verdict.m{color:var(--warn)} .verdict.n{color:var(--wall)}
+/* index */
+.idx{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.lyr{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.lyr .lh{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent2);margin-bottom:5px}
+.lyr .atoms{font-family:var(--mono);font-size:10px;color:var(--mut);line-height:1.7}
+.lyr.hot{border-color:var(--accent)}
+footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--faint)}
+@media(max-width:900px){.routes{grid-template-columns:1fr 1fr}.dirs{grid-template-columns:1fr}h1{font-size:26px}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">AOSP-on-OH · 显示渲染 · 四路线对齐大表</div>
+  <h1>Unity 显示专题综述：四条上屏路线的逐层对齐与战略选择</h1>
+  <p class="sub">把 <b>路线0 HelloWorld</b>、<b>路线1 鸿蒙原生</b>、<b>路线2 团结引擎(已跑通)</b>、<b>路线3 当前标准 Unity</b> 四条显示 stack 放进<b>一个大表</b>，按 L1–L14 楼层严格对齐（多 atom 子层横向对齐），第 5 列给逐层评价与 Unity 战略选择。核心命题：<b>路线3 应与路线2 绝大多数重叠，差异应止于 L5 引擎二进制那一层</b>。</p>
+  <div class="metabar">
+    <span>设备 <b>D600-5bb5</b> · OH 6.1.0.31 · arm64/0x8</span>
+    <span>证据源 <span class="mono">/opt/21.Game 四变体框架</span> · 本轮 cut1–cut6 实测</span>
+    <span>索引 <span class="mono">03new_Requirement/02.AtomFunctionGit/atoms · L{NN}.A{NN}</span></span>
+  </div>
+</header>
+
+<!-- 01 four routes -->
+<section>
+  <div class="sec-h"><span class="n">01</span><h2>四条路线定义</h2></div>
+  <div class="routes">
+    <div class="rc" style="--c:var(--r0)">
+      <div class="k">路线0</div><h3>HelloWorld</h3>
+      <p>vanilla Android app 经 adapter，libhwui 真链路（hwui EGL→FlushBuffer→RS）。<span class="mono">com.example.helloworld</span></p>
+      <span class="st rf">最简参照</span>
+    </div>
+    <div class="rc" style="--c:var(--r1)">
+      <div class="k">路线1</div><h3>鸿蒙原生基线</h3>
+      <p>OH 原生 HAP，XComponent 直挂 RS，musl 原生。团结引擎的纯鸿蒙形态 / 对标基线（变体1）。</p>
+      <span class="st ok">原生对标</span>
+    </div>
+    <div class="rc" style="--c:var(--r2)">
+      <div class="k">路线2 · 变体2</div><h3>团结引擎 Tuanjie</h3>
+      <p><b>musl-native</b>，XComponent 自绘 RSSurfaceNode。<span class="mono">com.tuanjie.unityshell</span> · libtuanjie · 2022.3.62f2</p>
+      <span class="st ok">✅ 60FPS 已跑通</span>
+    </div>
+    <div class="rc" style="--c:var(--r3)">
+      <div class="k">路线3 · 变体3</div><h3>标准 Unity（当前）</h3>
+      <p><b>bionic</b> IL2CPP 经 adapter，SurfaceView→BLAST。<span class="mono">com.route3.game1</span>=BetweenTwoWorlds · 2023.2.8f1</p>
+      <span class="st no">⛔ cut6 破几何→卡 Mali</span>
+    </div>
+  </div>
+  <div class="align-note">
+    <b>命名对齐 &amp; 诚实边界</b>：四路线 = 项目内部「四变体」框架（<span class="mono">/opt/21.Game/四变体方案.html</span>）。<b>device-proven 的团结（路线2/变体2）是 musl-native XComponent 原生形态</b>——它之所以跑通，正是因为<b>整条渲染路从不进 AOSP-on-OH adapter(L3) 与 bionic-compat(L4)</b>，天然走 OH 原生自绘 RSSurfaceNode。"安卓APK基于团结引擎"是该游戏的来源叫法；关键洞察=<b>团结把接缝编译掉了，标准 Unity 必须把接缝翻译过来</b>。团结 60FPS 锚在 live thread census + nm 导入表(74 OH符号vs0 Android) + manifest 引用（截图文件未亲见，标 <span class="mono">[推断偏实证]</span>）。
+  </div>
+</section>
+
+<!-- 02 THE BIG MATRIX -->
+<section>
+  <div class="sec-h"><span class="n">02</span><h2>★ 四路线 × L1–L14 逐层对齐大表</h2></div>
+  <p class="lead">同一行 = 同一全局原子 <code class="mono">L{NN}.A{NN}</code>，四路线横向对齐即暴露分歧。状态：<span class="dot d-pass"></span>通/合规 <span class="dot d-warn"></span>部分/风险 <span class="dot d-wall"></span>墙/卡 <span class="dot d-info"></span>诊断 <span class="dot d-stub"></span>旁路/无此层。<b>红底行 = 分歧发生层</b>。</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr>
+        <th class="atomcol">原子 L*.A*</th>
+        <th class="c0">路线0 HelloWorld</th>
+        <th class="c1">路线1 鸿蒙原生</th>
+        <th class="c2">路线2 团结(✅)</th>
+        <th class="c3">路线3 Unity(当前)</th>
+        <th class="ce">★评价 / 战略</th>
+      </tr></thead>
+      <tbody>
+
+        <tr class="grp"><td colspan="6"><span class="lc">L02</span>包 · 安装底座</td></tr>
+        <tr>
+          <td class="atomcol"><span class="code">L02.A01</span><br>APK-INSTALL</td>
+          <td><span class="dot d-pass"></span>透明装 + BMS 注册</td>
+          <td><span class="dot d-stub"></span>HAP，无 APK</td>
+          <td><span class="dot d-pass"></span>透明装（团结 shell）</td>
+          <td><span class="dot d-pass"></span>透明装 + BMS 注册</td>
+          <td class="eval">路线2/3 同经 adapter 装；路线1 原生无此层。<b>非分歧</b></td>
+        </tr>
+
+        <tr class="grp"><td colspan="6"><span class="lc">L03</span>进程 · runtime · ★ABI 后端</td></tr>
+        <tr>
+          <td class="atomcol"><span class="code">L03.A01/02</span><br>SPAWN / RT-ENTRY</td>
+          <td><span class="dot d-pass"></span>appspawn-x fork + JNI_CreateJavaVM（ART 路）</td>
+          <td><span class="dot d-pass"></span>NAPI init_array，无 ART</td>
+          <td><span class="dot d-pass"></span>NAPI 自调，musl 直 dlopen，无 ART</td>
+          <td><span class="dot d-pass"></span>appspawn-x fork + AndroidRuntime（ART 路）</td>
+          <td class="eval">路线0/3 走 ART；团结 musl 直载。<b>非近因，但引出 L4</b></td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L03.A12/14</span><br>NATIVE-SO / ABI</td>
+          <td><span class="dot d-warn"></span>bionic→musl 垫(L4)</td>
+          <td><span class="dot d-pass"></span>musl 原生（74 OH 符号）</td>
+          <td><span class="dot d-pass"></span><b>musl 原生，无 L4 翻译层</b></td>
+          <td><span class="dot d-wall"></span><b>bionic→musl(L4)</b>，每道翻译=潜在墙</td>
+          <td class="eval">★<b>根因层</b>：团结无 L4；路线3 bionic 必经 L4 = Mali/GC/hwui 截断族的<b>接缝泄漏源</b></td>
+        </tr>
+
+        <tr class="grp"><td colspan="6"><span class="lc">L04</span>Activity 生命周期</td></tr>
+        <tr>
+          <td class="atomcol"><span class="code">L04.A01/06</span><br>CREATE / LIFECYCLE</td>
+          <td><span class="dot d-pass"></span>handleLaunchActivity→onCreate（mainLooper-post 铁律）</td>
+          <td><span class="dot d-pass"></span>XComponent NAPI 单 loop</td>
+          <td><span class="dot d-pass"></span>XComponent，surface 只建一次</td>
+          <td><span class="dot d-warn"></span>UnityPlayer JNI，SurfaceView 生命周期 churn（~61 EGL/s）</td>
+          <td class="eval">团结无 SurfaceView 抖动；路线3 配置变更重建 surface = 派生墙</td>
+        </tr>
+
+        <tr class="grp"><td colspan="6"><span class="lc">L05</span>窗口 · surface · 渲染 ★分歧核心</td></tr>
+        <tr>
+          <td class="atomcol"><span class="code">L05.A03</span><br>WINDOW-SESSION-ADD</td>
+          <td><span class="dot d-pass"></span>createSession APP_WINDOW_NODE 1200×1920</td>
+          <td><span class="dot d-pass"></span>createSession 同</td>
+          <td><span class="dot d-pass"></span>createSession 同</td>
+          <td><span class="dot d-pass"></span>createSession 同</td>
+          <td class="eval">四路线一致。<b>非分歧</b></td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L05.A05</span><br>SURFACE-PRODUCER-CREATE</td>
+          <td><span class="dot d-pass"></span>自绘子面 GetSurface() 真 producer</td>
+          <td><span class="dot d-pass"></span>XComponent 直挂 RS</td>
+          <td><span class="dot d-pass"></span><b>自绘子 RSSurfaceNode(XCOM) 单一所有者</b></td>
+          <td><span class="dot d-warn"></span><b>两自绘面 + SurfaceView</b>（架构冗余）</td>
+          <td class="eval">★团结=单一所有者 self-draw；路线3=SurfaceView→BLAST 双包装的入口</td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L05.A10</span><br>NATIVEWINDOW-BRIDGE</td>
+          <td><span class="dot d-pass"></span>oh_anw_wrap 包 AOSP-ABI</td>
+          <td><span class="dot d-pass"></span>裸 OHNativeWindow* 直交</td>
+          <td><span class="dot d-pass"></span><b>裸 OHNativeWindow*</b>（CreateNativeWindowFromSurface）</td>
+          <td><span class="dot d-wall"></span>AdapterAnw 上 SET_BUFFER_GEOMETRY rc=0 <b>无权威</b></td>
+          <td class="eval">★团结不 wrap→无 split-brain；路线3 wrap→split-brain（cut6 换面已破）</td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L05.A12</span><br>BLAST-BUFFERQUEUE</td>
+          <td><span class="dot d-stub"></span>stub 旁路（走 hwui FlushBuffer）</td>
+          <td><span class="dot d-stub"></span>无此层</td>
+          <td><span class="dot d-pass"></span><b>无此层：producer=consumer 同一节点，几何权威单点</b></td>
+          <td><span class="dot d-wall"></span><b>墙：几何权威在 RS consumer 服务端</b>；cut6 换面已破</td>
+          <td class="eval">★★<b>最小分歧层核心</b>。团结节点建立即几何权威；路线3 producer↔consumer split-brain。cut6 in-proc BQ 破：alloc 1200×1920 / NO_BUFFER 20440→0</td>
+        </tr>
+        <tr>
+          <td class="atomcol"><span class="code">L05.A06</span><br>EGL-WINDOW-SURFACE</td>
+          <td><span class="dot d-pass"></span>libhwui EglManager</td>
+          <td><span class="dot d-pass"></span>引擎自管 EGL</td>
+          <td><span class="dot d-pass"></span>引擎自管 EGL（20 符号）</td>
+          <td><span class="dot d-pass"></span>引擎自管（同 eglCreateWindowSurface，同 Mali）</td>
+          <td class="eval">★<b>L6 无差异！"怎么画"两者完全相同</b>，不是分歧点</td>
+        </tr>
+        <tr>
+          <td class="atomcol"><span class="code">L05.A14</span><br>RENDER-SERVICE-COMMIT</td>
+          <td><span class="dot d-pass"></span>FlushBuffer→RS 合成</td>
+          <td><span class="dot d-pass"></span>eglSwapBuffers→RS</td>
+          <td><span class="dot d-pass"></span>FlushBuffer→OnBufferAvailable→HWC 合成</td>
+          <td><span class="dot d-warn"></span>RS 合成但产帧前崩（present 待验）</td>
+          <td class="eval">数据面一致；m7 真零拷贝 0 memcpy 已 PASS。<b>瓶颈在上游非 present</b></td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L05.A01</span><br>FIRST-FRAME-VISIBLE</td>
+          <td><span class="dot d-pass"></span>✅ 首帧上报</td>
+          <td><span class="dot d-pass"></span>✅</td>
+          <td><span class="dot d-pass"></span><b>✅ 球体+HUD 60FPS</b></td>
+          <td><span class="dot d-wall"></span>❌ cut6 破几何后卡 Mali</td>
+          <td class="eval">团结 device-proven；路线3 <b>1 墙之遥</b>（Mali 截断）</td>
+        </tr>
+
+        <tr class="grp"><td colspan="6"><span class="lc">L11</span>媒体 · 图形 runtime</td></tr>
+        <tr>
+          <td class="atomcol"><span class="code">L11.A01/02</span><br>HWUI / GRAPHIC-BUFFER</td>
+          <td><span class="dot d-pass"></span>hwui + GrAHB shim</td>
+          <td><span class="dot d-pass"></span>绕过 hwui（引擎自绘）；节点边界几何</td>
+          <td><span class="dot d-pass"></span>绕过 hwui；节点边界=producer 几何权威</td>
+          <td><span class="dot d-pass"></span>cut6 consumer 权威 alloc 成功</td>
+          <td class="eval">引擎自绘绕 hwui；团结节点几何、路线3 cut6 consumer 几何，殊途同归</td>
+        </tr>
+        <tr class="hot">
+          <td class="atomcol"><span class="code">L11.—</span><br>Mali 截断（末墙）</td>
+          <td><span class="dot d-pass"></span>clean（hwui 路）</td>
+          <td><span class="dot d-pass"></span>clean（musl）</td>
+          <td><span class="dot d-pass"></span><b>clean（musl，同 Mali 驱动无碍）</b></td>
+          <td><span class="dot d-wall"></span><b>0x10000000f</b>（64→32 截断）</td>
+          <td class="eval">★<b>末墙=L4 接缝泄漏</b>：团结用同一 Mali 却过→截断在路线3 bionic→musl 翻译，照团结 oracle 修</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+  <div class="tlegend">
+    <span><span class="dot d-pass"></span>通/合规</span><span><span class="dot d-warn"></span>部分/风险</span><span><span class="dot d-wall"></span>墙/卡</span><span><span class="dot d-info"></span>诊断</span><span><span class="dot d-stub"></span>旁路/无此层</span><span>红底行=分歧发生层</span>
+  </div>
+</section>
+
+<!-- 03 crux -->
+<section>
+  <div class="sec-h"><span class="n">03</span><h2>最小分歧层判定</h2></div>
+  <div class="crux">
+    <h3><span class="chip">L05.A12 + L03/L04 L4</span>差异应止于 L5 引擎二进制，其余皆"接缝泄漏"</h3>
+    <p>对齐大表读出的铁结论：路线2(团结) 与路线3(Unity) 的分歧<b>不在"怎么画"</b>（L05.A06/L11 EGL/GL 两者完全相同、同 Mali），而在<b>"谁给它窗口、经哪套 libc"</b>：</p>
+    <p>· <b>窗口来源(L05.A12)</b>：团结从<b>自绘 RSSurfaceNode 单一所有者</b>直取裸 <code>OHNativeWindow*</code>，几何在节点建立即权威单点，<b>根本没有几何墙可撞</b>；标准 Unity 经 <code>SurfaceView→BLAST→AdapterAnw</code> 双包装 → producer↔consumer <b>几何 split-brain</b> = 路线3 几何墙。</p>
+    <p>· <b>ABI 后端(L03/L04)</b>：团结 musl-native <b>整条路不进 adapter(L3)+bionic-compat(L4)</b>；路线3 bionic 必被 adapter 托管，<b>每道 bionic→musl 翻译都是潜在墙</b>（Mali 0x10000000f / GC setjmp / hwui 截断皆此类接缝泄漏）。</p>
+    <p style="margin-top:12px">设计纪律（<code>/opt/21.Game/团结vs变体3</code> 元结论）：<b>团结↔Unity 的全部差异应止于 L5 引擎二进制（musl-native vs bionic 两种编译目标）；路线3 其余各层的专有墙都是"接缝泄漏"，团结那一侧就是"本该长什么样"的 oracle。</b></p>
+  </div>
+  <div class="crux g" style="margin-top:14px">
+    <h3><span class="chip g">对路线3 的直接启示</span>换"窗口来源"，别在包装的 BLAST 上跟权威死磕</h3>
+    <p>路线2 已把正解证在设备上：让路线3 的桥把引擎拿到的 window 换成与团结完全相同的<b>自绘子 RSSurfaceNode</b>（<code>isWindow=false + SetHardwareEnabled(XCOM) + AddChild</code>），即 bridge 已有的 <code>oh_rs_get_child_surface_window</code>(L931，c080a559)。producer=consumer 单一所有者→几何单点、无 split-brain、无 wrap/解包/churn。独立佐证：同一自绘路的 S21 修(桥 e5399aad) truly-cold 实证 NO_BUFFER→0 / Buffer[0 0]→0 / EGL_BAD_ACCESS→0，且 eglprobe 曾打到<b>全屏红像素</b>。</p>
+    <p style="margin-top:10px"><b>与当前 cut6 的关系</b>：cut6 的 in-process BufferQueue 换面已破 alloc（治权威分裂的标），换 SOURCE 是从一开始不制造分裂（更根本）；二者殊途同归到"consumer 几何权威"。当前卡 Mali=下游墙、换 SOURCE 也要过，故先按 L4 接缝泄漏攻 Mali，不为纯洁性回退 cut6。</p>
+  </div>
+</section>
+
+<!-- 04 strategic -->
+<section>
+  <div class="sec-h"><span class="n">04</span><h2>Unity 战略选择：应走哪条路</h2></div>
+  <p class="lead">目标是运行<b>未改的（乃至下载来的）标准 Unity 安卓 APK</b>——只有路线3 能做到；路线2 证明机制可行、并充当逐层 oracle。</p>
+  <div class="dirs">
+    <div class="dir pick">
+      <span class="badge">推荐</span>
+      <h3>走路线3（标准 Unity 经 adapter），以路线2 为逐层 oracle</h3>
+      <div class="role">通用透明 · cut6 已破最硬的几何墙</div>
+      <div class="pc">
+        <div class="pro"><div class="h">优点</div><ul>
+          <li><b>通用</b>：跑任意未改 Unity APK（符合 /goal）</li>
+          <li><b>透明</b>：不需用团结重编游戏</li>
+          <li>cut6 已破几何，<b>仅剩 Mali 等接缝泄漏</b></li>
+          <li>团结(路线2)是每层<b>干净 oracle</b>，逐墙有本可对</li>
+        </ul></div>
+        <div class="con"><div class="h">缺点</div><ul>
+          <li>L4 bionic-compat 每边界=潜在墙（Mali/GC/hwui 截断）</li>
+          <li>比原生慢、工程量大</li>
+          <li>墙会继续下移，需逐一对 oracle 修</li>
+        </ul></div>
+      </div>
+      <div class="verdict y">✅ 首选：唯一满足"跑标准 Unity APK"目标者；用路线2 去风险，把差异逼回 L5 引擎二进制</div>
+    </div>
+    <div class="dir">
+      <h3>退路：路线2（团结引擎）</h3>
+      <div class="role">已 device-proven 60FPS，但改变前提</div>
+      <div class="pc">
+        <div class="pro"><div class="h">优点</div><ul>
+          <li><b>已跑通</b> 60FPS，无接缝泄漏</li>
+          <li>musl 原生、干净、高性能</li>
+        </ul></div>
+        <div class="con"><div class="h">缺点</div><ul>
+          <li>要求游戏<b>用团结引擎重编</b>，不适用任意/下载的 Unity APK</li>
+          <li>非透明桥，不满足"跑标准 APK"目标</li>
+          <li>路线1（纯原生）更甚：需完整原生 port，非 APK 路</li>
+        </ul></div>
+      </div>
+      <div class="verdict m">⚠️ 仅当可控制游戏源码/接受团结重编时采用；否则作 oracle 与去风险参照，不作交付路径</div>
+    </div>
+  </div>
+  <div class="crux g" style="margin-top:14px">
+    <h3><span class="chip g">一句话战略</span></h3>
+    <p><b>Unity 走路线3，把路线2 当 oracle。</b>路线3 是唯一能跑未改标准 Unity APK 的路（=项目目标）；路线2(团结)证明了 OH 上屏机制正确、并为路线3 每一道下移的墙（几何✅→Mali→GC→hwui）提供"本该长什么样"的干净对照。cut6 已破最硬的几何墙，把路线3 与路线2 的真实差异逼近到<b>只剩 L4/L5 接缝泄漏</b>——逐一照 oracle 修平，即达"差异止于 L5 引擎二进制"的设计终态。</p>
+  </div>
+</section>
+
+<!-- 05 index -->
+<section>
+  <div class="sec-h"><span class="n">05</span><h2>全局原子编号索引（L1–L14）</h2></div>
+  <p class="lead">编号取自 <code class="mono">03new_Requirement/02.AtomFunctionGit/atoms</code>，全局唯一。高亮=本综述显示热路径。</p>
+  <div class="idx">
+    <div class="lyr"><div class="lh">L02 包·安装</div><div class="atoms">A01 APK-INSTALL · A08 RESOURCE-HAP-SYNTHESIS · A10 BMS-REGISTER</div></div>
+    <div class="lyr hot"><div class="lh">L03 进程·runtime·ABI</div><div class="atoms">A01 SPAWN · A02 RUNTIME-ENTRY · A08 BOOTCP-STUBS · A12 NATIVE-SO-LOAD · A14 BIONIC-MUSL-SHIM · A18 JNIGRAPHICS-SHIM</div></div>
+    <div class="lyr hot"><div class="lh">L04 生命周期</div><div class="atoms">A01 CREATE · A02 RESUME · A06 ABILITY-LIFECYCLE-MAP · A10 FIRST-FRAME-GATE</div></div>
+    <div class="lyr hot"><div class="lh">L05 窗口·surface·渲染</div><div class="atoms">A01 FIRST-FRAME-VISIBLE · A03 WINDOW-SESSION-ADD · A05 SURFACE-PRODUCER-CREATE · A06 EGL-WINDOW-SURFACE · A10 NATIVEWINDOW-BRIDGE · A12 BLAST-BUFFERQUEUE-COMPAT · A14 RENDER-SERVICE-COMMIT · A17 SURFACE-UNIQUEID-EVIDENCE</div></div>
+    <div class="lyr"><div class="lh">L06 输入</div><div class="atoms">A02 INPUT-CHANNEL-GRANT · A05 MMI-EVENT-CONSUMER · A09 MAIN-LOOPER-DISPATCH</div></div>
+    <div class="lyr hot"><div class="lh">L11 图形 runtime</div><div class="atoms">A01 HWUI-SKIA-AHB-SHIM · A02 GRAPHIC-BUFFER-PRODUCER · A04 LIBHWUI-DLOPEN · A05 GRAPHICS-JNI-ORDER</div></div>
+  </div>
+</section>
+
+<!-- 06 compliance -->
+<section>
+  <div class="sec-h"><span class="n">06</span><h2>铁律合规（design-check）</h2></div>
+  <p class="lead">路线3 cut1–cut6 + 换面 A 全程：改动仅 bridge + runtime .so（grep class_linker/vtable=空），jar/boot/libart 未碰，落 liboh_android_runtime + liboh_adapter_bridge 适配层。换面 A 自持 consumer 避开服务端=铁律3 产物。铁律 1/2/3/4 ✅，铁律5 负结论已 truly-cold 证、正修强制 ×2。</p>
+</section>
+
+<footer>
+  西湖 adapter · AOSP-on-OH · Unity 显示专题综述（四路线对齐大表）· 2026-07-09 · 数据源：/opt/21.Game 四变体框架 + 本轮 cut1–cut6 实测 + HanBing HelloWorld 34 步栈 + 团结引擎工程剖析 + 03new_Requirement 全局原子编号。全部技术挂 L1–L14 · L{NN}.A{NN}。
+</footer>
+</div>

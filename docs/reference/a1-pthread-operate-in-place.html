@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A1 方法总结 · 前因后果与适用场景</title>
+<style>
+  :root {
+    --ground:#eef0f4; --surface:#fff; --surface-2:#f7f8fb; --ink:#1a1e28;
+    --muted:#5b6577; --faint:#8892a2; --line:#dde1e9; --line-strong:#c7cdda;
+    --accent:#3d5a9e; --accent-soft:#eaeff8;
+    --ok:#1f9d5b; --ok-bg:#e6f5ec; --warn:#c07d14; --warn-bg:#fbf1dc;
+    --crit:#c23c37; --crit-bg:#fbe7e5;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --ground:#10131a; --surface:#181c26; --surface-2:#1f2430; --ink:#e7eaf1;
+      --muted:#9aa4b6; --faint:#6d7789; --line:#2a3040; --line-strong:#394154;
+      --accent:#8aa6ec; --accent-soft:#23304d;
+      --ok:#46c684; --ok-bg:#16311f; --warn:#e0a94a; --warn-bg:#38290f; --crit:#e8756e; --crit-bg:#3a1c1a; }
+  }
+  *{box-sizing:border-box;} img,svg{max-width:100%;}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.68;font-size:15.5px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:860px;margin:0 auto;padding:0 22px 90px;}
+
+  header{padding:56px 0 26px;border-bottom:2px solid var(--ink);}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 14px;}
+  h1{font-size:clamp(25px,4.4vw,38px);line-height:1.14;margin:0 0 14px;letter-spacing:-.015em;
+    text-wrap:balance;font-weight:700;}
+  .lede{color:var(--muted);font-size:16px;margin:0;max-width:66ch;}
+  .lede b{color:var(--ink);font-weight:600;}
+
+  .verdict{display:flex;flex-wrap:wrap;gap:14px;margin:26px 0 4px;}
+  .vcard{flex:1 1 200px;border:1px solid var(--line);border-radius:11px;padding:15px 18px;background:var(--surface);}
+  .vcard .t{font-size:12px;color:var(--faint);letter-spacing:.04em;text-transform:uppercase;font-family:var(--mono);}
+  .vcard .b{font-weight:600;margin-top:5px;font-size:14.5px;}
+  .vcard.ok{border-left:4px solid var(--ok);} .vcard.ok .b{color:var(--ok);}
+  .vcard.warn{border-left:4px solid var(--warn);} .vcard.warn .b{color:var(--warn);}
+  .vcard.crit{border-left:4px solid var(--crit);} .vcard.crit .b{color:var(--crit);}
+
+  section{margin-top:46px;}
+  h2{font-size:21px;margin:0 0 4px;letter-spacing:-.01em;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;}
+  h2 .num{font-family:var(--mono);color:var(--accent);font-size:15px;font-weight:700;}
+  .sub{color:var(--muted);font-size:14px;margin:2px 0 18px;max-width:70ch;}
+  p{margin:0 0 15px;}
+  p b{font-weight:600;}
+  code{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);color:var(--accent);
+    padding:1px 6px;border-radius:5px;}
+
+  .box{border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:20px 22px;margin:14px 0;}
+  .box + .box{margin-top:14px;}
+  .box h3{margin:0 0 10px;font-size:15.5px;display:flex;gap:9px;align-items:center;}
+  .box h3 .chip{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;
+    background:var(--accent-soft);color:var(--accent);}
+  .box.problem{border-left:4px solid var(--crit);}
+  .box.method{border-left:4px solid var(--accent);}
+  .box.result{border-left:4px solid var(--ok);}
+  ul{margin:6px 0 4px;padding-left:20px;} li{margin:7px 0;}
+  li b{font-weight:600;}
+
+  .flow{display:flex;flex-direction:column;gap:0;margin:16px 0;font-family:var(--mono);font-size:13px;}
+  .flow .step{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:11px 15px;position:relative;}
+  .flow .step.bad{border-color:var(--crit);color:var(--crit);background:var(--crit-bg);}
+  .flow .step.good{border-color:var(--ok);color:var(--ok);background:var(--ok-bg);}
+  .flow .arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;padding:5px 0;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0;}
+  th{text-align:left;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);
+    font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line-strong);}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted);}
+  td b{color:var(--ink);}
+  td:first-child{font-family:var(--mono);color:var(--ink);font-weight:600;white-space:nowrap;}
+  .tbl-wrap{overflow-x:auto;}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap;}
+  .pill.ok{color:var(--ok);background:var(--ok-bg);}
+  .pill.warn{color:var(--warn);background:var(--warn-bg);}
+
+  .callout{border:1px solid var(--line);border-left:4px solid var(--warn);background:var(--warn-bg);
+    border-radius:9px;padding:16px 20px;margin:18px 0;font-size:14px;}
+  .callout.accent{border-left-color:var(--accent);background:var(--surface-2);}
+  .callout b{color:var(--ink);}
+  .callout .lbl{display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+    text-transform:uppercase;margin-bottom:7px;color:var(--warn);font-weight:700;}
+  .callout.accent .lbl{color:var(--accent);}
+
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:12px;color:var(--faint);line-height:1.9;}
+  footer b{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">西湖 · bionic-on-musl 同步基建 · 能力模块 M1</p>
+  <h1>A1 方法：operate-in-place pthread 翻译 —— 前因、后果与适用场景</h1>
+  <p class="lede">A1 是"<b>不改字节、原地翻译</b>"的 bionic↔musl 线程同步方案：让 musl 进程按 bionic 协议直接操作 bionic 布局的 mutex/cond/rwlock 对象。本文梳理它<b>为什么存在</b>（前因）、<b>做到了什么、边界在哪</b>（后果），以及<b>什么时候该用、什么时候不必用</b>（适用场景）。</p>
+
+  <div class="verdict">
+    <div class="vcard ok"><div class="t">技术裁决</div><div class="b">设计层 + QEMU + 真机 G7 三级 SOUND</div></div>
+    <div class="vcard warn"><div class="t">发布级</div><div class="b">待扩展统计（codex DO-NOT-SHIP）</div></div>
+    <div class="vcard crit"><div class="t">战略定位</div><div class="b">通用基建 · 非 Unity 上屏关键路径</div></div>
+  </div>
+</header>
+
+<!-- 前因 -->
+<section>
+  <h2><span class="num">前因</span>为什么需要 A1 —— "内联访问"死结</h2>
+  <p class="sub">Unity 的 libunity 把 pthread mutex 的 fast-path <b>内联</b>进了引擎代码，绕过符号；而 bionic 与 musl 的锁对象字节布局根本不同。两条常规路都是死路。</p>
+
+  <div class="box problem">
+    <h3><span class="chip">根因</span>bionic 与 musl 的锁字不在同一个地方</h3>
+    <p>bionic 的 mutex/cond 把 futex 字放在 <code>offset 0</code>；设备 musl 的锁字 <code>_m_lock</code> 在 <code>offset 4</code>、<code>_c_seq</code> 在 offset 8，而 offset 0 在 musl 是 <code>_m_type</code>/<code>_c_shared</code>（不是锁字）。编码不兼容、协议也不同（musl cond 用 barrier + <code>FUTEX_REQUEUE</code>）。</p>
+    <p style="margin-bottom:0">把 bionic 字节<b>裸喂</b>给 musl → 锁字读错位 → <b>lost-wakeup 永久死等</b>。这正是变体3 里 <code>pthread_cond_timedwait</code> 在 gfx-init 挂死的字节级根因。</p>
+  </div>
+
+  <div class="box problem">
+    <h3><span class="chip">死结</span>两条常规路都不通</h3>
+    <div class="flow">
+      <div class="step bad">路 A · Boxing（换字节，把 bionic 对象翻译成 musl 布局）</div>
+      <div class="arrow">↓ 破坏 libunity 内联 fast-path（log-sink 内联 mutex，x0=1 崩）</div>
+      <div class="step bad">路 B · 不翻译（裸喂 bionic 字节给 musl）</div>
+      <div class="arrow">↓ 锁字错位 → lost-wakeup 死等</div>
+      <div class="step good">A1 · operate-in-place（字节不变，按 bionic 协议原地碰同一 state 字）</div>
+    </div>
+    <p style="margin-bottom:0">核心矛盾：libunity 内联了 fast-path，<b>无法靠拦截符号解决</b>——因为内联根本不走符号。任何"换字节"的方案都会和内联的那一份实现打架。</p>
+  </div>
+</section>
+
+<!-- 方法 -->
+<section>
+  <h2><span class="num">方法</span>operate-in-place —— 不换字节，按 bionic 协议原地碰同一 futex 字</h2>
+  <p class="sub">A1 的立论：只要字节布局不变，libunity 的内联 fast-path 与 A1 的 shim 就操作同一个 state 字、遵同一协议 → 天然一致，不需要拦符号，任何未修改 app 都受益。</p>
+
+  <ul>
+    <li><b>字节不变 + 裸 futex</b>：shim 对 bionic 布局对象用同一 bionic 协议 + 裸 futex 系统调用（<code>__NR_futex=98</code>）原地操作同一 state 字。inline ↔ shim 因此一致，无需符号拦截。</li>
+    <li><b>三原语全量</b>：mutex（NORMAL/RECURSIVE/ERRORCHECK/trylock/timedlock）+ cond（V11 无 REQUEUE、always-wake）+ rwlock（writer/reader-pref，含 FIX-1/2/3）。</li>
+    <li><b>逐字锚定 AOSP-V11 bionic</b>：布局 mutex 40B / cond 48B / rwlock 56B，编译期 <code>_Static_assert</code> + 运行期 <code>dump_layout</code> 双重自证与真机对齐。</li>
+    <li><b>cond 关键洞见</b>：Android 11 的 cond_wait <b>没有 REQUEUE</b>（之前担心的最难点不存在）——只是 snapshot → unlock → <code>FUTEX_WAIT_BITSET</code> → relock；且 V11 无 waiters 字段，shim 必须默认 always-wake，否则读脏 waiters 漏 WAKE。</li>
+    <li><b>de-macro 双实现（防伪 PASS 的关键设计）</b>：<code>bref_*</code>（独立手写逐字移植 AOSP-V11 cpp，既是 oracle 又代表 libunity 内联）与 <code>a1_*</code>（走 GEN_ 宏的 shim）是<b>两份真正独立</b>的实现，对同一对象混跑 = 真差分（要复现转写 bug 得两处各犯一次）。</li>
+  </ul>
+
+  <div class="callout accent">
+    <span class="lbl">一句话</span>
+    <b>因为不碰字节，内联的那份实现和 shim 天然自洽</b>——这就是"内联访问"问题的通用解，也是它能对任意 unmodified app 生效的原因。
+  </div>
+</section>
+
+<!-- 后果 -->
+<section>
+  <h2><span class="num">后果</span>验证结果与裁决 —— 三级 SOUND，发布级待统计</h2>
+  <p class="sub">A1 走完了 设计层 → QEMU aarch64 → 真机 G7 三级验证，核心命题证成；但 codex 判发布级通用交付需补统计严谨。</p>
+
+  <div class="box result">
+    <h3><span class="chip">✓ 已证</span>三级 SOUND（核心命题成立）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>层级</th><th>结果</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td>设计层</td><td>三原语逐字锚 AOSP-V11，布局自证；codex 3–4 轮对抗审收敛（de-macro 破"自照抄伪 PASS"）</td><td><span class="pill ok">PASS</span></td></tr>
+        <tr><td>QEMU aarch64</td><td>三原语 UT 全绿 9/9；mutex 混用 8×10⁶ 精确 / cond 无丢唤醒 / rwlock 无饿死。负控 5 破法 4 检出</td><td><span class="pill ok">SOUND</span></td></tr>
+        <tr><td>真机 G7</td><td>5eab（big.LITTLE 8 核）正控全绿 ×10；<b>弱序负控 <code>neg_mtx_relaxed</code> 真机 20/20 检出</b>（QEMU-TSO 掩盖的被真硬件暴露）；正控零弱序 bug → <code>memory_order_release</code> 用对且 load-bearing</td><td><span class="pill ok">SOUND</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="margin:8px 0 0"><b>弱序物证闭环</b>：QEMU（x86 TSO 强序）掩盖了缺失 release 屏障的 bug（<code>neg_mtx_relaxed</code> exit0），而真 aarch64 弱序机器把它 20/20 暴露——这既证明测试有牙齿，也证明 A1 自己的内存序是对的。</p>
+  </div>
+
+  <div class="callout">
+    <span class="lbl">⚠ 边界 · 发布级尚未放行</span>
+    codex 判 <b>DO-NOT-SHIP for 发布级通用交付</b>：核心已证成，但通用基建对外发布需补统计严谨——弱序负控扩 100× 双 libc + 置信区间、<code>neg_mtx_relaxed_musl</code> 长跑、跨大小核绑核压测、明确检出率/误报率阈值。整改脚本 <code>g7_extended.sh</code> 已落盘，但<b>设备 5eab 中途掉线</b>，扩展统计未竟。<br>
+    <b>未覆盖面</b>：PI-mutex / pshared / cancel / fork / EINTR 未测（多数可接受）；与真 libunity 二进制的 layout-inline 逐字一致仅文本模型验证。
+  </div>
+</section>
+
+<!-- 适用场景 -->
+<section>
+  <h2><span class="num">场景</span>什么时候该用 A1 —— 以及为什么当前不必用</h2>
+  <p class="sub">A1 是有价值的通用基建，但 5-codex 审稿团的战略裁决很明确：它<b>不是</b> Unity 上屏的钥匙。分清这两点能避免在非关键路径上过度投入。</p>
+
+  <div class="box result">
+    <h3><span class="chip">✓ 适用</span>A1 该出场的场景</h3>
+    <ul>
+      <li>某个 <b>bionic 编译的 app 跑在 musl OS 上</b>，需要 pthread 对象跨边界正确互操作；</li>
+      <li>并且存在<b>"内联访问"问题</b>（锁 fast-path 被内联，拦不到符号）；</li>
+      <li>并且<b>多线程正确性要紧</b>（job system、多 worker、生产者-消费者紧握手）——弱序机器上正是踩坑高发区；</li>
+      <li>定位 = <b>通用 bionic-on-musl「已知正确」sync 基建</b>，字节不变故任何 unmodified app 受益。</li>
+    </ul>
+  </div>
+
+  <div class="box problem">
+    <h3><span class="chip">✗ 不必</span>当前 Unity 上屏为什么不用 A1</h3>
+    <ul>
+      <li><b>cardwords 上屏全程零使用 A1</b>：真墙全在数据/图形/音频/几何，<b>不在 libunity pthread ABI 深水</b>。当前栈不 box libunity 锁，内联 fast-path 自洽休眠即可。</li>
+      <li><b>真墙 = missed-wakeup</b>（GfxDeviceWorker 从 never spawn）——即便 A1 完美，<b>唤醒没有来源</b>，上屏收益为零。上屏关键路径是 <code>cond_wait</code> interpose 追的 missed-wakeup，不是 cond-ABI。</li>
+      <li>已验证的负结果：<code>force-gfx-direct</code> / threading-mode patch 同样证伪（真墙在上游）。工厂<b>不必</b>为每个 app 做 libunity 锁翻译。</li>
+    </ul>
+  </div>
+
+  <div class="callout accent">
+    <span class="lbl">★ 多 codex 审稿最大价值</span>
+    <b>诚实指出 A1 技术严谨但不是上屏 blocker</b>，防止在非关键路径上过度投入。A1 的正确身份是 M1 能力模块——第一个走完「UT + 真机 AT」的样板与守护化通用基建（默认 V11、禁未验证 waiters 短路），<b>备用不启用</b>于当前上屏栈。
+  </div>
+</section>
+
+<footer>
+  <b>数据来源</b>　memory: a1-fullshim-m1-qemu-sound · a1-validation-p0-spec（含 afaecfbda 真机 G7 铁证）· w14-gc-finalizer-setjmp · 00-能力矩阵总览.md §5 负结果<br>
+  <b>产物</b>　/opt/21.Game/scratchpad/a1_simple/（a1.h 538 行 + ut_{mutex,cond,rwlock} + g7_extended.sh + device_g7_run.sh）· 前序报告 A1做实_简报_M1模块_v1.html<br>
+  <b>裁决速记</b>　设计+QEMU+真机 G7 三级 SOUND（核心证成）｜发布级待扩展统计（codex DO-NOT-SHIP）｜战略=通用基建，非 Unity 上屏关键路径
+</footer>
+
+</div>
+</body>
+</html>

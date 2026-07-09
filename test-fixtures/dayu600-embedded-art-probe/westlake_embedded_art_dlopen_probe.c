@@ -1665,6 +1665,7 @@ static int call_activity_thread_step_probe(JNIEnv *env)
 
 static int run_stage_probe(void *handle, void *create_vm_symbol, const char *stage_override)
 {
+    log_text("RUN_STAGE_PROBE ENTERED");
     jni_create_java_vm_fn create_vm = (jni_create_java_vm_fn)create_vm_symbol;
     JavaVM *vm = 0;
     JNIEnv *env = 0;
@@ -2160,11 +2161,15 @@ __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init
         return;
     }
 
-    // Unset LD_PRELOAD before running the probe so that any subsequent exec()
-    // performed by app_process64 (e.g. re-exec to run ActivityThread.main) does
-    // not reload this constructor and create a second VM.
-    unsetenv("LD_PRELOAD");
-    log_text("LD_PRELOAD unset in constructor");
+    // Note: LD_PRELOAD is unset in the shell script BEFORE execve, not here.
+    // If LD_PRELOAD is still set when the constructor runs, unset it anyway.
+    {
+        char *lp = getenv("LD_PRELOAD");
+        if (lp != 0 && lp[0] != 0) {
+            unsetenv("LD_PRELOAD");
+            log_text("LD_PRELOAD unset (was set)");
+        }
+    }
 
     int vm_rc = run_stage_probe(westlake_art_handle, westlake_create_vm_symbol, 0);
     log_int("embedded vm probe rc=", vm_rc);

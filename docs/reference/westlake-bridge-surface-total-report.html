@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>西湖项目 · Android→鸿蒙 桥接总量 最终报告</title>
+<style>
+:root{--ink:#1a2230;--mut:#5c6b80;--line:#e3e8f0;--bg:#f6f8fb;--card:#fff;--red:#C7000B;--redbg:#fdecec;
+ --grn:#1f8a52;--grnbg:#e8f7ee;--amb:#b9770d;--ambbg:#fff4e2;--acc:#2c6fdb;--accbg:#eaf0fb}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.62;font-size:14.5px}
+.wrap{max-width:1120px;margin:0 auto;padding:34px 22px 110px}
+header.top{border-left:6px solid var(--red);padding:4px 0 4px 18px}
+header.top h1{margin:0;font-size:25px}
+header.top .sub{color:var(--mut);font-size:12.5px;margin-top:6px}
+h2{margin:40px 0 12px;font-size:19px;border-bottom:2px solid var(--line);padding-bottom:7px}
+h3{margin:20px 0 8px;font-size:15px;color:#2a3548}
+.lead{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;font-size:14.5px;margin:22px 0}
+.lead b{color:var(--red)}
+.hero{display:flex;gap:14px;flex-wrap:wrap;margin:20px 0}
+.kpi{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+.kpi .n{font-size:30px;font-weight:700;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--mut);margin-top:5px}
+.kpi.green .n{color:var(--grn)} .kpi.red .n{color:var(--red)} .kpi.tot{background:var(--ink)} .kpi.tot .n,.kpi.tot .l{color:#fff}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:#fff;border-radius:10px;overflow:hidden}
+th,td{border:1px solid var(--line);padding:7px 11px;text-align:left;vertical-align:middle}
+th{background:#eef2f8;font-weight:600}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+tr.sum td{background:#f3f6fb;font-weight:700}
+tr.grand td{background:var(--redbg);font-weight:700;color:var(--red)}
+.g{color:var(--grn);font-weight:600} .a{color:var(--amb);font-weight:600} .rd{color:var(--red);font-weight:600}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.t-ok{background:var(--grnbg);color:var(--grn)} .note{background:#fffdf5;border:1px solid #f0e4c0;border-radius:10px;padding:11px 15px;font-size:12.5px;color:#6b5b2e;margin:10px 0}
+code{background:#eef2f8;padding:1px 5px;border-radius:4px;font-size:12px}
+.bar{height:12px;border-radius:6px;display:inline-block;vertical-align:middle}
+.bg-grn{background:var(--grn)} .bg-red{background:var(--red)} .bg-acc{background:var(--acc)} .bg-amb{background:var(--amb)}
+ul{margin:7px 0;padding-left:20px} li{margin:3px 0}
+.src{color:var(--mut);font-size:11.5px;margin-top:3px}
+</style></head><body><div class="wrap">
+
+<header class="top">
+<h1>西湖项目 · Android → 鸿蒙 接口桥接总量 最终报告</h1>
+<div class="sub">AOSP 15 × OpenHarmony 6.1.0.31 · 全 217 包逐方法(codex 分类) + libc + native 引擎 + @hide · 生成 2026-06-19</div>
+</header>
+
+<div class="lead">
+全栈桥接面 ≈ <b>13,251</b>。<b>"无代码直通"必须再切两档</b>：名义无代码 4,196 里，只有 <b>🟢 真·无代码 2,025</b>（标准 GL/ICU + 简单 libc，确定省）是真薄活；另 <b>2,171 会加回</b>（crypto ABI shim + 复杂 libc）。
+所以真实工作量从 9,055 升到 <b>🔴 11,226（84%）</b>——既不能拿 4,196 充工作量（虚高），也不能当"省了 4,196"（虚低）。
+</div>
+
+<div class="hero">
+<div class="kpi green"><div class="n">2,025</div><div class="l">🟢 真·无代码<br>(确定省, 15%)</div></div>
+<div class="kpi red"><div class="n">11,226</div><div class="l">🔴 有代码<br>真实工作量 (84%)</div></div>
+<div class="kpi tot"><div class="n">13,251</div><div class="l">全栈桥接面<br>(混合单位)</div></div>
+</div>
+
+<h2>一、桥接维度总表 ★ 防虚构工作量（含"会加回"修正）</h2>
+<table>
+<tr><th>面（单位）</th><th class="r">🟢真·无代码(确定省)</th><th class="r">🟠名义无代码-会加回</th><th class="r">🔴有代码(真实工作量)</th><th class="r">小计</th></tr>
+<tr><td>Java 方法（公开+@SystemApi）</td><td class="r">147</td><td class="r">0</td><td class="r">3,564</td><td class="r">3,711</td></tr>
+<tr><td>L1 libc 符号（bionic→musl）</td><td class="r">828</td><td class="r">132</td><td class="r">764</td><td class="r">1,724</td></tr>
+<tr><td>native 引擎符号（图形/媒体/加密…）</td><td class="r">1,050</td><td class="r">2,039</td><td class="r">2,388</td><td class="r">5,477</td></tr>
+<tr><td>@hide 框架方法（渲染/SQLite/Web）</td><td class="r">0</td><td class="r">0</td><td class="r">2,339</td><td class="r">2,339</td></tr>
+<tr class="sum"><td>小计</td><td class="r">2,025</td><td class="r">2,171</td><td class="r">9,055</td><td class="r">13,251</td></tr>
+<tr class="grand"><td>归并后（会加回→有代码）</td><td class="r">2,025 (15%)</td><td class="r" colspan="2">11,226 (84%)</td><td class="r">13,251</td></tr>
+</table>
+<div class="note"><b>两个方向都要诚实</b>：<br>
+① 防虚高——别拿 4,196 全充工作量：标准 GL/EGL 761 + ICU 289 + 简单 libc 828 + Java 1:1 直通 147 = <b>真·无代码 2,025</b>，是链接 OH 标准库的白送薄活。<br>
+② 防虚低——也别当"省了 4,196"：<b>crypto OpenSSL 同名 2,039</b>（BoringSSL↔OpenSSL ABI 差异需 shim）+ <b>libc 行为差异 132</b>（ctime/fopen/__snprintf_chk 等）<b>会加回有代码</b>。<br>
+③ 集成胶水：标准符号能链接 ≠ 子系统能跑——GL 761 免费，但要出画面仍需缓冲 66 + 合成管线 594 的有代码活。<br>
+<b>→ 真实工作量 ≈ 11,226；真·薄活仅 2,025。</b></div>
+
+<h2>二、硬核系统核心（每App必备·含显示）vs 可选服务 — 还差多少 ★</h2>
+<div class="note" style="background:var(--accbg);border-color:#c5d6f5;color:#234">
+App 能不能跑只看<b>硬核核心 ≈ 3,509（含显示）</b>；其中<b>真正还差的硬核 ≈ 1,800 个有代码活</b>，<b>显示/渲染 ~660 是最大、最硬的缺口</b>（@hide+native，方法清单里看不到，却是"黑屏 vs 出画面"的分界）。可选系统服务（电话/媒体/蓝牙/WiFi…）占 11,226 里的 ~9,000+，按目标 App 用到才做。
+</div>
+<h3>2.1 总表（模块 × 全维度 + Yue 实现状态）</h3>
+<table>
+<tr><th>模块</th><th>9层</th><th class="r">桥接面</th><th class="r">难度<br>L1-3</th><th class="r">重写<br>L4</th><th class="r">新增<br>L5</th><th class="r">真无代码</th><th class="r">有代码</th><th class="r">待开发接口<br>(卡脖子)</th><th>Yue 实现</th></tr>
+<tr><td>AMS 活动/任务</td><td>L4</td><td class="r">58</td><td class="r">34</td><td class="r">22</td><td class="r">2</td><td class="r">0</td><td class="r">58</td><td class="r">8</td><td class="g">✅ done (AM249+ATM95)</td></tr>
+<tr><td>WMS 窗口</td><td>L4</td><td class="r">86</td><td class="r">55</td><td class="r">23</td><td class="r">8</td><td class="r">0</td><td class="r">86</td><td class="r">17</td><td class="g">✅ done (144)</td></tr>
+<tr><td><b>Display 显示</b></td><td>L2</td><td class="r">45</td><td class="r">24</td><td class="r">13</td><td class="r">8</td><td class="r">1</td><td class="r">44</td><td class="r">8</td><td class="g">✅ done (55, 基础出帧)</td></tr>
+<tr><td>PMS 包管理</td><td>L9</td><td class="r">91</td><td class="r">38</td><td class="r">39</td><td class="r">14</td><td class="r">0</td><td class="r">91</td><td class="r">14</td><td class="g">✅ done (206)</td></tr>
+<tr><td>用户/进程/Zygote</td><td>L7</td><td class="r">69</td><td class="r">23</td><td class="r">27</td><td class="r">19</td><td class="r">1</td><td class="r">68</td><td class="r">19</td><td class="g">✅ done (启动路径)</td></tr>
+<tr><td>Context/资源</td><td>L3/4</td><td class="r">15</td><td class="r">13</td><td class="r">0</td><td class="r">2</td><td class="r">0</td><td class="r">15</td><td class="r">0</td><td class="g">✅ done</td></tr>
+<tr class="sum"><td>Java 核心小计</td><td>—</td><td class="r">364</td><td class="r">187</td><td class="r">124</td><td class="r">53</td><td class="r">2</td><td class="r">362</td><td class="r">66</td><td class="g">✅ 启动路径 100%（核心7服务~970方法）</td></tr>
+<tr><td>L1 libc 运行时</td><td>L1</td><td class="r">1,724</td><td class="r" colspan="3">难度L1-3 1,724（红线 243 难）</td><td class="r">828</td><td class="r">896</td><td class="r">243</td><td class="a">🟡 78% (901/1160)</td></tr>
+<tr><td class="rd">显示/渲染 native</td><td>L2</td><td class="r">~1,421</td><td class="r" colspan="3">GL 761直通 + 缓冲66 + 合成594@hide</td><td class="r">761</td><td class="r">660</td><td class="r">~660</td><td class="a">🟡 基础出帧通, 深度合成 todo</td></tr>
+<tr class="grand"><td>★ 硬核核心合计</td><td>—</td><td class="r">~3,509</td><td class="r" colspan="3">—</td><td class="r">1,591</td><td class="r">1,918</td><td class="r">~969</td><td>核心大部已通</td></tr>
+</table>
+<div class="note"><b>Yue/noice 实现盘点</b>（aoh-L3-service-acceptance-gap，2026-06-11）：已实现 ≈ <b>2,415</b>（libc 901 + L2 native 295 + L3 核心 970 + L4 app 249）= 全栈 13,251 的 <b>~18%</b>。<b>"实现了大多数"对核心(启动路径)成立，对全栈不成立</b>——核心 7 服务 100%（所以 app 能起来、能出帧），非核心服务几乎全 todo。</div>
+
+<h3>2.2 视角 C — 按状态（还差多少，最关键）★</h3>
+<table>
+<tr><th>状态</th><th class="r">量</th><th>含义</th></tr>
+<tr><td class="g">🟢 真无代码（白送，不算工作量）</td><td class="r">1,591</td><td>GL 761 + 简单 libc 828 + Java 1:1 2</td></tr>
+<tr><td>🟡 可做（L1-3，启动路径已基本通）</td><td class="r">187 + libc ~1,556</td><td>框架层"启动路径 100%"已覆盖大部</td></tr>
+<tr><td class="a">🟠 难但有解（L4重写/Java 合成）</td><td class="r">124</td><td>需写合成/适配代码</td></tr>
+<tr><td class="rd">🔴 待开发接口/卡脖子（须新增 OH 源）</td><td class="r">~969</td><td><b>显示渲染 660 + libc 红线 243 + Java 核心开放 66</b></td></tr>
+</table>
+<div class="note"><b>战略结论</b>：硬核核心 ~3,509，<b>真正卡脖子的硬核 ≈ 969</b> = 🔴显示/渲染 660（最大单块，@hide+native 整片未做）+ libc 红线 243（malloc/pthread/TLS 跨域）+ Java 核心待开发接口 66。<br>
+框架层 AMS/WMS/PMS 已"启动路径 100%"，<b>瓶颈已从框架转移到 显示渲染 + libc 红线</b>——显示不啃通，框架做得再全也只是<b>黑屏</b>。</div>
+
+<h3>2.3 可选系统服务（非核心，按功能域，同维度）</h3>
+<div class="note">App 起来后<b>用到才需要</b>，按目标 App 裁剪。非核心 Java 合计 <b>3,345</b>：难度L1-3 1,465 / 重写L4 1,204 / 新增L5 676 / 有代码 3,200 / <b>待开发接口 949</b>。</div>
+<table>
+<tr><th>功能域</th><th>9层</th><th class="r">桥接面</th><th class="r">难度L1-3</th><th class="r">重写L4</th><th class="r">新增L5</th><th class="r">有代码</th><th class="r">待开发接口</th><th>Yue 实现</th></tr>
+<tr><td>📞 电话/通信(Telephony·IMS)</td><td>L4</td><td class="r">614</td><td class="r">287</td><td class="r">153</td><td class="r">174</td><td class="r">603</td><td class="r">192</td><td class="rd">❌ todo</td></tr>
+<tr><td>🎵 媒体/音频(编解码)</td><td>L5</td><td class="r">481</td><td class="r">157</td><td class="r">203</td><td class="r">121</td><td class="r">469</td><td class="r">179</td><td class="rd">❌ todo</td></tr>
+<tr><td>📦 应用框架(非核心:backup/usage)</td><td>L4</td><td class="r">359</td><td class="r">137</td><td class="r">185</td><td class="r">37</td><td class="r">357</td><td class="r">88</td><td class="rd">❌ todo (Usage/Job)</td></tr>
+<tr><td>🔌 硬件/传感器/USB/HDMI</td><td>L4</td><td class="r">232</td><td class="r">74</td><td class="r">50</td><td class="r">108</td><td class="r">228</td><td class="r">121</td><td class="rd">❌ todo</td></tr>
+<tr><td>🏢 设备管理 MDM</td><td>L4</td><td class="r">232</td><td class="r">73</td><td class="r">155</td><td class="r">4</td><td class="r">232</td><td class="r">40</td><td class="rd">❌ todo</td></tr>
+<tr><td>☕ Java 运行时(nio/net/sql)</td><td>L4</td><td class="r">165</td><td class="r">146</td><td class="r">14</td><td class="r">5</td><td class="r">120</td><td class="r">3</td><td class="a">🟡 随ART部分通</td></tr>
+<tr><td>⚙️ OS 基础(电源/振动/健康)</td><td>L7</td><td class="r">132</td><td class="r">36</td><td class="r">38</td><td class="r">58</td><td class="r">128</td><td class="r">59</td><td class="rd">❌ todo (Power/Vibrator)</td></tr>
+<tr><td>🗃️ 内容/Provider/DB</td><td>L3</td><td class="r">122</td><td class="r">40</td><td class="r">74</td><td class="r">8</td><td class="r">121</td><td class="r">11</td><td class="a">🟡 Resolver通/DB todo</td></tr>
+<tr><td>📲 NFC</td><td>L4</td><td class="r">117</td><td class="r">89</td><td class="r">10</td><td class="r">18</td><td class="r">95</td><td class="r">19</td><td class="rd">❌ todo</td></tr>
+<tr><td>🌐 网络/VPN</td><td>L4</td><td class="r">115</td><td class="r">59</td><td class="r">29</td><td class="r">27</td><td class="r">108</td><td class="r">40</td><td class="rd">❌ todo</td></tr>
+<tr><td>📶 WiFi</td><td>L4</td><td class="r">97</td><td class="r">51</td><td class="r">38</td><td class="r">8</td><td class="r">95</td><td class="r">13</td><td class="rd">❌ todo (底层通/API待补)</td></tr>
+<tr><td>🔵 蓝牙</td><td>L4</td><td class="r">92</td><td class="r">73</td><td class="r">7</td><td class="r">12</td><td class="r">90</td><td class="r">11</td><td class="rd">❌ todo</td></tr>
+<tr><td>🎙️ 语音/TTS</td><td>L4</td><td class="r">84</td><td class="r">29</td><td class="r">41</td><td class="r">14</td><td class="r">81</td><td class="r">24</td><td class="rd">❌ todo</td></tr>
+<tr><td>🧩 UI 控件(widget)</td><td>L4</td><td class="r">84</td><td class="r">39</td><td class="r">41</td><td class="r">4</td><td class="r">84</td><td class="r">13</td><td class="a">🟡 随框架部分</td></tr>
+<tr><td>🔗 周边/UWB·♿无障碍·📍定位·🔐安全·其余</td><td>—</td><td class="r">425</td><td class="r">152</td><td class="r">156</td><td class="r">82</td><td class="r">389</td><td class="r">136</td><td class="rd">❌ todo</td></tr>
+<tr class="sum"><td>非核心 Java 合计</td><td>—</td><td class="r">3,345</td><td class="r">1,465</td><td class="r">1,204</td><td class="r">676</td><td class="r">3,200</td><td class="r">949</td><td class="rd">❌ 绝大多数 todo</td></tr>
+</table>
+<div class="note">深层 <b>native 引擎</b>（方法表外，符号级，按需）：媒体 378 shim · SQLite 263+@hide 715 · 相机 71 · 加密 3,310(同名 2,039/特有 1,271) · WebView @hide 1,030——业务真正落地时的 native 桥接面。</div>
+
+<h2>三、Java 方法桥接（3,711 = 公开 1,975 + @SystemApi 1,736）</h2>
+<h3>3.1 是否向下桥接 OH（占全部公开+系统方法）</h3>
+<table>
+<tr><th>面</th><th class="r">总方法</th><th class="r">需桥接 OH</th><th class="r">占比</th></tr>
+<tr><td>公开 SDK</td><td class="r">30,256</td><td class="r">1,975</td><td class="r">6.5%</td></tr>
+<tr><td>@SystemApi + module-lib（隐藏/系统接口）</td><td class="r">7,779</td><td class="r">1,736</td><td class="r">22.3%</td></tr>
+<tr class="sum"><td>小计</td><td class="r">38,035</td><td class="r">3,711</td><td class="r">9.8%</td></tr>
+</table>
+<div class="note">@SystemApi 桥接率 22.3% 是公开 SDK(6.5%) 的 <b>3.4 倍</b>——系统/特权接口多直接操控系统服务。其余 ~34,300 方法是 Java 自合成/应用回调，不连下面。</div>
+
+<h3>3.2 桥接难度 5 级（codex 逐方法精修）</h3>
+<table>
+<tr><th>难度</th><th class="r">数</th><th>分布</th></tr>
+<tr><td>L1 易（OH 有直接等价 1:1）</td><td class="r">147</td><td><span class="bar bg-grn" style="width:15px"></span></td></tr>
+<tr><td>L2 中（需参数/枚举/错误码映射）</td><td class="r">855</td><td><span class="bar bg-acc" style="width:86px"></span></td></tr>
+<tr><td>L3 难（事件回调/生命周期/跨框架）</td><td class="r">651</td><td><span class="bar bg-amb" style="width:65px"></span></td></tr>
+<tr><td>L4 重写（OH 无等价，须 Java 合成）</td><td class="r">1,329</td><td><span class="bar bg-red" style="width:133px"></span></td></tr>
+<tr><td><b>L5 鸿蒙新增能力</b>（须给 OH 加原生能力）</td><td class="r">729</td><td><span class="bar bg-red" style="width:73px"></span></td></tr>
+</table>
+<div class="note"><b>L4+L5 = 2,058（55%）</b>：OH 6.1 无原生能力。其中 L5「鸿蒙新增能力」729 个 = 连 Java 都合成不了、必须给鸿蒙加原生能力（对应你们的 OH 补丁路线）。</div>
+
+<h3>3.3 L4/L5 解决路径（1,933 个，对照你们自改的 OH 补丁 adapter/ohos_patches）</h3>
+<table>
+<tr><th>解决路径</th><th class="r">数</th><th>含义</th></tr>
+<tr><td class="rd">🔴 仍需新改 OH / 不可行</td><td class="r">930</td><td>既无现有补丁、又难纯 Java 合成 → 需新增 OH 源改动</td></tr>
+<tr><td class="a">🟡 纯 Java 合成</td><td class="r">948</td><td>不改 OH，Java 层可近似</td></tr>
+<tr><td class="g">🟢 已由 OH 补丁解决</td><td class="r">55</td><td>落在 Activity栈/APK安装/appspawn/graphic/musl 等已有补丁内</td></tr>
+</table>
+<div class="src">明细 <code>L4L5_解决路径核查.csv / .html</code></div>
+
+<h2>四、分层总览（9 层 × 两列：每 App 必用核心框架 / 可选应用服务）</h2>
+<table>
+<tr><th>层</th><th class="r">核心框架(每App必用)</th><th class="r">应用服务(可选)</th><th class="r">合计</th></tr>
+<tr><td>L1 runtime（libc bionic→musl）</td><td class="r">1,724</td><td class="r">0</td><td class="r">1,724</td></tr>
+<tr><td>L2 graphics（方法级，详见 native track）</td><td class="r">0</td><td class="r">2</td><td class="r">2</td></tr>
+<tr><td>L3 binder</td><td class="r">15</td><td class="r">54</td><td class="r">69</td></tr>
+<tr><td>L4 framework</td><td class="r">155</td><td class="r">2,504</td><td class="r">2,659</td></tr>
+<tr><td>L5 NDK（媒体/编解码）</td><td class="r">0</td><td class="r">519</td><td class="r">519</td></tr>
+<tr><td>L6 input</td><td class="r">0</td><td class="r">49</td><td class="r">49</td></tr>
+<tr><td>L7 process（Zygote/用户/进程）</td><td class="r">69</td><td class="r">132</td><td class="r">201</td></tr>
+<tr><td>L8 security</td><td class="r">0</td><td class="r">43</td><td class="r">43</td></tr>
+<tr><td>L9 APK（PMS 包管理）</td><td class="r">91</td><td class="r">78</td><td class="r">169</td></tr>
+<tr class="grand"><td>合计（公开Java方法+libc口径）</td><td class="r">2,054</td><td class="r">3,381</td><td class="r">5,435</td></tr>
+</table>
+<div class="note"><b>必做地基 = 2,054</b>（libc 1,724 + AMS/WMS 155 + 用户/进程 69 + PMS 91 + binder 15）：做通这块，任何 App 才能起来。其余 3,381 按目标 App 用到的功能裁剪。<br>注：此表为"公开 Java 方法 + libc"口径(5,435)；native 引擎符号 + @hide 见第五节，另算。</div>
+
+<h3>4.1 L4 framework 功能域细分（2,659）</h3>
+<table>
+<tr><th>功能域</th><th class="r">数</th><th>功能域</th><th class="r">数</th></tr>
+<tr><td>📞 电话/通信(Telephony·Telecom·IMS)</td><td class="r">614</td><td>📲 NFC</td><td class="r">117</td></tr>
+<tr><td>📱 应用框架(App/Activity/Service)</td><td class="r">416</td><td>🌐 网络/VPN</td><td class="r">115</td></tr>
+<tr><td>🔌 硬件/传感器/USB/HDMI</td><td class="r">243</td><td>📶 WiFi</td><td class="r">97</td></tr>
+<tr><td>🏢 设备管理 MDM(DevicePolicy)</td><td class="r">232</td><td>🔵 蓝牙</td><td class="r">92</td></tr>
+<tr><td>🪟 视图/窗口(View/Window)</td><td class="r">186</td><td>🎙️ 语音/TTS</td><td class="r">84</td></tr>
+<tr><td>☕ Java 运行时(nio/net/sql)</td><td class="r">165</td><td>♿ 无障碍·📍定位·其余</td><td class="r">~200</td></tr>
+</table>
+
+<h2>五、L1 libc（Bionic → Musl）= 1,724，两维度</h2>
+<table>
+<tr><th>维度</th><th class="r">符号</th><th>含义</th></tr>
+<tr><td class="g">🟢 无代码桥接（符号路由/别名）</td><td class="r">960</td><td>两侧同名且 ABI 一致 → linker/namespace 解析</td></tr>
+<tr><td class="rd">🔴 有代码桥接（须 shim/翻译）</td><td class="r">764</td><td>红线 243（malloc/pthread/TLS/signal，不可同进程混用）+ bionic 特有 521</td></tr>
+</table>
+<div class="src">bionic <code>libc.map.txt</code> × RK3568/D200 实机 musl <code>libc.so</code>；交集 1,203 ≈ 项目旧估 1,160 ✓</div>
+
+<h2>六、native 引擎 track ★ 补回 Java 方法口径的盲区（图形曾=0）</h2>
+<table>
+<tr><th>引擎</th><th class="r">Android符号</th><th class="r">同名直通</th><th class="r">特有需shim</th><th class="r">@hide方法</th></tr>
+<tr><td>图形 EGL/GLES/Vulkan/NW</td><td class="r">827</td><td class="r">761</td><td class="r">66</td><td class="r">594</td></tr>
+<tr><td>加密 BoringSSL↔OpenSSL</td><td class="r">3,310</td><td class="r">2,039</td><td class="r">1,271</td><td class="r">0</td></tr>
+<tr><td>媒体 MediaNDK/AAudio</td><td class="r">378</td><td class="r">0</td><td class="r">378</td><td class="r">0</td></tr>
+<tr><td>libandroid(NDK综合)</td><td class="r">337</td><td class="r">0</td><td class="r">337</td><td class="r">0</td></tr>
+<tr><td>SQLite</td><td class="r">263</td><td class="r">0</td><td class="r">263</td><td class="r">715</td></tr>
+<tr><td>文本/ICU</td><td class="r">291</td><td class="r">289</td><td class="r">2</td><td class="r">0</td></tr>
+<tr><td>相机 Camera2NDK</td><td class="r">71</td><td class="r">0</td><td class="r">71</td><td class="r">0</td></tr>
+<tr><td>WebView(整引擎→ArkWeb)</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">1,030</td></tr>
+<tr class="sum"><td>合计</td><td class="r">5,477</td><td class="r">3,089</td><td class="r">2,388</td><td class="r">2,339</td></tr>
+</table>
+<div class="note"><b>修正：图形不再是 0</b>——827 个 GL/EGL/Vulkan 符号 + 594 @hide(SurfaceControl/Surface)。媒体/相机/libandroid 的"同名=0"不是没能力，而是 <b>OH 命名规约不同(OH_* vs A*) → 须逐个写映射 shim</b>。</div>
+
+<h2>七、口径 · 方法学 · 可信度</h2>
+<ul>
+<li><b>判据</b>：方法运行时是否必须向下调 OH 原生/系统能力（非"系统 vs 应用"）。getter 即使数据源自 OH，本身仍是 java_synth(不桥接)。</li>
+<li><b>流程</b>：确定性分类器 <code>selected_bridge()</code> 出种子 → codex(gpt-5.5) 并发逐方法分类+难度精修 → 算术/wifi 校验。347 包 0 失败。</li>
+<li><b>版本</b>：AOSP 15 × OH 6.1.0.31（libc/native 取 RK3568/D200 实机）。</li>
+<li><b>三重交叉验证</b>：算术闭合 ✓；wifi 58 vs 人工真值 66(88%) <span class="tag t-ok">✓</span>；libc 交集 1,203 ≈ 旧估 1,160 <span class="tag t-ok">✓</span>；HanBing 实测 2,415 方向一致。</li>
+<li><b>已知边界</b>：@hide 灰名单(数十万内部成员)未计；构造函数/字段/枚举未计入 method 数；加密 host 构建符号偏高估需按 APK 收紧；不同单位(method vs symbol)分列不相加。</li>
+<li><b>APK 内嵌 .so</b>：属 L4 app-gap native，按目标 APK 实际 import 的符号 ∩ 桥接集计；红线(跨 allocator)那批最危险，须 bionic 命名空间隔离。</li>
+</ul>
+
+<div class="src" style="margin-top:30px;border-top:1px solid var(--line);padding-top:12px">
+产物：registry-217/(公开201包) · registry-system/(@SystemApi 146包) · 桥接接口清单.csv/html · libc桥接符号清单_带难度.csv · 无代码直通清单.csv · L4L5_解决路径核查.csv/html · 西湖桥接_native引擎track.md · 西湖桥接总量-217包+libc.md<br>
+数据源：api_compat.db(AOSP15) · AOSP15 签名文件 · 16.12-HanBing(bionic/musl/native .so/.map.txt/@hide源/ohos_patches) · codex gpt-5.5 逐方法分类
+</div>
+
+</div></body></html>
