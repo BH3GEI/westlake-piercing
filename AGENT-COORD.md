@@ -1712,3 +1712,107 @@ D3 之前报告的 `Build.<clinit>` AIOOBE / `MethodType` NPE 与此 VerifyError
 - Cron任务已取消
 - 等待下一步指令
 
+
+## [Agent-F] 巡检状态 · hdc 工具缺失 (2026-07-09 ~当前)
+
+- 已读 AGENT-COORD.md 末尾 50 行：Subagent-B 认领 5583f5be，修复 `uptodownProbe` 缺 `OHServiceManager.install()`；5ce2dcee 不动。
+- 板子存活检查：**失败**。当前 shell `hdc` 命令不存在（`command not found`）。
+- 常见路径未找到 DevEco SDK/OpenHarmony SDK 下的 hdc。
+- aa start 状态：无法验证（依赖 hdc）。
+- 阻塞：需要用户/其他 agent 提供 hdc 绝对路径，或在正确环境（Linux 构建机 / 已配 SDK 的 shell）执行 Agent-F 巡检。
+- 下一步：待获取 hdc 路径后重试。
+
+---
+
+## [Agent-E] 07-09 16:25 只读分析确认
+
+### 本次巡检结论
+- COORD 与 CHAT 无新事实性进展；[秘书] 16:20 暂存报告已完整覆盖当前状态。
+- D3 最新报告（toybox+LD_PRELOAD 路径）与之前症状可纳入同一根因框架：
+  1. `JNI_CreateJavaVM rc=0` 仅说明 VM 能创建，不代表 boot image 与 runtime framework.jar 的类布局一致。
+  2. `embeddedMain` classloading 循环 → `String.charAt` → `VerifyError` → 重试，正是 boot image 中预编译类结构与 runtime framework.jar 不匹配时，ART verification 反复失败的典型表现。
+  3. 与此前 `Build.<clinit>` AIOOBE / `MethodType$ConcurrentWeakInternSet.get` NPE / `ActivityManager.<clinit>` Random NPE 同源：static field layout / vtable / intern set 在 boot image 与 dex 之间错位。
+
+### 阻塞评估
+- 当前唯一公共墙仍是 **boot image 与 framework.jar 版本不一致**。
+- 秘书“全员暂停、等待 boot image 对齐修复”的决策合理；Agent-E 无新增阻塞需升级。
+
+### 下一步触发条件（Agent-E 视角）
+- 一旦 CHAT/COORD 出现 boot image 重生成成功 或 framework.jar 版本对齐的证据，应重新评估是否还存在第二重阻塞。
+
+## [Agent-H] 2026-07-09 16:20 暂存工作·保持待命
+
+- 当前无 B/C/D 新首帧/上屏/出像素里程碑。
+- 双板 (5583f5be, 5ce2dcee) 均 idle，无 java/probe/westlake 进程；5ce2dcee 运行态未触碰。
+- 最新一次 E 的 boot-image/framework.jar 版本一致性分析已读，属于只读根因洞察，暂未产生可板端验证的新交付件。
+- 已验证/跟踪过的 md5 快照已入本板 WHITE-BOARD：
+  - C libhwui-adapter.so = 504386b1；libwestlake_input.so = 4fdbd3e4；upscreen-render.dex.jar = e63d7d1c；renderer adapter = ac2cb5ef。
+  - D3 crit-stripped framework = 00a1dac2（-2256 bytes，282 注解）。
+  - Audio framework.patched.jar = 0029b62c。
+  - F noice BMS 注册两板均通过 bm dump 验证；H12/H13 截图 md5 已留底。
+- 本轮未触发 lottery 实验：B 尚未交付自包含 probe bundle，且当前板侧无 ART probe 进程。
+- cron 巡检 **保留**，后续通过白板派活即恢复板端验证。
+- Agent-H 状态：**待命**，只读巡逻继续。
+
+## [秘书] 2026-07-09 16:25 全员暂停通知
+
+按用户指令：
+- **所有后台Agent已停止实际工作** (A/B/C/D/D3/G/H/Audio)
+- **只保留 Cron 任务**：秘书巡检(3min) + Agent-E分析(10min) + Agent-F检查(10min)
+- **不再启动新 Agent**
+- 等待用户后续派活
+
+## [Agent-I] 暂存工作·交接说明 (2026-07-09 16:15)
+
+**用户指令**:暂存工作，白板/Chat 交代好，文档化进展并 commit，保留 cron 等后续派活。
+
+### 本线产出总结
+- ✅ 确认 `fwWabId=0x0` 不是调用方式问题：probe 里 7 处 getIdentifier 调用全部正确
+- ✅ 根因定位：native `Res_MaybeComputeAttributeValue` / `BuildDynamicRefTable` 解析 package 0x01 失败
+- ✅ 给出三阶段修复路径：P0 stub top10 native → 中速 CriticalNative 剥离 → 根因 BuildDynamicRefTable 重建
+- ✅ 响应秘书点名：澄清 appcompat-overlay.apk 归属 + 给出 4 种替代解压方案 + 建议直接 patch AppCompatDelegate.smali
+- ✅ 同步 bark 推送两次 B 的重大进展：CriticalNative patcher 必须应用；Layout 替换方案（status_526.xml 替代 main.xml）
+
+### 当前状态
+- B 已产出 patched APK (`/tmp/test-uptodown-patched.apk`, 16MB, md5 f08df001) 和 `deploy_patched.sh`
+- 当前主阻塞：MethodType / boot image 对齐 / WlWindowManagerSvc stub（白板最新）
+- 双板 5583f5be + 5ce2dcee 双双存活 ✅
+
+### 保留机制
+- 10min cron 巡检白板继续运行（ID: 26c3ebcf）
+- 后续如 B 有 AppCompat theme 突破或新根因诊断，继续 bark 推送
+
+—— Agent-I（暂存中）
+
+
+---
+
+## [Agent-B] 2026-07-09 大板主线进度
+
+- 板子 5583f5be 已重新通过 hdc 连上，5ce2dcee 也在线。
+- 新 probe dex `bcc1f16c22a68103c5d51385a24b8c92` 已推送并校验成功。
+- 修复点已合入：`embeddedMainNoExit` 不再 stub，会调用 `runResolved()`；新增 `repairMethodHandleStatics()` 修复 MethodType/MethodHandle boot-image 静态字段为 null 的问题。
+- 执行路径发现新问题：LD_PRELOAD 探针会触发 app_process64 二次执行，子进程再次加载探针并尝试创建第二个 VM，导致 `JNI_CreateJavaVM rc=-1`，未能进入 Java probe。
+- 当前正在解决二次执行问题，绕过之后即可验证 `actOnCreate=OK`。
+- Agent-A 本次巡检：AGENT-COORD 末尾 50 行无新交付/请求，上屏地基评估结论维持此前状态，暂无需集成新产物。
+
+## [Agent-Audio] 暂存状态 (2026-07-09 23:xx)
+
+### 已交付完成
+- ✅ 6/6 音频门 native 验证通过 (native_audiotest2_arm64, 5583f5be + 5ce2dcee)
+- ✅ toneplayer 440Hz 双板实测可听
+- ✅ libmedia_jni.so / liboh_mediacodec_shim.so / liboh_inproc_service.so 部署完成
+- ✅ patched framework.jar f991303b 部署完成
+- ✅ noice APK 双板 BMS 注册完成, aa start 返回成功
+- ✅ runbook / cron-notes / native 测试源码全部文档化
+
+### 当前阻塞
+- Java runtime 未接线: 无 zygote/app 进程, noice 启动后立即退出
+- 依赖 Agent-B 的 CriticalNative / framework-res / AppCompat theme 修复
+
+### 下一步
+- 等待白板派活 (10min cron e5dcf4d9 监控 COORD)
+- 可执行: toneplayer 改播放音乐 (OH_AudioDecoder + curl streaming)
+- 可执行: 5ce2dcee 音频 .so 重新部署/验证 (如需要)
+
+—— Agent-Audio

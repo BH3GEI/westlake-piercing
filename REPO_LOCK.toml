@@ -59,6 +59,23 @@ version = "2.5.1"
 version_code = 66
 target_sdk = 33
 status = "renders; D-pad and touch interactive; 9/10 pages crash-free"
+audio_artifacts = "scratchpad-shared/audio-port-64/"
+audio_framework_patched = "scratchpad-shared/audio-port-64/framework-smali/framework.patched.jar"
+audio_framework_patched_md5 = "f991303b02b5a8c7628dce41d76de956"
+audio_framework_source_md5 = "e1dae174aea5ca5ae4d5a0ac735b9787"
+audio_apk_local = "/Users/yao/Downloads/noice.apk"
+audio_apk_md5 = "cdf6856fdf8f3bc2a180571372fc9c7c"
+
+[audio.gates]
+gate1 = "liboh_inproc_service.so md5 9495dc7d006e66425d914253a54db37f; JNI_OnLoad registers ActivityManagerAdapter nativeConnectAbility/disconnect"
+gate2 = "AudioManager.requestAudioFocus patched 5/5 overloads -> return GRANTED(1)"
+gate3 = "libmedia_jni.so md5 1e5ca0bbde882626c58a949ac9158d7b; dlopens liboh_mediacodec_shim.so"
+gate4 = "liboh_mediacodec_shim.so md5 9994fc79ef5e2398e1de47fe31272bb5; MediaCodec async -> OH_AudioCodec"
+gate5 = "pthread_key detach in shim; prevents ART abort"
+gate6 = "VOLUME_UP key event to unmute MUSIC stream"
+gate1_loader = "ActivityThread.main patched to System.loadLibrary(oh_inproc_service) in framework.patched.jar"
+gate_crash_chain = "7 gaps patched: PendingIntent(4) MediaSession AudioProductStrategy AudioVolumeGroup DisplayManagerGlobal MediaRouter\$Static ShortcutManager(2) SystemServiceRegistry\$90"
+audio_board_blocker = "5ce2dcee (hdc serial 5ce2dcee00000000000000000923012c) must be online for deploy+validate"
 
 [apps.dayu600_2048_probe]
 package = "com.digiplex.game"

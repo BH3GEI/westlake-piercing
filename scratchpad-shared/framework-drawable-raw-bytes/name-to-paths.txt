@@ -1,0 +1,9 @@
+ic_menu_close_clear_cancel drawable-xhdpi/ic_menu_close_clear_cancel.png
+ic_menu_close_clear_cancel drawable-hdpi/ic_menu_close_clear_cancel.png
+ic_menu_close_clear_cancel drawable-ldpi/ic_menu_close_clear_cancel.png
+ic_menu_close_clear_cancel drawable-mdpi/ic_menu_close_clear_cancel.png
+ic_menu_search drawable-xhdpi/ic_menu_search.png
+ic_menu_search drawable-xxhdpi/ic_menu_search.png
+ic_menu_search drawable-hdpi/ic_menu_search.png
+ic_menu_search drawable-ldpi/ic_menu_search.png
+ic_menu_search drawable-mdpi/ic_menu_search.png
