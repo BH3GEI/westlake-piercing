@@ -7,5 +7,21 @@
 |---|---|---|---|---|---|---|
 | 2026-07-09 | #22 蓝像素引擎 | 截图 | 5583f5be | 08f400a8 | (见 LEDGER #22) | scratchpad-shared/(待收编) |
 | 2026-07-09 | #48 板恢复 | hdc | 3 板 | - | hdc list targets | CHAT 15:42 |
+| 2026-07-09 | F-001 PiercingInfra 瘦身推送 | remote SHA | - | 509a1e12 | git ls-remote piercinginfra refs/heads/main | 远程 main(无本地 evidence 目录) |
+
+## 什么算证据(该留)
+
+只留**对穿刺/复核有帮助的事实**:
+- 板上 oracle PASS/FAIL 的关键输出切片、截图、像素 hash
+- 产物 md5 / 板号 / 可复现命令
+- 墙的根因结论(指向具体文件+行)
+
+## 什么不算证据(不留、不进 git)
+
+- 推 GitHub / 网络 / VPN / 代理失败日志(瞬时基建噪音,不是项目事实)
+- worker 空转、权限弹窗、CLI 自己崩的堆栈(除非暴露了卡/脚本的真 bug)
+- 已过时的中间失败稿(最终 PASS 后,中间失败 log 默认删;卡 RESULT 里一行结论够了)
+
+F-001 的 `push.log`(SSL/Timeout)已按此纪律删除;PASS 只记远程 SHA `509a1e12`。
 
 <!-- 收编纪律:验收班次把 scratchpad 里被引用的证据逐步搬进 evidence/<卡>/,更新本表。不搞一次性大搬家。 -->

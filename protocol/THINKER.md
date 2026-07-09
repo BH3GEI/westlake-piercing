@@ -80,6 +80,7 @@ EOF
 - 更新 `state/FRONTIER.md`(前沿变了没)
 - 更新 `state/LEDGER.md`(墙状态跃迁,只认 oracle PASS)
 - 有决策 → append `state/DECISIONS.md` 一行
+- 证据只留对穿刺有帮助的事实;推 GitHub/网络失败等基建噪音**不进** `evidence/`(见 `evidence/INDEX.md`)
 - 一次 `git commit`(state 变更 + 卡片移动)。**禁止 "polling: no new content" 这种空转 commit。**
 - 班次结束照跑 `REPO_SKILL.md` 的 check flow(交接检查)。
 
