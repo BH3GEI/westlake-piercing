@@ -5,7 +5,7 @@
 
 ## 我是谁？按角色翻到对应手册
 
-- **thinker(脑子 · Cursor 强模型)** → 读 `protocol/THINKER.md`。上岗先读 `state/` 全部五件(≤5k token)。
+- **thinker(脑子 · Cursor 强模型)** → 读 `protocol/THINKER.md`。上岗先读 `state/`（含 ATOM-MAP）。卡住硬墙 → fable/opus 顾问（必须 `--workspace` 本仓 + 足上下文，见 THINKER「顾问通道」）。
 - **worker(手 · kimi/codex/claude 一次性)** → 只读派给你的那张卡 + `protocol/WORKER.md`。别读 state/、别读别的卡、别读 archive/。
 - **派活** → `protocol/DISPATCH.md`。
 

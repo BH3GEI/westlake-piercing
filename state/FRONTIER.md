@@ -3,27 +3,24 @@
 
 # 当前前沿 (FRONTIER)
 
-**更新**：2026-07-09 落盘班次 · thinker=fable(Cursor)
+**更新**：2026-07-09 开钻班次 · thinker
 
-## 代码前沿 = 墙 #43 AppCompat 双包 parent-chain 主题墙
+## 代码前沿 = 墙 #43 · 卡 W-001
 
-- **owner 域**：resource/L6(原 Agent-B)
-- **机理**：uptodown 是 AppCompatActivity，setContentView 走 createSubDecor，要 Theme.AppCompat 的 windowActionBar。app 主题 AppThemeBar(0x7f15000e) 的 parent chain 跨包走到 framework `@android:Theme.Material.Light.NoActionBar`(0x01)，但 uamShared 只挂了 app arsc(0x7f)、没挂 framework-res(0x01) → 链断、`uamHasWab=false`。
-- **已知修法**：给 uamShared **也** addAssetPath(76a92b8f)，让同一个 am 有 0x7f+0x01。**关键顺序坑**：addAssetPath+BuildDynamicRefTable 必须在 newTheme/applyStyle 之前，否则 bag 已冻结锁死断链(E 钉,COORD L2904)。
-- **最后板上状态**：正在测，未出结论。
+- **卡**：`tasks/todo/W-001.md`（待领做 / 板通后上板）
+- **机理**：AppThemeBar(0x7f15000e) parent 跨包到 framework 0x01，uam 缺 package 0x01 → `uamHasWab=false`
+- **修法**：同一 AM 在 applyStyle **前** addAssetPath(app)+addAssetPath(framework-res)；触发 BuildDynamicRefTable
+- **代码**：`test-fixtures/dayu600-apk-probe/Dayu600ApkStageProbe.java` — uamShared(~1570) 只挂 app；early themeAm2(~2616) 与 W6 themeAm(~2886) 分裂；源码已无 `uamHasWab` 日志字符串，需加回
 
 ## 阻塞态
 
-- 板子 2026-07-09 15:42 已恢复(5583f5be/两块小板在线，5ce2dcee 仍离线)。**#43 现在可上板验证。**
-- ⚠️ 但恢复后尚未有人真正重跑 #43 —— 中间发生了"停工重构"(本次落盘)。
+- **hdc 不在 PATH**（2026-07-09 开钻核实）→ board-health 无法测；上板验证暂停
+- BOARDS 里 5583f5be 仍标 online=true（15:42 快照）——**以 hdc 实测为准**，通了再改回/确认
+- 5ce2dcee 仍离线
 
-## 下一步(严格依赖序，#43 解开后)
+## 下一步
 
-1. #50 createSubDecor windowActionBar 解析出 → subDecor 产出
-2. #51 setContentView(app R.layout.main) → content FrameLayout 0x1020002 —— *app 布局首次 inflate*
-3. #53 show() 真 DecorView 首帧 → 面板像素 r==2(须先补 #44 finishRecording Path-B wrapper)
-   并行输入支线：#49 接 WestlakeGenericJni@:2262 → #52 tap→WLTEST CLICK(D) → #47 IME
-
-## 悬在头上的事实债
-
-复核 42 个 claimed PASS(尤其 #4 与 boot-image clinit 的矛盾)——见 QUEUE.md 工厂队列。**前沿推进与事实复核可并行**：#43 吃 5583f5be，复核卡多为 host / 可摊到另一块板。
+1. 恢复 hdc（PATH / 安装）+ `board-health.sh 5583f5be…` OK
+2. thinker 改 probe：三路 AM 合一 + 顺序正确 + 恢复 uamHasWab/hasColorPrimary/wcoHas 日志
+3. 上板跑 oracle（见 W-001）→ PASS 才跃迁 LEDGER #43
+4. 卡住 → fable/opus 顾问（`--workspace` + 足上下文）

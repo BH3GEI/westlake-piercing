@@ -3,7 +3,7 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-09 落盘班次
+**更新**：2026-07-09 开钻 · W-001 已铸
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -13,7 +13,7 @@
 
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
-| (待铸) | #43 AppThemeBar 双包 parent-chain | todo | big-clean | 修法已知,见 FRONTIER;thinker/用户主攻 |
+| W-001 | #43 AppThemeBar 双包 parent-chain | todo | big-clean | 已铸;hdc 缺失阻塞上板;thinker 主攻 |
 
 ## 工厂队列 (factory) — 弱模型舰队
 
