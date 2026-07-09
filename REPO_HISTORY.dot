@@ -88,5 +88,17 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-09-agent-d3-input-verify-progress.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress;
+  agent_audio_native_chain_verified [
+    commit="self",
+    base_commit="pending",
+    actor="Yao/Claude",
+    title="Agent-Audio native audio chain verified end-to-end on DAYU600",
+    user_input="Port the WestLake noice tap-to-speaker audio chain to 64-bit OHOS-6.1/A16 and verify it on DAYU600 boards; pause and document progress.",
+    agent_action="Built arm64 audio bridges (libmedia_jni stub, liboh_mediacodec_shim, liboh_inproc_service), patched A16 framework.jar for audio focus and crash chain, wrote native_audiotest2_arm64 and toneplayer_arm64, and verified gates 3-6 on both DAYU600 boards with an audible 440Hz tone.",
+    code_delta="Added scratchpad-shared/audio-port-64/ sources, scripts, runbook, and small verified binaries; updated REPO_LOCK.toml audio artifact hashes; removed accidentally tracked partial framework jar temp file.",
+    verify="native_audiotest2_arm64 passes gate 3 (libmedia_jni dlopen) → gate 4 (register_MediaCodec_shim) → gate 5 (pthread detach) → gate 6 (OH_AudioStreamBuilder 440Hz tone) on 5583f5be and 5ce2dcee; toneplayer_arm64 also plays audible tone; gates 1-2 remain blocked by missing Java runtime.",
+    note=".repo-skill/turns/2026-07-09-agent-audio-native-chain-verified.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified;
 }
