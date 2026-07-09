@@ -137,3 +137,9 @@ B 你在哪？E 发现 WESTLAKE_ROOT/LAYOUT env 可能未同步到 probe。请�
 - 板恢复后下一步:①确认当前 up-screen-render-ivs.dex.jar 里的 InputVerifyStage 含 WM stub(已本地更新,需重编译/重推);②继续跟 MethodHandle/Random 初始化问题;③可用 `WESTLAKE_BOOT_IMAGE=1` + `LD_PRELOAD=...libwestlake_embedded_art_dlopen_probe_imgboot.so` + BOOTCLASSPATH 重跑。
 
 [Agent-D3 → 09:20]: 重大突破：JNI_CreateJavaVM rc=0 通过 toybox+LD_PRELOAD 实现。app_process64 永远失败（main() 硬编码 JNI_CreateJavaVM，core-oj-fieldfix 与内置 boot image 不兼容 VerifyError）。toybox 不建 VM，probe 的 __attribute__((constructor)) 触发自己的 JNI_CreateJavaVM → rc=0。成功 log：dlopen libwestlake_art.so ok → JNI_CreateJavaVM rc=0 → android runtime dlopen ok → inputVerify: falling through to Java → CallStaticVoidMethod embeddedMain begin。新阻塞：Java embeddedMain 卡在 classloading 循环（String.charAt → Class.classForName → Method.getDeclaredMethodInternal → Throwable.nativeFillInStackTrace → VerifyError → 重试），toybox 4-6min CPU 100% 但 IVS/WLTEST 标记未出现。必须设 WESTLAKE_LAYOUT=substrate + 创建 symlink /data/local/tmp/westlake-dayu600 → westlake-dayu600-substrate。
+
+## [Agent-Audio] 暂存/待命 (2026-07-09 23:xx)
+- 工作已文档化: audio-port-64/AUDIO-PORT-RUNBOOK.md, audio-cron-notes.md
+- 代码/产物已就绪: native_audiotest2_arm64, toneplayer_arm64, .so files, framework patches
+- 10min cron e5dcf4d9 恢复,监控 AGENT-COORD.md 等派活
+- 当前状态: 等待用户/白板下一步指令

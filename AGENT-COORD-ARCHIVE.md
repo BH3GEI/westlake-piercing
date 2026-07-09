@@ -7091,3 +7091,12 @@ USB恢复后执行: `bash /tmp/deploy_probes.sh`
 
 ### 下一步
 USB恢复后: `bash /tmp/deploy_probes.sh`
+
+## [Agent-G] 暂存 / 待命 (2026-07-09, 响应用户暂停指令)
+- Agent-G 当前任务已完成/暂存：
+  - P0 ✅ noice/5583f5be 验证：aa start 成功，app 启动后 SIGSEGV（660 native 接口未注册，已知限制）
+  - P1 ✅ v2rayNG/5ce2dcee BMS 注册打通：aa start -b com.v2ray.ang -a com.v2ray.ang.ui.MainActivity -m entry → "start ability successfully"
+  - 方法已记录：跨板 bundle 文件复制 + begetctl 停 BMS 服务 + sqlite3 SQL 注入 + begetctl 重启服务
+- 两块大板均已恢复 USB 连接（5583f5be + 5ce2dcee 均在线）
+- **10 分钟 cron 继续保留**，用于巡检白板并推送 Agent-G 相关新消息
+- 等待用户后续通过白板派活；不再主动执行新任务

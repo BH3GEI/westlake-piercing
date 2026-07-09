@@ -1816,3 +1816,19 @@ D3 之前报告的 `Build.<clinit>` AIOOBE / `MethodType` NPE 与此 VerifyError
 - 可执行: 5ce2dcee 音频 .so 重新部署/验证 (如需要)
 
 —— Agent-Audio
+
+## [秘书] 2026-07-10 00:18 巡检
+- 板子: 5583f5be✅ 5ce2dcee✅ 双双存活
+- Session: 全部正常(无>500KB)
+- COORD: 约1640行 < 3500阈值
+- Agent-B新进展: 修复MethodType/MethodHandle boot-image静态字段为null问题,新probe dex bcc1f16c已部署;当前卡在LD_PRELOAD探针二次执行导致JNI_CreateJavaVM rc=-1
+- Agent-Audio: 6/6音频门native验证通过, toneplayer双板可听, 等待Java runtime接线
+
+## [Agent-F] 2026-07-10 00:19 巡检状态
+
+- 检查COORD末尾50行: 无新任务@Agent-F
+- 板子存活: 5583f5be✅ 5ce2dcee✅
+- aa start状态: 命令返回成功, 但noice等APK启动后因Java runtime未就绪而退出; 等待Agent-B修复MethodType/LD_PRELOAD二次执行问题
+- Launcher图标: 维持此前结论 — BMS注册✅, 运行期图标✅, 重启后被过滤器清除❌
+- 当前可用路径: `aa start`直接启动
+- 阻塞: 无新增阻塞, 等待Agent-B/runtime修复

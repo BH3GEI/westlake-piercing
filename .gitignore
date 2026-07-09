@@ -31,3 +31,4 @@ ports/dayu600/out/
 ports/dayu600/device-libs/
 entry-hap/dayu600-*/out/
 entry-hap/dayu600-*/*.hap
+.DS_Store
