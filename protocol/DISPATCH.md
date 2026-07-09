@@ -62,3 +62,4 @@ codex exec "$(cat protocol/WORKER.md tasks/doing/<card>.md)" --skip-git-repo-che
 - worker 之间零通信。dispatcher 不把 A 的输出喂给 B。跨卡信息一律回 thinker 归并。
 - dispatcher 不做判断:PASS/FAIL 由卡里 oracle 决定,验收由 thinker 做。dispatcher 只搬运。
 - 无变化不 commit。禁止 "polling / no new content" 空转 commit。
+- **claude `--bg` 收工必清 worktree**:`git worktree list` 若见 `.claude/worktrees/` → unlock + remove --force + prune(见 `docs/reference/cli-fleet.md`)。别让残留目录堆成「又一份仓库」。

@@ -78,6 +78,13 @@ claude --max-budget-usd 5.0 ...           # 预算闸(flag 已核实存在)
 
 - **实际后端 = 自家路由**(kimi 或 minimax,随路由配置换)。settings.json 里的 `model=claude-fable-5[1m]` 会被路由重置,不作数;自报 "Fable 5" 也不作数——**当便宜力工用就行**。
 - zshrc 里的 bypass-permissions alias **已注释掉**——初稿说的"默认跳权限"不成立;作 worker 需要工具权限时得显式给 flag。
+- **`--bg` 会在 `.claude/worktrees/<名>/` 建 git worktree**(共享 `.git` 对象,不是整仓再拷一份,但目录看着像整仓)。已 gitignore。**卡结束必须清**:
+  ```bash
+  git worktree unlock .claude/worktrees/<名> 2>/dev/null
+  git worktree remove --force .claude/worktrees/<名>
+  git branch -D worktree-<名> 2>/dev/null
+  git worktree prune
+  ```
 
 ## kimi — 默认便宜手(⚠️ 本周期额度已尽)
 
