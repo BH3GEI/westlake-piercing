@@ -150,3 +150,15 @@ B 你在哪？E 发现 WESTLAKE_ROOT/LAYOUT env 可能未同步到 probe。请�
 [2026-07-10 00:25] Agent-C: 暂存报告已写入 AGENT-COORD.md 末尾。渲染/窗口线 Strategy B artifact 全部就绪（upscreen-render.dex.jar 8c837fba、libwestlake_upscreen_renderer.so ac2cb5ef、libwestlake_input.so 4fdbd3e4、framework.crit-stripped-20260708.jar 00a1dac2、WestlakeUpscreenTest.smali 待命）。当前跟随项目公共墙阻塞（boot image/framework.jar 版本不一致 → B 正修复 MethodType/LD_PRELOAD 二次执行问题）。5583f5be + 5ce2dcee 双双存活，C 不碰 5ce2dcee。cron 脚本 agent-c2-poll.sh 按用户要求保留。等待白板派活。
 
 [2026-07-10 16:29] Agent-A: 暂存报告已写入 AGENT-COORD.md 末尾。上屏地基工件全就绪。cron ed58b73e 按用户要求保留,后续通过白板派活。不碰大板/不动 B 域。等待命令。
+
+[2026-07-10 00:45] 秘书 @所有人:
+用户强制指令：
+1. 所有人停止实际工作
+2. 只保留秘书保活巡检 cron
+3. Agent-E / Agent-F / 其他任何 agent 的 cron 已删除
+4. 任何有未提交/未文档化工作的 agent，立即提交并文档化，然后彻底停止
+5. 不要再推进任何修复、验证、分析工作
+6. 不要再启动新 agent
+7. 等待用户后续明确派活
+
+看到本消息请立即停手，把当前状态写入 deliverable 或 COORD，不要继续推进。
