@@ -4,7 +4,7 @@
 
 ## 使用纪律（重要）
 
-- 这些是 HTML 原件，合计 ~580K。**不要整包读进上下文**（尤其 `*-board-L01-L14` 267K、`*-list-latest` 169K）。
+- 这些是 HTML 原件，合计约 630K。**不要整包读进上下文**（尤其 `*-board-L01-L14` 267K、`*-list-latest` 192K）。
 - 用法：thinker 铸卡/钻墙需要某个原子的坐标、验收口径、或 oracle 对照时，**定点取用**（grep 原子号 / 读某一节）。
 - 两条 workstream 共享同一坐标系 `L{NN}.A{NN}`(来自 AtomFunctionGit)，但**设备/进度各自独立**，别混：
   - **WestLake 线**（本仓库主线）：uptodown 等标准 APK，DAYU600 `5583f5be`，imageless ART。状态看 `state/LEDGER.md`。
@@ -21,13 +21,17 @@
 
 - **`host-build.md`**
   编译与主机工具：**重编译走 `ssh compiler`**；hdc；embed `.so` 必须 `-nostdlib`；uptodown probe 上板入口。
+
+- **`external-corpora.md`**
+  `a2hlab/01.Project@d98d128e` 与 `a2hlab/02.APP@8f6b77d` 的只读审阅索引。需要查需求 Factory、D200 旧证据、Unity/Cardwords 或 adapter 变体时先读；它记录了可读入口、Android/OH 代次边界和禁止整仓合并的原因。
+
 ## 坐标系与规格（跨线通用）
 
 - **`westlake-atom-function-board-L01-L14.html`** (267K)
   167 原子总看板，L01–L14 楼层 × 大类 × 原子，含依赖 `required_state` 与验收口径。**要某原子的验收标准/依赖时查这里。** 注意：全部标 M01-SPEC，是规格枚举不是真机进度——真机进度以 `state/LEDGER.md` 为准。
 
-- **`westlake-atom-function-list-latest.html`** (169K)
-  同 167 原子的成熟度视图：0 TECHNICAL_ATOM / 162 UNCLASSIFIED_DRAFT / G0–G7 门几乎全 FAIL。**它的价值是那句标准**——"原子必须可单独测试/验证/交付，缺 wall signature/universal fix/testability/verification/delivery 不算完整"。这就是 `tasks/_TEMPLATE.md` 的来源。查某原子当前门状态时用。
+- **`westlake-atom-function-list-latest.html`** (192K)
+  固定到 `01.Project@d98d128e` 的 167 原子规格视图：11 TECHNICAL_ATOM / 5 FLOW_ANCHOR / 151 UNCLASSIFIED_DRAFT / 5 REVIEW / **0 VALIDATED**。**它的价值是那句标准**——"原子必须可单独测试/验证/交付，缺 wall signature/universal fix/testability/verification/delivery 不算完整"。这就是 `tasks/_TEMPLATE.md` 的来源。这里的 REVIEW 不能提升本仓状态；真机进度仍只认 LEDGER。
 
 - **`westlake-bridge-surface-total-report.html`** (24K)
   Android→OH 桥接总量：全栈 ~13,251 面，真实工作量 11,226，**卡脖子硬核仅 ~969**（显示渲染 660 + libc 红线 243 + Java 核心 66）。**判断"某个缺口值不值得做/属于哪类工作量"时查这里。** 工厂队列选题的地图。

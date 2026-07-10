@@ -8,6 +8,32 @@ base_commit = "b9ede74ac6a19e9e05e09800a4c8757b60ea48d5"
 default_branch = "main"
 locked_at = "2026-07-10"
 
+[external_sources.policy]
+reviewed_at = "2026-07-10"
+mode = "reference-only; pin repo + commit + path + blob before copying"
+merge_unrelated_histories = false
+bulk_copy = false
+index = "docs/reference/external-corpora.md"
+
+[external_sources.a2hlab_01_project]
+repo = "a2hlab/01.Project"
+commit = "d98d128e281a4a662f9b68ec375f5db424e90cbc"
+root = "15.WestLake"
+role = "requirements, Factory and evidence corpus; not runtime source of truth"
+atom_list_path = "15.WestLake/03new_Requirement/02.AtomFunctionGit/reports/atom_function_list_latest.html"
+atom_list_blob_oid = "165a83a6719b75e766aea1de5bb2f71a9df311a4"
+atom_list_sha256 = "d25f730c87877e2b508a5e19b5da03ec24eb85cac9812627a41416f0411934d7"
+atom_list_import_normalization = "trailing whitespace stripped only"
+atom_list_imported_blob_oid = "b99432f1616c11df487c144314076ff8e0a3ed19"
+atom_list_imported_sha256 = "0b52b592cae689198694cc58fb89b45c6eb273eeb1d7aaf4c8473249b79519d6"
+
+[external_sources.a2hlab_02_app]
+repo = "a2hlab/02.APP"
+commit = "8f6b77dd4002353ccbe9e0315ac0a8175ff95159"
+root = "21.Game"
+role = "Unity/Cardwords delivery and rebuild workstream; not uptodown upstream"
+aosp_generation = "AOSP 14 in Cardwords runtime; incompatible with W-001 AOSP 15 AssetManager JNI ABI"
+
 [project]
 name = "Westlake"
 claim = "Run stock Android APKs on OpenHarmony through appspawn-x; legacy baseline is DAYU200/RK3568, active port target is DAYU600/uis7885."

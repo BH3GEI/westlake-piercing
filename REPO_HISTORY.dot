@@ -148,6 +148,18 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-10-repo-handoff-hardening.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening;
+  external_corpora_index [
+    commit="self",
+    base_commit="a5e2d9b8f25d2cd5a30c1fd328a97a51ca5d72e8",
+    actor="Yao/Codex",
+    title="index a2hlab requirement and Unity corpora without merging",
+    user_input="Review a2hlab/01.Project and a2hlab/02.APP after finishing the repository handoff, preserve their useful content without losing provenance, and report what remains.",
+    agent_action="Audited both private repositories at fixed commits; classified their source-of-truth boundaries, Git relationship, state drift, duplicate adapter trees and generation conflicts; refreshed one stale generated atom list and recorded minimal source pointers.",
+    code_delta="Documentation and reproducibility metadata only; no runtime code, state, task, board, device or oracle result changed.",
+    verify="fixed commit/tree/blob audit; external repos remained clean; reference blob hashes, TOML, DOT, handoff and repository diff checks",
+    note=".repo-skill/turns/2026-07-10-external-corpora-audit.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index;
   stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }
