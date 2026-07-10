@@ -3,6 +3,8 @@
 
 # 决策日志 (DECISIONS)
 
+- **2026-07-11** 跨 lane 通信定为**星型 + 有界信号台账**,不重建白板、不设 cron。理由:lane 各在自己的 worktree/branch 上,**看不见彼此的未提交状态**,白板在物理上就传不了信;cron 轮询只会生产 AGENTS.md 合同 4 明令禁止的空转 commit。唯一活线 = dispatcher;共享只读事实 = `BOARDS.toml`(板锁) + `FRONTIER.md`(前沿) + 新增 `state/SYNC.md`(≤60 行,append-only,只记 CLAIM/RELEASE/ORACLE/BLOCKED/HAZARD/FACT 六类会影响别的 lane 的信号,不讨论)。lane 只写自己的 `tasks/doing/<卡>.md` + `evidence/<卡>/`,只读别人**已提交**的卡。
+- **2026-07-11** `coding` sandbox 账号获仓库 ACL 写权(用户裁决,`sudo chmod +a`),范围仅 `state/` `evidence/` `tasks/doing/` `oracle/verify/`。**`.git` 不授权** → coding 不能 commit,W-001 的 dirty tree 因此受保护;commit 一律由 yao 会话执行。macOS ACL 不回溯继承,故既有文件(`tasks/doing/W-001.md`、`oracle/verify/atom-43.sh`)对 coding 仍只读 —— "禁改他人卡"由文件系统而非纪律强制。取代旧的"每次 `sudo -u yao` 写入"方案(会留下属主混杂/root 属主文件)。
 - **2026-07-10** CLI 舰队复核取代下方 2026-07-09 的「CLI 舰队」「claude --bg」「派力工」三条旧结论：Kimi 走 managed `kimi-code/kimi-for-coding`，但无 sandbox/tool allowlist，只领无秘密/远程/设备权限的机械卡；主 `claude` 是 first-party Max，`--bg` 不自动建 worktree且因 transient daemon 仅审计使用；Codex 固定 Desktop binary + 显式 Sol xhigh/max。真实 binary/model/退化状态只认 `docs/reference/cli-fleet.md` 与 `oracle/verify/cli-fleet.py`，旧 403、Kimi/MiniMax route、裸 gpt-5.5 主力说法均已 superseded。
 - **2026-07-10** 写入型 worker 并发必须一人一卡、一 branch、一 sibling worktree；canonical checkout 只给 thinker/dispatcher 管理 claim、板锁与验收。领卡状态先 commit，再从该 commit 建 `worker/<卡id>` worktree；worker 禁改 state，thinker 复跑 oracle 后合并并清锁。只读顾问可并行；共享 checkout 禁止并发 writer。
 - **2026-07-10** W-001 oracle 纠错：旧 probe/白板把 `0x010100b0`(android:autoLink)当 windowActionBar；目标 APK 的 AppCompat attr 实为 `0x7f040691`，AppThemeBar 直接定义 false。旧 `uamHasWab=false` 不再作为双包断链证据。native `ck` 也必须在四参 `nativeSetApkAssets(...,ZZ)` 成功后才有效；oracle 锁 launcher/dex/so hash、清理结果和 run rc。
