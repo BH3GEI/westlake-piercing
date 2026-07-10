@@ -1,0 +1,72 @@
+# A-01 · a2oh 7 分叉 commits 考古清单
+# 生成: 2026-07-11 · 四号(yao) · 只读 git 采集
+# fork: a2oh/main = 36126fa9146489f527f719005af2a5b77d4a52f6 (github.com/A2OH/westlake-piercing)
+# merge-base(与 origin/main 分叉点) = b9ede74ac6a19e9e05e09800a4c8757b60ea48d5
+# 分叉 commit 数: 7
+
+== commit 4c8ce72fb4d5e0d95b64974127f35fb244c3becb ==
+   subject: noice mediasession NPE-chain: fix audio-init crashes + audio-path diagnostics
+   files (blob-sha  path):
+     00feb01f527f9b8bdf43ebe1f8cd697291b381f1  framework-patch-tools/PatchPI.java
+     0694394da9f6ccc7d731504ecc08e1471c563a7e  framework-smali-patches/android_media_audiopolicy_AudioProductStrategy.smali
+     09cf51bd345a03167b41ff6baf3a384bcd63dd5c  framework-patch-tools/PatchS88.java
+     139fb59a4478c28fcc0b99f02f51521701fa4f3e  bridge-src/proxy_inject.cpp
+     13c5eb0c7218653846cc5b2812cee768bd6f94e0  framework-patch-tools/README.md
+     1eede76adf0ed58f1f710fc80cd779cb27adfc5c  framework-smali-patches/android_content_pm_ShortcutManager.smali
+     1f347449ee772b637213b2a0987f24951b528f9b  docs/noice-mediasession-npe-chain.md
+     22e050b63d66d6d769d9861820ee0dbefa0c4534  diagnostics/README.md
+     27a97fc25cdc0eaec354108d023a0a2173589318  diagnostics/netcheck.c
+     2bfe8187a882552c265f01ecad24dbc7eb56bc20  framework-patch-tools/PatchReturnNew.java
+     30120e14e3e9e1c6f1aeecb8966b6e7fa582c27b  diagnostics/toneplayer.c
+     3b1db7cf05a7f1b15ecde98fc4817a53c88bc886  framework-smali-patches/android_app_PendingIntent.smali
+     48b1df71c571fa5d116f8bb0bd719056255fcb04  diagnostics/proxy.py
+     4afde43b1bc22806be06d57dae8f15a5d7f82830  framework-patch-tools/classpath.txt
+     828a51e30ed026f203799c4c766109f1cf82ab9f  diagnostics/deathcatch.c
+     834259765edb267a55054f79f94e55aeeddd6efd  framework-smali-patches/android_media_MediaRouter$Static.smali
+     931fa847ea42ffba4977f333586b4142620d88e3  framework-smali-patches/android_app_SystemServiceRegistry$88.smali
+     9b961a4bb08cd7a78b64b2781d77912f917e4567  framework-patch-tools/PatchMS.java
+     acba6dd85e35a5773ffe9c83045e2a236319055d  framework-smali-patches/android_media_session_MediaSession.smali
+     b28be215c8e72ceada0d6ae3042ba7748aa2ee75  framework-smali-patches/android_media_audiopolicy_AudioVolumeGroup.smali
+     b99d06bee5c9539fed6600448ff6428114af9c3e  framework-smali-patches/android_hardware_display_DisplayManagerGlobal.smali
+     cedd1ab1f1440fa2fa179701c99c5802550c831f  framework-patch-tools/PatchProxy.java
+     db73121799f43cf9e7177d5689e80ae7373b3dd5  framework-patch-tools/PatchEmptyList.java
+
+== commit b0c35184b6d4a9d9c7d2ac52927f3900beba85a5 ==
+   subject: noice audio: audible MP3 playback end-to-end (tap play -> speaker)
+   files (blob-sha  path):
+     26228d1b9876720dd210e88252e018ff0aafb1e6  bridge-src/oh_inproc_service.cpp
+     2b07eb10d192223e29c7460755b7a554706fdb3f  docs/noice-audio-to-speaker-chain.md
+     3fdd604444e1a39ecb16c40bf9c35e1f635c694b  framework-patch-tools/PatchReturnOne.java
+     58260f5d66a01bd873686e13b829c7c1767538aa  bridge-src/oh_mediacodec_shim.cpp
+     74d267a5297af72f217ddbdf85bbd3738fa03896  bridge-src/activity_manager_adapter.cpp
+     d03363b85bb634b5ee9881cc4fd319d247bd1d8c  native-libs/libmedia_jni_stub.c
+     ee074459273957f2af0e374b7c0c7ec17ab6c68d  diagnostics/netcheck2.c
+
+== commit 70f677fc4aa12b6eec95dc316e646b40ed058227 ==
+   subject: docs: reproduce + status for the audible-audio milestone
+   files (blob-sha  path):
+     06f0a2945bd5d4c030e8f9cd91ebace1fba5f764  STATUS.md
+     ff1740609e83e86e2e8ef0267d9b794f246061db  REPRODUCE.md
+
+== commit b94f4713858fe520cbcf75fcd65fa543b9a72a93 ==
+   subject: in-app service bind: replace per-app heuristic with generic async create
+   files (blob-sha  path):
+     f2587339859c40c429e8de8cb3052435cbe70323  bridge-src/oh_inproc_service.cpp
+     fffa2489321886c921a701ea3a4cc5698b6800f9  bridge-src/activity_manager_adapter.cpp
+
+== commit a966ce8fe9a3ddbcf23fc9d23b0d3644f264d0b3 ==
+   subject: appspawn-x: grant internet at the spawn boundary (fixes adapter-app EPERM)
+   files (blob-sha  path):
+     b14f4836af2f17fd07a62e3cc55a06edaee45aba  bridge-src/child_main.cpp
+
+== commit 941fb825fc331bfec3f8548c374655027c0d62c1 ==
+   subject: oh_input_bridge: in-process text-entry channel (type into focused EditText)
+   files (blob-sha  path):
+     71a5920da98ab74f5a5a1290ff4c3afca125ab11  bridge-src/oh_input_bridge.h
+     c9b2b05b76ed23536aac5baf56ab6e25c83622ce  bridge-src/oh_input_bridge.cpp
+
+== commit 36126fa9146489f527f719005af2a5b77d4a52f6 ==
+   subject: framework-patch-tools: PatchReturnVoid — no-op ContentResolver observers
+   files (blob-sha  path):
+     33ea88c853361c0e4f774d679a053e6005973ebb  framework-patch-tools/PatchReturnVoid.java
+
