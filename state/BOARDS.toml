@@ -16,7 +16,7 @@ alias    = "5583f5be"
 tier      = "big-clean"
 role      = "渲染/窗口/主线首帧主力板;#43 前沿在此"
 online   = true          # 2026-07-10 12:05 board-health PASS
-lock     = ""
+lock     = "W-001"
 forbidden = ["wipe", "flash"]
 note     = "从 5ce2dcee 迁来;board-health OK (hdc 3.2.0b via ~/.local/bin/hdc)"
 
