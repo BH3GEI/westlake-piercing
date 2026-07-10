@@ -12,8 +12,19 @@ public final class Dayu600ApkStageProbe {
     private static native int nativeCallAddAssetPath(Object assetManager, byte[] pathUtf8, Class<?> stringClass);
     /** Append via ApkAssets.loadFromPath + setApkAssets (ApkAssets class resolved in native). */
     private static native int nativeAppendApkAssets(Object assetManager, byte[] pathUtf8);
-    /** W-001: separate entry to avoid stale/wrong native binding. Returns 77 on enter-before-work. */
-    private static native int nativeW001Append(Object assetManager, byte[] pathUtf8);
+    /**
+     * W-001 VLL trampoline: void return so the static shorty is 'VLL' (same shorty class
+     * as nativeWriteText, proven dispatchable on this board). 'ILL' is unhandled at
+     * interpreter.cc:1189. Status is NOT returned to Java — native writes
+     * /data/local/tmp/w001-native-append.txt and w001-ck{App,Fw}.txt heartbeats.
+     */
+    private static native void nativeW001Append(Object assetManager, byte[] pathUtf8);
+    /**
+     * W-001: bind android.os.Trace natives on every reachable Trace class handle
+     * (boot + this AssetManager's loader) before Resources() is constructed. Void →
+     * shorty 'VL' (dispatchable). Native writes /data/local/tmp/w001-trace.txt.
+     */
+    private static native void nativeW001BindTrace(Object assetManager);
 
     private static Class<?> tryNativeFindClass(String name) {
         try {
@@ -805,51 +816,76 @@ public final class Dayu600ApkStageProbe {
         int stepCode = 0;
         try {
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY syncMain");
+            // Resources ctor hits Trace.nativeIsTagEnabled → UnsatisfiedLinkError unless
+            // the sidecar's trace natives are registered first (proven 2026-07-10).
+            ensureTraceNatives();
             Class<?> amCls = android.content.res.AssetManager.class;
             java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
             amC.setAccessible(true);
             android.content.res.AssetManager am =
                     (android.content.res.AssetManager) amC.newInstance(Boolean.TRUE);
             stepCode = 1;
+            // Bind Trace natives on EVERY reachable Trace class (boot + this am's loader)
+            // before any Resources() ctor. ensureTraceNatives() above only reached boot Trace;
+            // the Resources ctor resolves the am-loader's Trace (dual-class hazard). Void arg →
+            // shorty 'VL' (dispatchable). Native writes w001-trace.txt = "trace boot=? amldr=?".
+            nativeW001BindTrace(am);
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addApp");
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY preNative");
-            int ckApp = nativeW001Append(am, W001_APK_PATH);
-            if (ckApp == -999) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "m999");
-            } else if (ckApp == -998) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "m998");
-            } else if (ckApp == 0) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "0");
-            } else if (ckApp == 1) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "1");
-            } else if (ckApp > 1) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "gt1");
-            } else {
-                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "neg");
+            // VLL trampoline: no int return. Per-call rc lands in w001-ck{App,Fw}.txt
+            // (written by native); success proof is 'nativeSet=ok ck=2' in
+            // w001-native-append.txt. Java proceeds unconditionally — a failed append
+            // shows up as uamHasWab=false plus the native heartbeats.
+            nativeW001Append(am, W001_APK_PATH);
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY postNativeApp");
+            // A leg (app-only): probe attrs BEFORE framework-res joins the AM.
+            // Wrapped so an A-leg crash can never block the B leg (the real oracle).
+            try {
+                android.util.DisplayMetrics dmA = new android.util.DisplayMetrics();
+                try { dmA.setToDefaults(); } catch (Throwable ig) {
+                    dmA.density = 1.0f; dmA.widthPixels = 1200; dmA.heightPixels = 1920;
+                }
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=resA");
+                android.content.res.Resources resA = new android.content.res.Resources(
+                        am, dmA, new android.content.res.Configuration());
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=applyStyleA");
+                android.content.res.Resources.Theme thA = resA.newTheme();
+                thA.applyStyle(0x7f15000e, true);
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=obtainA");
+                int[] probeAttrsA = new int[] { 0x7f040691, 0x01010059, 0x7f040141 };
+                android.content.res.TypedArray taA = thA.obtainStyledAttributes(probeAttrsA);
+                boolean aWab = taA.hasValue(0);
+                boolean aWco = taA.hasValue(1);
+                boolean aCp = taA.hasValue(2);
+                taA.recycle();
+                if (aWab && aWco && aCp) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=1 wco=1 cp=1");
+                } else if (aWab && aWco) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=1 wco=1 cp=0");
+                } else if (aWab && aCp) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=1 wco=0 cp=1");
+                } else if (aWab) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=1 wco=0 cp=0");
+                } else if (aWco && aCp) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=0 wco=1 cp=1");
+                } else if (aWco) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=0 wco=1 cp=0");
+                } else if (aCp) {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=0 wco=0 cp=1");
+                } else {
+                    earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A wab=0 wco=0 cp=0");
+                }
+            } catch (Throwable at) {
+                earlyWriteLiteral("/data/local/tmp/w001-abA.txt", "A caught");
+                // Single-String writes only (no concatenation on this board).
+                try {
+                    earlyWriteLiteral("/data/local/tmp/w001-abAex.txt", at.getClass().getName());
+                } catch (Throwable ig2) {}
             }
             stepCode = 2;
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addFw");
-            int ckFw = nativeW001Append(am, W001_FW_PATH);
-            if (ckFw == -999) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "m999");
-            } else if (ckFw == -998) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "m998");
-            } else if (ckFw == 0) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "0");
-            } else if (ckFw == 1) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "1");
-            } else if (ckFw == 2) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "2");
-            } else if (ckFw > 2) {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "gt2");
-            } else {
-                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "neg");
-            }
-            if (ckApp <= 0 || ckFw <= 0) {
-                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt",
-                        "EARLY_THEME_FAIL:step=append:ckBad");
-                return 43;
-            }
+            nativeW001Append(am, W001_FW_PATH);
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY postNativeFw");
             stepCode = 3;
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=res");
             android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
@@ -886,12 +922,40 @@ public final class Dayu600ApkStageProbe {
             } else if (uamHasWab && !wcoHas && hasColorPrimary) {
                 result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=false hasColorPrimary=true";
             }
+            // B leg (app+framework) mirror of w001-abA.txt for the A/B verdict.
+            if (uamHasWab && wcoHas && hasColorPrimary) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=1 wco=1 cp=1");
+            } else if (uamHasWab && wcoHas) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=1 wco=1 cp=0");
+            } else if (uamHasWab && hasColorPrimary) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=1 wco=0 cp=1");
+            } else if (uamHasWab) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=1 wco=0 cp=0");
+            } else if (wcoHas && hasColorPrimary) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=0 wco=1 cp=1");
+            } else if (wcoHas) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=0 wco=1 cp=0");
+            } else if (hasColorPrimary) {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=0 wco=0 cp=1");
+            } else {
+                earlyWriteLiteral("/data/local/tmp/w001-abB.txt", "B wab=0 wco=0 cp=0");
+            }
             earlyWriteLiteral(
                     "/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/uptodown-probe.txt",
                     result);
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", result);
             return uamHasWab ? 0 : 43;
         } catch (Throwable et) {
+            // Single-String writes only (no concatenation on this board).
+            try {
+                earlyWriteLiteral("/data/local/tmp/w001-failex.txt", et.getClass().getName());
+            } catch (Throwable ig2) {}
+            try {
+                String em = et.getMessage();
+                if (em != null) {
+                    earlyWriteLiteral("/data/local/tmp/w001-failmsg.txt", em);
+                }
+            } catch (Throwable ig2) {}
             if (stepCode == 0) {
                 earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=pre");
             } else if (stepCode == 1) {

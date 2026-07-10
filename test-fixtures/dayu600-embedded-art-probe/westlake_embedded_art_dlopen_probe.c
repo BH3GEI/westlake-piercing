@@ -1314,6 +1314,46 @@ static jint westlake_native_append_apk_assets(JNIEnv *env, jclass clazz,
     return (jint)(old_len + 1);
 }
 
+/* W-001 VLL trampoline: static shorty 'ILL' is unhandled at interpreter.cc:1189,
+ * 'VLL' has a live branch (nativeWriteText proves it). Java gets no return value;
+ * the per-call rc goes to w001-ckApp.txt / w001-ckFw.txt (path-routed), and the
+ * only success proof stays 'nativeSet=ok ck=N' written by the worker above. */
+static void westlake_native_w001_append_vll(JNIEnv *env, jclass clazz,
+    jobject am, jbyteArray path_bytes)
+{
+    jint rc = westlake_native_append_apk_assets(env, clazz, am, path_bytes);
+    const char *hb = "/data/local/tmp/w001-ckApp.txt";
+    if (path_bytes != 0) {
+        jsize pn = (*env)->GetArrayLength(env, path_bytes);
+        char pbuf[256];
+        if (pn > 0 && pn < (jsize)(sizeof(pbuf) - 1)) {
+            (*env)->GetByteArrayRegion(env, path_bytes, 0, pn, (jbyte *)pbuf);
+            pbuf[pn] = 0;
+            if (westlake_str_contains(pbuf, "framework-res")) {
+                hb = "/data/local/tmp/w001-ckFw.txt";
+            }
+        }
+    }
+    {
+        char cbuf[16];
+        unsigned int pos = 0;
+        int v = (int)rc;
+        cbuf[pos++] = 'r';
+        cbuf[pos++] = 'c';
+        cbuf[pos++] = '=';
+        if (v < 0) {
+            cbuf[pos++] = 'm';
+            v = -v;
+        }
+        if (v >= 100) cbuf[pos++] = (char)('0' + (v / 100) % 10);
+        if (v >= 10) cbuf[pos++] = (char)('0' + (v / 10) % 10);
+        cbuf[pos++] = (char)('0' + (v % 10));
+        cbuf[pos++] = '\n';
+        cbuf[pos] = 0;
+        c_write_heartbeat(hb, cbuf);
+    }
+}
+
 static jint westlake_native_call_add_asset_path(JNIEnv *env, jclass clazz,
     jobject am, jbyteArray path_bytes, jclass string_cls)
 {
@@ -2148,6 +2188,126 @@ static void reregister_trace_via_assetmanager_loader(JNIEnv *env)
     }
 }
 
+/* Resolve android.os.Trace through the classloader that DEFINED anchor_cls, and
+ * RegisterNatives on it. On imageless ART the boot classpath can hold two Trace
+ * mirror::Class objects (core-libart.jar loaded via boot image AND via the tolerant-
+ * JAR path); the Resources ctor links against whichever one Resources' own loader
+ * resolves. FindClass from our probe frame reaches a DIFFERENT one, so binding it is
+ * a no-op for the ctor. This targets the exact class Resources will use.
+ * Returns the Trace jclass via *out_trace (local ref) and rc: 0 ok, -1 RegisterNatives
+ * failed, -2 no anchor/class, -3 anchor loader null (boot-defined — see caller). */
+static int bind_trace_via_class_loader(JNIEnv *env, const char *anchor_bin,
+    const char *label, jclass *out_trace)
+{
+    if (out_trace != 0) { *out_trace = 0; }
+    jclass anchor = (*env)->FindClass(env, anchor_bin);
+    if (anchor == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return -2;
+    }
+    jclass class_cls = (*env)->FindClass(env, "java/lang/Class");
+    jmethodID get_cl = (*env)->GetMethodID(
+        env, class_cls, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    if (get_cl == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return -2; }
+    jobject loader = (*env)->CallObjectMethod(env, anchor, get_cl);
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return -2; }
+    if (loader == 0) {
+        /* anchor is boot-defined; its Trace is reached via boot FindClass. */
+        return -3;
+    }
+    jclass loader_cls = (*env)->GetObjectClass(env, loader);
+    jmethodID load_class = (*env)->GetMethodID(
+        env, loader_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (load_class == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return -2; }
+    jstring tname = (*env)->NewStringUTF(env, "android.os.Trace");
+    jclass trace = (jclass)(*env)->CallObjectMethod(env, loader, load_class, tname);
+    if (trace == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return -2; }
+    if (out_trace != 0) { *out_trace = trace; }
+    return register_trace_natives_on(env, trace, label);
+}
+
+/* W-001: bind android.os.Trace natives on EVERY Trace class handle we can reach —
+ * boot FindClass, am-instance loader, AND (the load-bearing one) the loader that
+ * defined android.content.res.Resources — right before the early oracle constructs
+ * Resources. On imageless ART the dual-class hazard means RegisterNatives on the
+ * wrong mirror::Class silently leaves nativeIsTagEnabled unbound (that is the
+ * Resources-ctor UnsatisfiedLinkError). Writes to /data/local/tmp/w001-trace.txt:
+ *   boot=<rc> amldr=<rc> res=<rc> same=<0|1>
+ * where rc: 0 ok / m1 RegisterNatives failed / m2 no class / m3 loader null(boot),
+ * and same = IsSameObject(bootTrace, resTrace) (1 => the two are the identical
+ * mirror::Class; 0 => confirmed distinct boot-level Trace classes). */
+static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject am)
+{
+    (void)clazz;
+    int rc_boot = -2;
+    int rc_amldr = -2;
+    int rc_res = -2;
+    int same_br = -1;
+    jclass boot_trace = (*env)->FindClass(env, "android/os/Trace");
+    if (boot_trace != 0 && !(*env)->ExceptionCheck(env)) {
+        rc_boot = register_trace_natives_on(env, boot_trace, "W001 bindTrace boot");
+    } else {
+        (*env)->ExceptionClear(env);
+    }
+    if (am != 0) {
+        jobject loader = westlake_loader_for_am(env, am);
+        if (loader != 0 && !(*env)->ExceptionCheck(env)) {
+            jclass loader_cls = (*env)->GetObjectClass(env, loader);
+            jmethodID load_class = (*env)->GetMethodID(
+                env, loader_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+            if (load_class != 0 && !(*env)->ExceptionCheck(env)) {
+                jstring tname = (*env)->NewStringUTF(env, "android.os.Trace");
+                jclass am_trace = (jclass)(*env)->CallObjectMethod(env, loader, load_class, tname);
+                if (am_trace != 0 && !(*env)->ExceptionCheck(env)) {
+                    rc_amldr = register_trace_natives_on(env, am_trace, "W001 bindTrace amloader");
+                } else {
+                    (*env)->ExceptionClear(env);
+                }
+            } else {
+                (*env)->ExceptionClear(env);
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
+    }
+    /* Load-bearing: bind the Trace that Resources' own loader resolves. */
+    {
+        jclass res_trace = 0;
+        rc_res = bind_trace_via_class_loader(
+            env, "android/content/res/Resources", "W001 bindTrace resLoader", &res_trace);
+        if (rc_res == -3) {
+            /* Resources is boot-defined: its Trace == boot FindClass Trace. */
+            rc_res = rc_boot;
+            res_trace = boot_trace;
+        }
+        if (res_trace != 0 && boot_trace != 0) {
+            same_br = (*env)->IsSameObject(env, res_trace, boot_trace) ? 1 : 0;
+        }
+    }
+    /* Belt: the existing FindClass-AssetManager rebind. */
+    reregister_trace_via_assetmanager_loader(env);
+    {
+        char buf[64];
+        unsigned int pos = 0;
+        unsigned int i;
+        const char *p;
+        #define W001_EMIT_RC(prefix, rc) do { \
+            p = (prefix); i = 0; \
+            while (p[i] != 0 && pos + 3 < sizeof(buf)) buf[pos++] = p[i++]; \
+            if ((rc) < 0) { buf[pos++] = 'm'; buf[pos++] = (char)('0' - (rc)); } \
+            else { buf[pos++] = (char)('0' + (rc)); } \
+        } while (0)
+        W001_EMIT_RC("trace boot=", rc_boot);
+        W001_EMIT_RC(" amldr=", rc_amldr);
+        W001_EMIT_RC(" res=", rc_res);
+        W001_EMIT_RC(" same=", same_br);
+        #undef W001_EMIT_RC
+        buf[pos++] = '\n';
+        buf[pos] = 0;
+        c_write_heartbeat("/data/local/tmp/w001-trace.txt", buf);
+    }
+}
+
 static jint call_embedded_main_no_exit(JNIEnv *env, const char *stage,
     jclass probe_class, jmethodID main_method,
     jstring arg0, jstring arg1, jstring arg2)
@@ -2623,15 +2783,19 @@ call_java_probe:
             "(Ljava/lang/Object;[B)I",
             (void *)westlake_native_append_apk_assets};
         JNINativeMethod m5 = {"nativeW001Append",
-            "(Ljava/lang/Object;[B)I",
-            (void *)westlake_native_append_apk_assets};
-        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5 };
+            "(Ljava/lang/Object;[B)V",
+            (void *)westlake_native_w001_append_vll};
+        JNINativeMethod m6 = {"nativeW001BindTrace",
+            "(Ljava/lang/Object;)V",
+            (void *)westlake_native_w001_bind_trace};
+        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6 };
         const char *names[] = {
             "nativeFindClass", "nativeWriteText", "nativeRegisterTraceNatives",
-            "nativeCallAddAssetPath", "nativeAppendApkAssets", "nativeW001Append"
+            "nativeCallAddAssetPath", "nativeAppendApkAssets", "nativeW001Append",
+            "nativeW001BindTrace"
         };
         int i;
-        for (i = 0; i < 6; i++) {
+        for (i = 0; i < 7; i++) {
             jint register_rc = (*env)->RegisterNatives(env, probe_class, all[i], 1);
             if (register_rc != 0 || (*env)->ExceptionCheck(env)) {
                 log_text("RegisterNatives ONE failed:");

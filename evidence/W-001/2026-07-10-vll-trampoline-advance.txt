@@ -1,0 +1,49 @@
+date=2026-07-10T22:48:48+09:00
+board=5583f5be00000000000000000323012c
+command=W001_TIMEOUT_SECONDS=60 oracle/verify/atom-43.sh 5583f5be00000000000000000323012c
+run_rc=0
+verdict=FAIL (advanced: ILL->VLL crossed, framework-res joined AM ck=2)
+
+# Artifacts (local == remote, all four matched by the hash-locked oracle)
+launcher_sha256=b2dd0ac9ef53f80d0da4bbcd591a8228a4f7adeb4f1add937025c7dbcd39a235
+dex_sha256=916a072bc6b73b74521b48395b98e59c843588be4c26505326d9bb31a7795397
+sidecar_sha256=fded33c78b6154c3aa24741bf9cfc08e2879955673014ce31e0368415156d290
+sidecar_copy_matches=true
+
+full_log=/tmp/westlake-w001-20260710-224848.log
+full_log_bytes=4798701
+full_log_sha256=eee068578fce54d2d59097e428066e98679c3f13ae4188cba5283cf87bba059e
+
+# ---- What advanced (device-verified) ----
+# 1. ILL wall crossed. The static shorty for nativeW001Append is now 'VLL' (void return,
+#    two reference args), the same shorty class as nativeWriteText which dispatches on this
+#    board. The prior blocker is gone:
+#      grep "unhandled static shorty 'ILL' for int ...nativeW001Append"  -> 0 matches
+#    (was the sole failure in 2026-07-10-hashlocked-ill-baseline.txt).
+# 2. Native path fully executes. Heartbeat /data/local/tmp/w001-native-append.txt:
+#      ENTER -> DISPATCH_OK -> nativeSet=ok ck=1   (app-only)
+#      ENTER -> DISPATCH_OK -> nativeSet=ok ck=2   (app + framework-res)   x5 across retries
+#    ck=2 means framework-res was accepted into the AssetManager via the 4-arg
+#    nativeSetApkAssets(J[Landroid/content/res/ApkAssets;ZZ)V. This is oracle PASS
+#    criterion 1 of 3, and it is now met.
+# 3. Status is read from native heartbeats, not a Java return value (VLL returns void).
+#    Per-call rc is path-routed to w001-ckApp.txt (rc=1) and w001-ckFw.txt (rc=2).
+
+# ---- Why the oracle is still FAIL (next wall, not a regression) ----
+# The A/B theme legs never evaluate wabAttr/uamHasWab. Both die at step=res:
+#      EARLY_THEME_FAIL:step=res ; w001-abA.txt="A caught"
+# Captured exception (w001-failex.txt / w001-abAex.txt):
+#      java.lang.UnsatisfiedLinkError: No implementation found for
+#      boolean android.os.Trace.nativeIsTagEnabled(long)
+# The Resources(am, dm, cfg) constructor calls Trace.nativeIsTagEnabled. This is the known
+# dual-Trace-class problem: the early-oracle path's ensureTraceNatives() registers the boot
+# Trace binding, but the Resources ctor resolves a different Trace class. The sidecar already
+# has reregister_trace_via_assetmanager_loader() for exactly this; the early path does not yet
+# invoke that rebind against the AssetManager's own loader before constructing Resources.
+
+# ---- Honest ledger position ----
+# PASS criteria: [x] nativeSet=ok ck=2   [ ] wabAttr=0x7f040691   [ ] uamHasWab=true
+# 2 of 3 criteria are un-evaluated because Resources() throws before obtainStyledAttributes.
+# Wall #43 remains UNVERIFIED. LEDGER not touched (#43 stays IN_PROGRESS 🔧).
+# The A/B question (does app+framework staging change the WAB verdict vs app-only) is also
+# still open — neither leg reached obtainStyledAttributes this run.
