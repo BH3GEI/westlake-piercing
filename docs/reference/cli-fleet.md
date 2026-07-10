@@ -1,142 +1,195 @@
-# CLI 舰队速查(实测更新 2026-07-10)
+# CLI agent 舰队（实测 2026-07-10）
 
-> 每条命令都跑过 hello 或 --help 核实;来源初稿(conversation_summary)有错处,以本文为准。
-> **自报模型名不可信,路由以配置文件为准。** 角色分工:求助见 `protocol/THINKER.md`,派活见 `protocol/DISPATCH.md`。
+> 本页只写本机可复核事实。四个状态必须分开：`configured`（配置请求什么）、`listed`（目录列出什么）、`live-tested`（真实请求成功）、`reported backend`（CLI 回报实际服务模型）。自报模型名和旧聊天记忆都不算路由证据。
 
-## 通用坑(先读)
+## 一眼结论
 
-- **mac 无 `timeout` 命令**。headless 起 worker 一律带看门狗包装:
+| 命令 | 实际解析 | 版本 | 模型事实 | 最终 smoke |
+|---|---|---:|---|---|
+| `kimi` | `~/.kimi-code/bin/kimi` | 0.23.3 | managed `kimi-code/kimi-for-coding` → catalog `K2.7 Code` | worker 写文件 PASS |
+| `claude` | `.zshrc` function → Claude Code binary | 2.1.204 | first-party Max；显式 `fable/opus/sonnet` 可路由 | 受限 worker 最终 PASS；中途曾间歇性 JSON 失败 |
+| `codex` | `/opt/homebrew/bin/codex` | 0.143.0 | 裸命令读全局 `gpt-5.6-sol + ultra`，metadata 退化 | 能回，但不用于派工 |
+| Codex Desktop | ChatGPT app bundled binary | 0.144.0-alpha.4 | 显式 Sol `xhigh/max` | advisor + worker PASS |
+| `agent` / `cursor-agent` | `~/.local/bin/*` → `~/.local/share/cursor-agent/versions/2026.07.08-0c04a8a/cursor-agent` | 2026.07.08-0c04a8a | 189 listed；catalog default `auto` | fable/opus/Sol max ask PASS |
+
+重复核验：
 
 ```bash
-( <cmd> < /dev/null & P=$!; ( sleep 900 && kill $P 2>/dev/null ) & W=$!; wait $P 2>/dev/null; kill $W 2>/dev/null )
+python3 -B oracle/verify/cli-fleet.py          # 静态 + 隔离/worktree/watchdog，34/34 PASS
+python3 -B oracle/verify/cli-fleet.py --live   # 四 CLI 通道，39/39 PASS；Kimi 留 session metadata
 ```
 
-- **codex/claude headless 会守着 stdin 挂起**,必须 `< /dev/null`。
-- 版本快照:agent 2026.07.08 · Homebrew codex 0.143.0 · Codex Desktop bundled 0.144.0-alpha.4 · claude 2.1.204 · kimi 0.23.3 · mmx 1.0.16。
+完整 Cursor model snapshot：`docs/reference/agent-models-2026-07-10.txt`（189 行，规范化 SHA-256 `87b5e657cb9672b5e19a9cec59c18ffd6f622959ed15f02b16e8d66bcdf88bed`）。
 
-## bark — 手机推送(实测通,code 200)
+## 通用运行约束
+
+- 写入型 worker 必须从 `protocol/DISPATCH.md` 的 claim commit 建独占
+  sibling worktree；canonical checkout 禁止并发 writer。下面示例都假定已
+  `cd "$WT"`，且 `$CARD` 对应 `tasks/doing/$CARD.md`。
+- 非交互调用一律断开 stdin。不要用只杀父 PID 的 shell timer；模型 CLI
+  可能留下子进程。仓库 watchdog 建独立进程组，超时先 TERM、后 KILL：
 
 ```bash
-bark <标题> <内容> [分组]        # 内容为 - 时读 stdin;分组默认 claude-code
-some-cmd | bark "标题" - westlake
+PROMPT="$(cat protocol/WORKER.md "tasks/doing/${CARD}.md")"
+WATCHDOG=(python3 -B oracle/run-with-timeout.py --timeout 900 --)
+"${WATCHDOG[@]}" <cli> <args...>
 ```
 
-- 脚本 `~/.local/bin/bark`,key `~/.claude/bark_key`,可选自建服务器 `~/.claude/bark_server`。
-- **只在三种情况推**:①长任务重要里程碑 ②只有用户能解的硬墙(**含板子要断电重插——电源不自动化,bark 喊人**) ③被明确要求。
-- 普通汇报**不推**——每轮 Stop hook 已自动推摘要,别重复。
-- 板掉线已布线:`oracle/board-recover.sh <serial>` 自动 bark + 守着等板回来。
+- 本机 `.zshrc` 会在 SSH shell 自动 attach tmux。自动化若必须加载 zsh function，使用 `TMUX=1 SSH_TTY= zsh -ic '<command>'`；否则直接调用 binary。
+- 并发保持 2–3，但每个 writer 必须是不同 branch/worktree；同一 checkout
+  只能有一个 writer。worker 写结果文件，thinker 复核；没有变化不 commit。
 
-## agent — Cursor Agent(顾问通道,不当 worker)
+## Kimi：managed 便宜 worker
 
-thinker 主攻;卡住才问。顾问**看不见聊天记忆**,必须给具体上下文,并挂上仓库。
+配置与目录：
+
+| alias | provider | model | catalog | context | 状态 |
+|---|---|---|---|---:|---|
+| `kimi-code/kimi-for-coding` | `managed:kimi-code` | `kimi-for-coding` | K2.7 Code | 262,144 | listed + live worker PASS |
+| `kimi-for-coding` | 自配 provider | `kimi-for-coding` | 无 | 262,144 | live 401，不使用 |
+
+正确命令：
 
 ```bash
-# 正确姿势(实测通):--workspace 挂仓 + prompt 里写路径/已读文件/问题/已尝试
-agent -p --trust --mode ask \
-  --workspace /Users/yao/Desktop/code/westlake-piercing \
-  --model claude-fable-5-thinking-high \
-  "$(cat <<'EOF'
-仓库: /Users/yao/Desktop/code/westlake-piercing
-先读: state/FRONTIER.md · <相关文件>
-问题: <一个边界清楚的具体问题>
-已尝试: <症状/日志关键行/已排除假说>
-约束: 只读;给可执行下一步
-EOF
-)"
-
-# 次强
-agent -p --trust --mode ask --workspace /Users/yao/Desktop/code/westlake-piercing \
-  --model claude-opus-4-8-medium "<同上结构的问题>"
-
-agent --list-models
+"${WATCHDOG[@]}" kimi -m kimi-code/kimi-for-coding -p "$PROMPT"
 ```
 
-- `agent` = `cursor-agent` 同一二进制。
-- headless 必须 `-p --trust`;顾问必须 `--mode ask`(只读)。不加 ask 就能改仓,当心。
-- **空问一句禁止**。缺仓库/缺文件路径/缺失败现场 = 无效咨询。
-- 完整纪律见 `protocol/THINKER.md`「顾问通道」。
-
-## codex — gpt-5.6-sol 主力顾问 + 执行器
+已确认的错误命令：
 
 ```bash
-# 新模型先用 Codex Desktop 内置 0.144 binary；Homebrew 0.143 catalog 较旧。
+kimi -p "..." -y
+# exit 1: Cannot combine --prompt with --yolo.
+```
+
+0.23.3 的 prompt mode 不加 `-y` 也能调用工具；隔离目录创建 `result.txt=WORKER_OK` 实测 PASS。`--output-format stream-json` 可能混入裸工具 stdout，消费者不能假设每一行都是 JSON。
+
+安全边界：Kimi 当前 CLI 没有 sandbox/tool allowlist。独占 worktree 只能
+隔离 Git 写入，不能阻止 shell 读取 HOME 或访问网络。它只领不含秘密、
+SSH/hdc、远程服务、设备动作和用户私有目录的低风险机械卡；敏感卡改用
+Codex sandbox 或 thinker 手工执行。
+
+## Claude：first-party；固定 binary 与工具面
+
+当前事实：
+
+- `claude` 是 `~/.zshrc` function，会自动追加 `--dangerously-skip-permissions`、`bypassPermissions`、`--effort max`。
+- 底层 binary：`~/.nvm/versions/node/v25.2.1/bin/claude`。
+- auth：`claude.ai` / `firstParty` / Max subscription。
+- 当前进程没有 `ANTHROPIC_BASE_URL` 或 API-key env；主命令不是旧的 `claude-mini` Kimi/MiniMax route。
+- 配置写 `claude-fable-5[1m]`，但 configured 不等于 served backend。CLI 没有非交互 `--list-models`。
+
+本轮观察：
+
+| requested | reported backend | 结果 |
+|---|---|---|
+| default config | `claude-opus-4-8` | MODEL_OK PASS |
+| `fable` | `claude-fable-5`（早期另一次观察为 Opus；路由曾漂移） | MODEL_OK PASS；最终受限 worker PASS，usage 另含 Haiku 辅助项 |
+| `opus` | `claude-opus-4-8` | MODEL_OK PASS；中途曾出现 API JSON 失败，最终未单独重跑 |
+| `sonnet` | `claude-sonnet-5` | MODEL_OK PASS；中途曾出现 API JSON 失败，最终未单独重跑 |
+
+受限 foreground worker：
+
+```bash
+CLAUDE="$HOME/.nvm/versions/node/v25.2.1/bin/claude"
+"${WATCHDOG[@]}" "$CLAUDE" --model fable \
+  --setting-sources="" --mcp-config='{"mcpServers":{}}' --strict-mcp-config \
+  --tools=Read,Write,Edit --allowedTools=Read,Write,Edit \
+  --permission-mode acceptEdits --output-format json --no-session-persistence \
+  -p "$PROMPT"
+```
+
+`--tools` 决定模型能看到哪些 built-in tools；`--allowedTools` 只决定哪些
+调用无需再次询问。两者不能混淆。空 `--setting-sources` 与 strict empty
+MCP config 防止用户/项目 settings、plugins 或外部 MCP 扩大工具面。卡片要
+运行 shell oracle 时，`--tools` 加 `Bash`，`--allowedTools` 只加卡片所需的
+`Bash(<exact command>:*)`；不要退回全局 danger wrapper。
+
+Background 语法与边界（已 live-tested，不进入常规 dispatcher）：
+
+```bash
+python3 -B oracle/run-with-timeout.py --timeout 60 -- \
+  "$CLAUDE" --bg -n "$CARD" --model fable \
+  --setting-sources="" --mcp-config='{"mcpServers":{}}' --strict-mcp-config \
+  --tools=Read,Write,Edit --allowedTools=Read,Write,Edit \
+  --permission-mode acceptEdits "$PROMPT"
+```
+
+- `--bg` 与 `-p/--print` 冲突；旧命令必定 exit 1。
+- `--tools` 是 variadic。无工具探针要写 `--tools=""`，否则可能吞 positional prompt。
+- `--bg` 不自动等于 worktree。本仓先由 dispatcher 建 sibling worktree，
+  因此 Claude 命令不再加 `--worktree`。
+- 后台状态：`claude agents --cwd <dir> --json`；日志：`claude logs <id>`；停止：`claude stop <id>`。本轮实测 `state=done` 后仍可能遗留 transient daemon；live oracle 会按临时 cwd 精确清理，生产 dispatcher 因此只用 foreground。
+- 本轮中途出现过 `API Error: Failed to parse JSON`，最终受限 worker 已
+  PASS。仍按间歇通道管理：派工前 hello，失败切 Kimi/Codex，不反复重试。
+
+## Codex：固定 Desktop binary + 显式模型/effort
+
+```bash
 CODEX_APP="/Applications/ChatGPT.app/Contents/Resources/codex"
 
-# 单问题顾问：max，严格只读，不自动派生 agent
-"$CODEX_APP" exec -m gpt-5.6-sol -c 'model_reasoning_effort="max"' \
-  "<一个边界清楚、带 state/源码/日志/已排除假说的问题>" \
-  --skip-git-repo-check --sandbox read-only --ephemeral < /dev/null
+# 判断型 worker（真实 workspace-write 文件创建 PASS）
+"${WATCHDOG[@]}" "$CODEX_APP" exec -m gpt-5.6-sol \
+  -c 'model_reasoning_effort="xhigh"' \
+  "$PROMPT" \
+  --skip-git-repo-check --sandbox workspace-write --ephemeral \
+  -o "/tmp/${CARD}.out"
 
-# 一次性 worker：显式 xhigh；权限按卡片最小化
-"$CODEX_APP" exec -m gpt-5.6-sol -c 'model_reasoning_effort="xhigh"' \
-  "<卡片指令>" --skip-git-repo-check --sandbox workspace-write \
-  -o /tmp/out.txt < /dev/null
-
-# sandbox: read-only | workspace-write | danger-full-access
-# 解析友好: --json(JSONL 事件) / -o <file>(末条消息落文件)
-# 可选: --ephemeral(不落 session)
+# 单问题顾问
+"$CODEX_APP" exec -m gpt-5.6-sol \
+  -c 'model_reasoning_effort="max"' \
+  "<一个边界清楚的问题>" \
+  --skip-git-repo-check --sandbox read-only --ephemeral \
+  < /dev/null
 ```
 
-- 已登录 ChatGPT(`codex login status`)。
-- **必须 `< /dev/null`**,否则守 stdin 永久挂起(实测挂 4 分钟)。
-- **模型切换**:`-m <slug>`；命令必须显式写模型与 effort，不依赖 `~/.codex/config.toml`。
-- **实测(2026-07-10)**:Desktop binary + `-m gpt-5.6-sol` + `max` → banner `model: gpt-5.6-sol` / `reasoning effort: max` / 返回 `MODEL_OK` / exit 0。
-- 本机 model catalog 标注 Sol 支持 `low/medium/high/xhigh/max/ultra`；`ultra` 的说明含 automatic task delegation。星型协作和单问题顾问默认不用 ultra；明确要它自行多 agent 时才开。
-- Homebrew 0.143 对 Sol 会用 fallback metadata；在它升级前，gpt-5.5 仍是兼容 fallback，不再是首选。
-- host worker 保持 `workspace-write`；占板/hdc 卡只有在卡片明确授权设备操作且较小 sandbox 无法访问设备时才用 `danger-full-access`。
-- **角色**:Sol 优先做硬墙单问题顾问、日志/源码归因和高判断 worker；fable/opus 保留为跨模型复核通道。
+Homebrew `codex` 0.143.0 与 Desktop help 一致，但本地 catalog metadata 较旧。裸 `codex exec` 实调虽 exit 0，却使用全局 `Sol + ultra`，反复报 unknown-model/fallback metadata/model-refresh timeout，约 54k tokens；Desktop 显式测试约 11.3k。裸命令不派工。Homebrew 当前可升级到 0.144.1，但升级后也要重跑 oracle 才能改结论。
 
-## claude — Claude Code(经自家路由接便宜后端,当力工用)
+本地 cache（`fetched_at=2026-07-10T08:25:18Z`）列出：
+
+| slug | context | reasoning efforts | 本轮 live |
+|---|---:|---|---|
+| `gpt-5.5` | 272k | low/medium/high/xhigh | listed-only |
+| `gpt-5.6-sol` | 372k | low/medium/high/xhigh/max/ultra | xhigh + max PASS；bare ultra 能回但退化 |
+| `gpt-5.6-terra` | 372k | low/medium/high/xhigh/max/ultra | listed-only |
+| `gpt-5.6-luna` | 372k | low/medium/high/xhigh/max | listed-only |
+| `gpt-5.4` | 272k | low/medium/high/xhigh | listed-only |
+| `gpt-5.4-mini` | 272k | low/medium/high/xhigh | listed-only |
+| `gpt-5.3-codex-spark` | 128k | low/medium/high/xhigh | listed-only |
+
+另有 hidden `codex-auto-review`；不作为 worker 型号。`ultra` 仍不用于星型 worker。
+
+## Cursor Agent：只读跨模型顾问
 
 ```bash
-claude -p "<指令>" < /dev/null            # 实测通
-claude --bg -n "<名字>" -p "<指令>"        # 后台 agent;claude agents 管理
-claude --max-budget-usd 5.0 ...           # 预算闸(flag 已核实存在)
+python3 -B oracle/run-cursor-agent-isolated.py --timeout 900 -- \
+  -p --trust --mode ask \
+  --workspace /Users/yao/Desktop/code/westlake-piercing \
+  "<带文件、日志和已排除假说的一个问题>" \
+  < /dev/null
 ```
 
-- **实际后端 = 自家路由**(kimi 或 minimax,随路由配置换)。settings.json 里的 `model=claude-fable-5[1m]` 会被路由重置,不作数;自报 "Fable 5" 也不作数——**当便宜力工用就行**。
-- **本机实测 wrapper（2026-07-10）**：`claude()` 会自动追加 `--dangerously-skip-permissions --permission-mode bypassPermissions --effort max`。因此只派边界清楚的一次性卡；prompt 必须写禁止项，不能把危险远端动作、提交或 push 交给它。
-- **`--bg` 会在 `.claude/worktrees/<名>/` 建 git worktree**(共享 `.git` 对象,不是整仓再拷一份,但目录看着像整仓)。已 gitignore。**卡结束必须清**:
-  ```bash
-  git worktree unlock .claude/worktrees/<名> 2>/dev/null
-  git worktree remove --force .claude/worktrees/<名>
-  git branch -D worktree-<名> 2>/dev/null
-  git worktree prune
-  ```
+- `agent` 与 `cursor-agent` 是同一 binary；两者 model list 逐项相同。
+- `-p` 只是 headless，仍可写/跑 shell；只读边界来自 `--mode ask` 或 `plan`。`--trust` 只跳过 workspace trust。
+- `--list-models` 共 189 项：GPT 102、Claude 72、Grok 6、Composer 2、Gemini 3、Kimi 1、GLM 2、auto 1。catalog default 是 `auto`；用户配置原选 `claude-opus-4-8`。
+- live PASS：`claude-fable-5-thinking-high`、`claude-opus-4-8-medium`、`gpt-5.6-sol-max`。
+- Cursor Agent 即使不传 `--model` 也会更新 `privacyCache.updatedAt` 并可能
+  改 mode；显式 `--model` 还会改变当前模型。自动化统一走
+  `oracle/run-cursor-agent-isolated.py`：复制 config 到临时 HOME，只链接认证
+  所需的 macOS Keychains，并在退出时确认真实 config bytes/mode 未变。上面的
+  三项显式模型 PASS 来自本轮人工审计，不由自动 oracle 重放。
 
-## kimi — 默认便宜手(⚠️ 本周期额度已尽)
+## 当前选型
 
-```bash
-kimi -p "<指令>" -y        # -y/--yolo 自动批准;实测 403:额度等下周期刷新
-```
-
-- 403 期间工厂卡降级给 codex,或等刷新。
-
-## mmx — MiniMax 内容 API(不是 coding agent,不当 repo worker)
-
-```bash
-mmx text chat --message "<文本>"    # 实测通,MiniMax-M2.7;非交互必须给全 flag
-mmx quota                           # 额度(实测周额度余 ~81%)
-mmx search query "..." / mmx vision describe <img> / speech / image / video
-```
-
-- 无文件/shell 工具,不能领卡。可用于:批量文本消化、联网搜索、媒体生成。
-
-## 模型阶梯(2026-07-10)
-
-kimi / claude(便宜重复活) → **gpt-5.6-sol + xhigh**(判断型 worker) → **gpt-5.6-sol + max**(单问题顾问) → agent opus/fable(交叉复核)。
-不要依赖全局默认模型；不要把 Sol `ultra` 用在星型 worker 卡上。
-
-## 派力工选型(用户定 2026-07-09)
-
-| 活 | 用谁 | 不用谁 |
+| 任务 | 首选 | 失败回退 |
 |---|---|---|
-| 推板 / 编 dex / 收日志 / 重复跑 oracle | **claude** / **kimi**，或 Sol xhigh | 未核对 PID 的批量清进程 |
-| 对照日志 / 定 flags / 写临时脚本 | **gpt-5.6-sol + xhigh** | 内置 Task/subagent |
-| 硬墙单问题顾问 | **gpt-5.6-sol + max**；必要时 fable/opus 交叉复核 | Sol ultra（除非明确要自动派生） |
+| 无秘密的机械 host worker | managed Kimi | Claude fable（hello PASS 后）→ Sol xhigh |
+| 含凭据/远程/设备权限 | Codex sandbox 或 thinker | 不派 Kimi |
+| 判断型 worker | Codex Desktop Sol xhigh | Cursor Agent ask 只给判断，不改仓 |
+| 硬墙单问题顾问 | Codex Desktop Sol max | Cursor fable/opus/Sol max 交叉复核 |
+| 板/远程动作 | 只按卡片明确授权；thinker 最终验收 | 不交给裸 danger wrapper |
 
-**禁止**:Cursor / 对话里的内置 Task、subagent、后台子代理机制。派活只走本机 CLI(`claude` / `kimi` / `codex`),prompt 写文件、结果落 `/tmp/…`,thinker 自己收。不要 `Task` 工具,不要「内置 shell subagent」。
+## 其他工具
 
-## 编译主机
-
-重编译 / native / AOSP·OHOS 构建 → **`ssh compiler`**,见 `docs/reference/host-build.md`。不要默认在 Mac 上扛。
+- `mmx` 是内容/搜索/媒体 API，不是 repo worker；无文件/shell 工具。
+- `bark <标题> <内容> [分组]` 只用于长任务重要里程碑、用户才能解决的硬墙、或明确要求。
+- native/AOSP/OHOS 重编译走 `ssh compiler`；详见 `docs/reference/host-build.md`。

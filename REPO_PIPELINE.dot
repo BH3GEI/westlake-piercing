@@ -1,7 +1,7 @@
 digraph westlake_repo_skill {
   graph [
     skill="westlake-piercing",
-    version="0.2",
+    version="0.3",
     default_runner=".repo-skill/src/dot_runner.py"
   ];
 
@@ -31,6 +31,18 @@ digraph westlake_repo_skill {
     steps="verify_docs check_dayu600 run_dayu600_2048_headless run_dayu600_2048_appspawn"
   ];
 
+  cli_fleet [
+    type="workflow",
+    record="false",
+    steps="verify_cli_fleet"
+  ];
+
+  cli_fleet_live [
+    type="workflow",
+    record="false",
+    steps="verify_cli_fleet_live"
+  ];
+
   sync [
     type="workflow",
     steps="sync_entries sync_skill sync_lock sync_history"
@@ -40,6 +52,18 @@ digraph westlake_repo_skill {
     kind="cmd",
     cmd="python3 -B .repo-skill/src/westlake_checks.py handoff",
     purpose="read-only check of role entries, bounded state, task/board locks, frontier card, and Git worktree"
+  ];
+
+  verify_cli_fleet [
+    kind="cmd",
+    cmd="python3 -B oracle/verify/cli-fleet.py",
+    purpose="no-persistent-mutation check of local CLI binaries, hashes, routes and catalogs plus temporary parallel-worktree and process-group timeout smokes"
+  ];
+
+  verify_cli_fleet_live [
+    kind="cmd",
+    cmd="python3 -B oracle/verify/cli-fleet.py --live",
+    purpose="static fleet check plus temporary-directory Kimi/Claude/Codex worker smokes and a temporary-HOME current-model Cursor Agent hello; Kimi creates ordinary session metadata"
   ];
 
   doctor_host [
@@ -121,5 +145,7 @@ digraph westlake_repo_skill {
   check -> doctor_host -> verify_docs -> check_artifacts -> check_device -> runbook;
   dayu600_audit -> verify_handoff -> doctor_host -> verify_docs -> check_dayu600 -> runbook_dayu600;
   dayu600_2048 -> verify_docs -> check_dayu600 -> run_dayu600_2048_headless -> run_dayu600_2048_appspawn;
+  cli_fleet -> verify_cli_fleet;
+  cli_fleet_live -> verify_cli_fleet_live;
   sync -> sync_entries -> sync_skill -> sync_lock -> sync_history;
 }

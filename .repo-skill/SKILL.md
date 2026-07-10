@@ -21,8 +21,20 @@ python .repo-skill/src/dot_runner.py handoff
 python .repo-skill/src/dot_runner.py check
 python .repo-skill/src/dot_runner.py dayu600-audit
 python .repo-skill/src/dot_runner.py dayu600-2048
+python .repo-skill/src/dot_runner.py cli-fleet
+python .repo-skill/src/dot_runner.py cli-fleet-live
 python .repo-skill/src/dot_runner.py sync
 ```
+
+Run `cli-fleet` before constructing a local CLI worker command. It verifies the
+dated binary/model inventory without calling a model and removes its temporary
+worktree/watchdog fixtures. `cli-fleet-live` performs
+isolated temporary worker smokes and a current-model Cursor Agent read-only
+hello; it can fail when a provider is temporarily degraded.
+
+For direct Cursor Agent questions, use `oracle/run-cursor-agent-isolated.py`;
+plain `agent -p --mode ask` is logically read-only but still rewrites the user
+CLI config/cache metadata.
 
 For temporary launcher-style DAYU600 testing:
 

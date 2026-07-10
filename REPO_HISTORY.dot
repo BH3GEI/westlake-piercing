@@ -137,7 +137,7 @@ digraph westlake_repo_history {
   ];
 
   repo_handoff_hardening [
-    commit="self",
+    commit="a5e2d9b8f25d2cd5a30c1fd328a97a51ca5d72e8",
     base_commit="3656ddd7",
     actor="Yao/Codex",
     title="harden repository handoff and align live state with infra docs",
@@ -149,7 +149,7 @@ digraph westlake_repo_history {
   ];
 
   external_corpora_index [
-    commit="self",
+    commit="7902ee5ee053636ea4c9251d72fd6a0fb5f0574b",
     base_commit="a5e2d9b8f25d2cd5a30c1fd328a97a51ca5d72e8",
     actor="Yao/Codex",
     title="index a2hlab requirement and Unity corpora without merging",
@@ -160,6 +160,18 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-10-external-corpora-audit.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index;
+  cli_fleet_verified [
+    commit="self",
+    base_commit="7902ee5ee053636ea4c9251d72fd6a0fb5f0574b",
+    actor="Yao/Codex",
+    title="verify and persist the local CLI worker fleet",
+    user_input="Confirm what the kimi, claude, codex, and agent commands actually invoke, which models they expose or serve, test the worker commands, and persist the result before resuming project functionality.",
+    agent_action="Resolved binaries and shell wrappers; inspected auth, routes and catalogs; corrected invalid commands; restricted Claude tools/settings/MCP; removed Cursor model mutation from automation; added per-card worktree isolation, a process-group watchdog and repeatable static/live fleet oracles; updated repo/global guidance after same-directory backups.",
+    code_delta="Infrastructure contracts, decision supersession, task template, dispatch documentation and local verification scripts only; no project runtime, live task, board, device, deployment or feature oracle changed.",
+    verify="static fleet/isolation/worktree/watchdog oracle 34/34 PASS; final live oracle 39/39 PASS: isolated Kimi, restricted Claude foreground/background and Codex workers plus temporary-HOME current-model Cursor Agent; no temp process remained and real Cursor config stayed byte/mode exact",
+    note=".repo-skill/turns/2026-07-10-cli-fleet-audit.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified;
   stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }

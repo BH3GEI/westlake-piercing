@@ -9,6 +9,10 @@
 - **worker(手 · kimi/codex/claude 一次性)** → 只读派给你的那张卡 + `protocol/WORKER.md`。别读 state/、别读别的卡、别读 archive/。
 - **派活** → `protocol/DISPATCH.md`。
 
+CLI worker 的实际 binary、模型目录、已验证命令与退化通道在 `docs/reference/cli-fleet.md`；派工前可运行 `python3 -B oracle/verify/cli-fleet.py`，不要凭旧 alias、配置 model 或模型自报判断路由。
+
+任何写入型 worker 必须使用卡片独占的 sibling worktree/branch；canonical checkout 只由 thinker/dispatcher 管理。共享 checkout 只能跑只读顾问，禁止并发 writer。具体 claim→worktree→验收流程见 `protocol/DISPATCH.md`。
+
 `handoff` 的 STRUCTURE PASS 只证明入口、state、卡和板锁自洽，不代表任何 oracle PASS。thinker 上岗先是 `inspect_only`：保护 dirty tree，不切分支，不 fetch/merge/push，不碰板；报告现场后再选班次。
 
 ## 状态在哪(事实源)

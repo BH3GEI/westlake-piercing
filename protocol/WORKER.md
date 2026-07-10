@@ -11,18 +11,20 @@
 
 ## 你要做的
 
-1. 读卡。按封闭上下文实现/复现。
-2. 跑卡里的 **oracle 命令**。这是你唯一的成功判据。
-3. 交付 = 在卡尾追加结果块 + 一个 git commit(在卡指定的分支/worktree):
+1. 先核对隔离：`pwd` 必须等于卡里的 `worktree`，`git branch --show-current` 必须等于卡里的 `branch`。任一不符立即 FAIL；禁止在 canonical checkout 写文件。
+2. 读卡。按封闭上下文实现/复现。
+3. 跑卡里的 **oracle 命令**。这是你唯一的成功判据。
+4. 交付 = 在 `tasks/doing/<本卡>.md` 卡尾追加结果块 + 一个 git commit(只含本卡改动，在卡指定的分支/worktree):
    ```
    ## RESULT
    verdict: PASS | FAIL
    oracle: <你实际跑的命令>
    output: <关键输出/断言行,或 evidence/<task-id>/ 指针>
    board: <实际用的板序列号,如占板>
-   commit: <hash>
+   commit: self
    ```
-4. 把卡从 `doing/` 移到 `done/`。
+   `self` 表示本次 worker branch HEAD；提交完成后无法把自己的 hash 反写进同一个 commit。thinker 验收时读取并记录实际 hash。
+5. 卡仍留在 `doing/`。不要移动目录、改 `state/` 或清板锁；thinker 验收并合并后才移动到 `done/`。多个 worker 分支自行移动卡会触发 Git directory-rename 冲突。
 
 ## oracle 说了算(最重要一条)
 
@@ -46,4 +48,5 @@
 
 - 卡的「禁区」段列的文件/操作。通常包含:`class_linker`/`vtable`/`interpreter.cc`/`entrypoint`、runtime 替换、板子 wipe/flash。
 - 不是你这张卡的板子(看板需求)。占板前确认卡分配给你的序列号。
+- canonical checkout、其他 worker 的 worktree/branch，以及不属于本卡的 dirty 文件。
 - 越界不静默:如果正确路径必须越界,标 `needs-human` 交回,写清为什么。

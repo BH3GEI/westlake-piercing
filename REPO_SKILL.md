@@ -36,8 +36,28 @@ python3 .repo-skill/src/dot_runner.py handoff
 python3 .repo-skill/src/dot_runner.py check
 python3 .repo-skill/src/dot_runner.py dayu600-audit
 python3 .repo-skill/src/dot_runner.py dayu600-2048
+python3 .repo-skill/src/dot_runner.py cli-fleet
+python3 .repo-skill/src/dot_runner.py cli-fleet-live
 python3 .repo-skill/src/dot_runner.py sync
 ```
+
+`cli-fleet` is the no-persistent-mutation dispatch preflight: it checks the
+actual Kimi, Claude Code, Codex, and Cursor Agent binaries, versions, configured
+routes, catalog snapshots, two command combinations known to be invalid, and
+temporary worktree/process-group demos.
+`cli-fleet-live` additionally sends real requests and uses isolated temporary
+directories for the three write-capable worker smokes. Its failure means that
+at least one provider is currently unavailable; it does not invalidate the
+static inventory. Read `docs/reference/cli-fleet.md` before constructing a
+worker command. Pin write-worker models where the CLI flag is side-effect free;
+Cursor Agent's unattended hello intentionally uses the current model because
+its `--model` flag mutates user configuration.
+Every write-capable worker must start from a committed claim and use its own
+sibling Git worktree/branch; read-only advisors may share the canonical tree.
+Use `oracle/run-with-timeout.py` so a timed-out CLI loses its whole process
+group rather than leaving grandchildren behind.
+Run Cursor Agent through `oracle/run-cursor-agent-isolated.py`; Cursor writes
+its config even for read-only asks, so omitting `--model` alone is insufficient.
 
 For temporary launcher-style DAYU600 testing, run:
 

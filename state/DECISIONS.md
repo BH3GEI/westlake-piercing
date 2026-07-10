@@ -3,6 +3,8 @@
 
 # 决策日志 (DECISIONS)
 
+- **2026-07-10** CLI 舰队复核取代下方 2026-07-09 的「CLI 舰队」「claude --bg」「派力工」三条旧结论：Kimi 走 managed `kimi-code/kimi-for-coding`，但无 sandbox/tool allowlist，只领无秘密/远程/设备权限的机械卡；主 `claude` 是 first-party Max，`--bg` 不自动建 worktree且因 transient daemon 仅审计使用；Codex 固定 Desktop binary + 显式 Sol xhigh/max。真实 binary/model/退化状态只认 `docs/reference/cli-fleet.md` 与 `oracle/verify/cli-fleet.py`，旧 403、Kimi/MiniMax route、裸 gpt-5.5 主力说法均已 superseded。
+- **2026-07-10** 写入型 worker 并发必须一人一卡、一 branch、一 sibling worktree；canonical checkout 只给 thinker/dispatcher 管理 claim、板锁与验收。领卡状态先 commit，再从该 commit 建 `worker/<卡id>` worktree；worker 禁改 state，thinker 复跑 oracle 后合并并清锁。只读顾问可并行；共享 checkout 禁止并发 writer。
 - **2026-07-10** W-001 oracle 纠错：旧 probe/白板把 `0x010100b0`(android:autoLink)当 windowActionBar；目标 APK 的 AppCompat attr 实为 `0x7f040691`，AppThemeBar 直接定义 false。旧 `uamHasWab=false` 不再作为双包断链证据。native `ck` 也必须在四参 `nativeSetApkAssets(...,ZZ)` 成功后才有效；oracle 锁 launcher/dex/so hash、清理结果和 run rc。
 - **2026-07-10** 入口与事实域校准：独立接班会话默认 thinker，先跑只读 `dot_runner.py handoff`；worker 仍只读卡。live 进度/板锁认 state，版本/hash/setup/deploy 认 LOCK/PIPELINE，README/STATUS 明确为 DAYU200 legacy。结构 PASS 不等于 oracle PASS。
 - **2026-07-10** `gpt-5.6-sol` 已用 Codex Desktop 内置 CLI 0.144.0-alpha.4 实跑只读 hello（model=sol, effort=max, exit 0），可作单问题顾问；默认 `max`，`ultra` 会自动派生任务，只在明确需要多 agent 时用。gpt-5.5 保留为旧 CLI fallback。

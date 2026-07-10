@@ -44,9 +44,9 @@
 - 大原料(板子日志/白板归档)先派一次性外部 CLI worker 消化成有边界摘要,不整包进你的上下文。
 - 产出一份墙报告落 `evidence/<wall>/` 或 `ammo/oracle-refs/`(A1 报告是样板:症状/根因/修法/验收/边界/战略裁决)。
 
-## 求助与通知(命令实测 2026-07-09,详见 docs/reference/cli-fleet.md)
+## 求助与通知（命令实测 2026-07-10，详见 docs/reference/cli-fleet.md）
 
-### 顾问通道(Sol 主通道，fable/opus 交叉复核)—你主攻,卡住再问
+### 顾问通道(Sol 主通道，Claude/Cursor 交叉复核)—你主攻,卡住再问
 
 你主攻硬墙。想不明白再问更强模型。**只读求助,不是转包整张卡。**
 
@@ -62,10 +62,25 @@ CODEX_APP="/Applications/ChatGPT.app/Contents/Resources/codex"
   "仓库:/Users/yao/Desktop/code/westlake-piercing；先读:<state/片段+源码>；问题:<一个>；已尝试:<日志/排除项>；约束:只读，给文件+命令级下一步" \
   < /dev/null
 
-# 跨模型复核：fable；也可换 claude-opus-4-8-medium。
-agent -p --trust --mode ask \
+# Claude fable 无工具复核；固定 binary，不加载 settings/MCP。
+CLAUDE="$HOME/.nvm/versions/node/v25.2.1/bin/claude"
+python3 -B oracle/run-with-timeout.py --timeout 900 -- \
+  "$CLAUDE" --model fable --setting-sources="" \
+  --mcp-config='{"mcpServers":{}}' --strict-mcp-config --tools="" \
+  --permission-mode plan --output-format json --no-session-persistence -p \
+  "$(cat <<'EOF'
+仓库: /Users/yao/Desktop/code/westlake-piercing
+先读: <由 prompt 直接附上的 state 片段、日志与源码片段；无 Read 工具>
+问题: <一个边界清楚的具体问题>
+已尝试: <你做过什么、看到什么症状/日志关键行>
+约束: 只读分析;回答要给可执行下一步(文件+命令级)
+EOF
+)"
+
+# Cursor Agent 使用用户当前模型；临时 HOME 隔离其强制 config/cache 写入。
+python3 -B oracle/run-cursor-agent-isolated.py --timeout 900 -- \
+  -p --trust --mode ask \
   --workspace /Users/yao/Desktop/code/westlake-piercing \
-  --model claude-fable-5-thinking-high \
   "$(cat <<'EOF'
 仓库: /Users/yao/Desktop/code/westlake-piercing
 先读: state/FRONTIER.md · state/LEDGER.md(#相关墙) · <相关源码路径>
@@ -81,7 +96,7 @@ EOF
 - **仓库必给**:Cursor agent 用 `--workspace`;Codex 在本仓 cwd 运行；prompt 都再写绝对路径。
 - **上下文必给**:相关 `state/` 片段、文件路径、hash、板号、失败日志关键行、你已排除的假说。缺啥顾问就猜啥。
 - **不要**让顾问当 worker 改代码/跑 hdc;它给判断,你回来执行。
-- 用前可 hello 测通道(见 `docs/reference/cli-fleet.md`)。
+- 用前跑 `python3 -B oracle/verify/cli-fleet.py` 看静态路由；需要真实 hello 时加 `--live`。Cursor Agent 即使不传 `--model` 也会更新 privacy cache/mode，自动化必须走 `run-cursor-agent-isolated.py`；显式 `--model` 还会修改 current model。
 
 ### bark 手机推送
 

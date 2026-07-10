@@ -17,7 +17,10 @@
 ## 工具
 
 - **`cli-fleet.md`**
-  CLI 舰队速查。`gpt-5.6-sol` 已用 Codex Desktop CLI 实跑；单问题顾问默认 `max`，worker 用 `xhigh`，`ultra` 仅在明确允许自动派生任务时用。**禁止依赖全局默认模型。**
+  CLI worker 事实源。记录 `kimi`、`claude`、`codex`、`agent` 实际 binary/版本、configured/listed/live-tested/reported 四层模型事实、正确调用格式和已知退化；附静态及 live oracle。`gpt-5.6-sol` 已用 Codex Desktop CLI 实跑；单问题顾问用 `max`，worker 用 `xhigh`。**禁止依赖全局默认模型。**
+
+- **`agent-models-2026-07-10.txt`**
+  `agent --list-models` 的 189 项规范化快照，供 `oracle/verify/cli-fleet.py` 检测目录漂移。它只证明 listed，不代表每个模型都 live-tested。
 
 - **`host-build.md`**
   编译与主机工具：**重编译走 `ssh compiler`**；hdc；embed `.so` 必须 `-nostdlib`；uptodown probe 上板入口。

@@ -9,6 +9,15 @@
 - **队列**：frontier | factory
 - **铸卡人 / 日期**：
 
+## 0. 派工隔离 (dispatcher 领卡时填写)
+
+```text
+branch: worker/<卡id>
+worktree: /Users/yao/Desktop/code/westlake-piercing.worktrees/<卡id>
+```
+
+<!-- 每个写入型 worker 必须独占 branch + worktree。只读顾问不填。禁止从 canonical checkout 直接启动 writer。 -->
+
 ## 1. 墙签名 (wall signature)
 <!-- 精确症状:什么在什么条件下崩/不对。符号化,不要"跑不起来"这种模糊话。 -->
 
@@ -43,4 +52,4 @@ verdict:
 oracle:
 output:
 board:
-commit:
+commit: self
