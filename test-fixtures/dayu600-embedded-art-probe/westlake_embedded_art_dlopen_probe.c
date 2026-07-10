@@ -18,6 +18,8 @@ extern void *dlopen(const char *filename, int flags);
 extern void *dlsym(void *handle, const char *symbol);
 extern char *dlerror(void);
 extern char *getenv(const char *name);
+extern int setenv(const char *name, const char *value, int overwrite);
+extern int unsetenv(const char *name);
 extern long long strtoll(const char *nptr, char **endptr, int base);
 extern unsigned long long strtoull(const char *nptr, char **endptr, int base);
 extern long double strtold(const char *nptr, char **endptr);
@@ -2226,6 +2228,121 @@ static int bind_trace_via_class_loader(JNIEnv *env, const char *anchor_bin,
     return register_trace_natives_on(env, trace, label);
 }
 
+/* W-001 (LOAD-BEARING FIX): register the sidecar itself as a *system* (null-classloader)
+ * JNI library via art::JavaVMExt::LoadNativeLibrary, so ART's automatic JNI linking
+ * (Libraries::FindNativeMethod) resolves our exported Java_android_os_Trace_* for EVERY
+ * boot-defined (null-loader) Trace mirror::Class at once — including the one ResourcesImpl
+ * reaches via ClassLinker::ResolveType, which no FindClass/loadClass handle can name.
+ * This is the advisor-validated path: null-loader libs share the boot LinearAlloc, so a
+ * single registration covers both dual Trace copies. LoadNativeLibrary is exported
+ * (GLOBAL DEFAULT) from libwestlake_art.so; we dlsym it by its exact AOSP-15/libc++(__n1)
+ * mangled name. std::string args use libc++ SSO (short-string) layout: a 24-byte,
+ * 8-aligned buffer where byte0 = len<<1 (is_long bit = 0) and the chars follow at [1..].
+ * We pass a SHORT path (<=22 chars) so SSO always applies (long layout's cap-encoding is
+ * ABI-fragile). The launcher copies the sidecar to that short path; the constructor
+ * re-entry guard makes the resulting second load a no-op.
+ * Returns 0 ok / -1 LoadNativeLibrary returned false / -2 dlsym miss / -3 no vm/handle. */
+static int westlake_register_sidecar_as_system_lib(JNIEnv *env)
+{
+    if (westlake_art_handle == 0 || g_probe_vm == 0) {
+        return -3;
+    }
+    typedef unsigned char (*lnl_fn)(void *self, JNIEnv *env, const void *path_str,
+        void *class_loader, void *caller, void *err_str);
+    lnl_fn lnl = (lnl_fn)dlsym(westlake_art_handle,
+        "_ZN3art9JavaVMExt17LoadNativeLibraryEP7_JNIEnvRKNSt4__n1"
+        "12basic_stringIcNS3_11char_traitsIcEENS3_9allocatorIcEEEEP8_jobjectP7_jclassPS9_");
+    if (lnl == 0) {
+        log_text("W001 syslib: dlsym LoadNativeLibrary miss");
+        return -2;
+    }
+    /* libc++ SSO std::string buffers (8-aligned for the union's size_t/ptr fields). */
+    unsigned char path_str[24] __attribute__((aligned(8)));
+    unsigned char err_str[24] __attribute__((aligned(8)));
+    const char *path = "/data/local/tmp/w1.so"; /* 21 chars -> SSO */
+    int i;
+    for (i = 0; i < 24; i++) { path_str[i] = 0; err_str[i] = 0; }
+    int n = 0;
+    while (path[n] != 0) n++;
+    path_str[0] = (unsigned char)(n << 1); /* short: is_long=0, size=n */
+    for (i = 0; i < n; i++) { path_str[1 + i] = (unsigned char)path[i]; }
+    /* err_str all-zero = empty short std::string (valid, no heap). */
+
+    /* Diagnostic sink -> /data/local/tmp/w001-syslib.txt. Everything here is
+     * segfault-safe: our own dlopen returns a plain char* dlerror, and we only
+     * hex-dump / SSO-decode err_str (never dereference an uncertain long-string
+     * pointer, which could crash the probe mid-oracle). */
+    char diag[512];
+    unsigned int dp = 0;
+    #define DPUT(str) do { const char *dq=(str); while(*dq && dp+1<sizeof(diag)) diag[dp++]=*dq++; } while(0)
+    DPUT("path=/data/local/tmp/w1.so\n");
+    {
+        void *hn = dlopen(path, RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+        DPUT(hn ? "noload=already-mapped\n" : "noload=not-mapped\n");
+        (void)dlerror();
+        void *h2 = dlopen(path, RTLD_NOW);
+        if (h2 == 0) {
+            char *e = dlerror();
+            DPUT("selfdlopen=NULL err="); DPUT(e ? e : "(none)"); DPUT("\n");
+        } else {
+            DPUT("selfdlopen=ok\n");
+        }
+    }
+
+    jclass obj_cls = (*env)->FindClass(env, "java/lang/Object");
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); obj_cls = 0; }
+    DPUT(obj_cls ? "objcls=ok\n" : "objcls=null\n");
+    DPUT(g_probe_vm ? "vm=set\n" : "vm=null\n");
+
+    unsigned char ok = lnl((void *)g_probe_vm, env, (const void *)path_str,
+        0 /*class_loader = null => system/boot library*/,
+        (void *)obj_cls /*caller = java.lang.Object (boot namespace)*/,
+        (void *)err_str);
+    if ((*env)->ExceptionCheck(env)) { DPUT("lnl-threw-exc\n"); (*env)->ExceptionClear(env); }
+    DPUT(ok ? "lnl=true\n" : "lnl=false\n");
+
+    /* Raw err_str std::string: 24 bytes hex + SSO-decoded text when short. */
+    DPUT("errhex=");
+    {
+        const char *hx = "0123456789abcdef";
+        for (i = 0; i < 24 && dp + 2 < (int)sizeof(diag); i++) {
+            diag[dp++] = hx[(err_str[i] >> 4) & 0xf];
+            diag[dp++] = hx[err_str[i] & 0xf];
+        }
+    }
+    DPUT("\n");
+    if ((err_str[0] & 1) == 0) {
+        unsigned int sz = err_str[0] >> 1;
+        DPUT("errmsg(sso)=");
+        for (i = 0; i < (int)sz && i < 22 && dp + 1 < (int)sizeof(diag); i++) {
+            char c = (char)err_str[1 + i];
+            diag[dp++] = (c >= 32 && c < 127) ? c : '.';
+        }
+        DPUT("\n");
+    } else {
+        /* libc++ long std::string: {cap@0, size@8, data*@16}. LoadNativeLibrary
+         * copies the C error into this std::string (heap-owned, alive because we
+         * never destruct it) -> safe to read `size` bytes at the data pointer. */
+        unsigned long sz = *(unsigned long *)(err_str + 8);
+        char *msgp = *(char **)(err_str + 16);
+        unsigned long k;
+        DPUT("errmsg(long)=");
+        if (msgp != 0) {
+            for (k = 0; k < sz && k < 240 && dp + 1 < (int)sizeof(diag); k++) {
+                char c = msgp[k];
+                diag[dp++] = (c >= 32 && c < 127) ? c : '.';
+            }
+        }
+        DPUT("\n");
+    }
+    #undef DPUT
+    diag[dp] = 0;
+    c_write_heartbeat("/data/local/tmp/w001-syslib.txt", diag);
+
+    log_text(ok ? "W001 syslib: LoadNativeLibrary ok" : "W001 syslib: LoadNativeLibrary false");
+    return ok ? 0 : -1;
+}
+
 /* W-001: bind android.os.Trace natives on EVERY Trace class handle we can reach —
  * boot FindClass, am-instance loader, AND (the load-bearing one) the loader that
  * defined android.content.res.Resources — right before the early oracle constructs
@@ -2243,9 +2360,74 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
     int rc_amldr = -2;
     int rc_res = -2;
     int same_br = -1;
+    int rc_bcall = -9; /* call-test on boot_trace: 0 callable, 1 ULE, 2 other, -9 n/a */
+    int rc_init = -9;  /* force-init Trace: 0 ok, 1 threw, -9 n/a */
+    int rc_bcall2 = -9;/* call-test after force-init + re-register */
+    /* LOAD-BEARING: register the sidecar as a null-loader system JNI library so ART
+     * auto-links Java_android_os_Trace_* for the ResolveType-reached boot Trace that
+     * no handle can name. The RegisterNatives-by-handle attempts below are kept as a
+     * belt but cannot reach that class (proven: boot=0 didn't clear the ULE). */
+    int rc_syslib = westlake_register_sidecar_as_system_lib(env);
     jclass boot_trace = (*env)->FindClass(env, "android/os/Trace");
     if (boot_trace != 0 && !(*env)->ExceptionCheck(env)) {
         rc_boot = register_trace_natives_on(env, boot_trace, "W001 bindTrace boot");
+        /* DECISIVE: after registering on the FindClass Trace, actually CALL
+         * nativeIsTagEnabled(0) on it. If it returns -> our class is genuinely bound
+         * and the ULE proves the framework resolves a DIFFERENT Trace (true dual
+         * class). If it ULEs here too -> RegisterNatives silently no-op'd on this
+         * very class (registration bug, not dual class). */
+        jmethodID mid = (*env)->GetStaticMethodID(env, boot_trace, "nativeIsTagEnabled", "(J)Z");
+        if (mid != 0 && !(*env)->ExceptionCheck(env)) {
+            (*env)->CallStaticBooleanMethod(env, boot_trace, mid, (jlong)0);
+            if ((*env)->ExceptionCheck(env)) {
+                jthrowable ex = (*env)->ExceptionOccurred(env);
+                (*env)->ExceptionClear(env);
+                rc_bcall = 2;
+                jclass ule = (*env)->FindClass(env, "java/lang/UnsatisfiedLinkError");
+                if (ule != 0 && ex != 0 && (*env)->IsInstanceOf(env, ex, ule)) {
+                    rc_bcall = 1;
+                }
+                (*env)->ExceptionClear(env);
+            } else {
+                rc_bcall = 0;
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
+        /* EXPERIMENT: is RegisterNatives failing to stick because the class isn't
+         * initialized (link resets entry_point_from_jni_ to the dlsym stub)? Force
+         * <clinit> by reading a static field, RE-register, then call again. If
+         * bcall2=0 while bcall=1, registering post-init is the (non-forbidden) fix. */
+        jfieldID tag = (*env)->GetStaticFieldID(env, boot_trace, "TRACE_TAG_ALWAYS", "J");
+        if (tag == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            tag = (*env)->GetStaticFieldID(env, boot_trace, "TRACE_TAG_APP", "J");
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); tag = 0; }
+        }
+        if (tag != 0) {
+            (*env)->GetStaticLongField(env, boot_trace, tag); /* triggers <clinit> */
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); rc_init = 1; }
+            else { rc_init = 0; }
+        }
+        /* re-register post-init, then re-call */
+        register_trace_natives_on(env, boot_trace, "W001 bindTrace boot(post-init)");
+        (*env)->ExceptionClear(env);
+        jmethodID mid2 = (*env)->GetStaticMethodID(env, boot_trace, "nativeIsTagEnabled", "(J)Z");
+        if (mid2 != 0 && !(*env)->ExceptionCheck(env)) {
+            (*env)->CallStaticBooleanMethod(env, boot_trace, mid2, (jlong)0);
+            if ((*env)->ExceptionCheck(env)) {
+                jthrowable ex2 = (*env)->ExceptionOccurred(env);
+                (*env)->ExceptionClear(env);
+                rc_bcall2 = 2;
+                jclass ule2 = (*env)->FindClass(env, "java/lang/UnsatisfiedLinkError");
+                if (ule2 != 0 && ex2 != 0 && (*env)->IsInstanceOf(env, ex2, ule2)) { rc_bcall2 = 1; }
+                (*env)->ExceptionClear(env);
+            } else {
+                rc_bcall2 = 0;
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
     } else {
         (*env)->ExceptionClear(env);
     }
@@ -2287,7 +2469,7 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
     /* Belt: the existing FindClass-AssetManager rebind. */
     reregister_trace_via_assetmanager_loader(env);
     {
-        char buf[64];
+        char buf[96];
         unsigned int pos = 0;
         unsigned int i;
         const char *p;
@@ -2301,6 +2483,10 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
         W001_EMIT_RC(" amldr=", rc_amldr);
         W001_EMIT_RC(" res=", rc_res);
         W001_EMIT_RC(" same=", same_br);
+        W001_EMIT_RC(" syslib=", rc_syslib);
+        W001_EMIT_RC(" bcall=", rc_bcall);
+        W001_EMIT_RC(" init=", rc_init);
+        W001_EMIT_RC(" bcall2=", rc_bcall2);
         #undef W001_EMIT_RC
         buf[pos++] = '\n';
         buf[pos] = 0;
@@ -2875,6 +3061,18 @@ __attribute__((visibility("default"))) int westlake_embedded_art_run_stage(const
 __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init(void)
 {
     log_text("embedded-art-dlopen-probe constructor");
+
+    /* W-001: process-global re-entry guard. When the sidecar is (re)loaded as a
+     * *system* JNI library via JavaVMExt::LoadNativeLibrary (to fix the boot-level
+     * dual android.os.Trace — see westlake_register_sidecar_as_system_lib), a second
+     * copy's constructor must NOT dlopen ART / create a second VM again. The env
+     * marker is process-wide, so it neutralizes any duplicate load (copy or namespace),
+     * independent of musl realpath dedup. */
+    if (getenv("WESTLAKE_CTOR_RAN") != 0) {
+        log_text("constructor re-entry; skip (already ran)");
+        return;
+    }
+    setenv("WESTLAKE_CTOR_RAN", "1", 1);
 
     char *create_vm_flag = getenv("WESTLAKE_CREATE_VM");
     char *dlopen_flag = getenv("WESTLAKE_DLOPEN_ON_LOAD");

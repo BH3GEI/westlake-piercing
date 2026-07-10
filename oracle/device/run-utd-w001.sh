@@ -17,6 +17,12 @@ export WESTLAKE_OMIT_FRAMEWORK_SHIM=1 WESTLAKE_LOAD_COMPAT_STUBS=1
 rm -f /data/local/tmp/westlake-embedded-art-dlopen-probe.log
 rm -f /data/local/tmp/uptodown-early.txt /data/local/tmp/uptodown-crash.txt
 rm -f $S/apks/probe-logs/uptodown-probe.txt
+rm -f /data/local/tmp/w001-trace.txt /data/local/tmp/w001-syslib.txt
 mkdir -p $S/apks/probe-logs
+# W-001: short-path copy of the sidecar (<=22 chars) so the probe can register it as a
+# null-loader system JNI library via JavaVMExt::LoadNativeLibrary using a libc++ SSO
+# std::string (the long-string cap-encoding is ABI-fragile). Content == the hash-locked
+# probes/ copy; the constructor re-entry guard makes this second load a no-op.
+cp -f $S/probes/libwestlake_embedded_art_dlopen_probe.so /data/local/tmp/w1.so 2>/dev/null
 # Correct entry: toybox + LD_PRELOAD lets the constructor create the VM.
 /system/bin/toybox true
