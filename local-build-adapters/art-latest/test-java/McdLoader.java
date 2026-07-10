@@ -1,0 +1,1293 @@
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
+
+public class McdLoader {
+    static native void nativeLog(String msg);
+    static native Object nativeAllocInstance(Class<?> cls);
+    static native void nativePrintException(Throwable t);
+    static native void nativeSetApkAssets(Object assetMgr, Object[] apkAssets, long nativePtr);
+
+    static void log(String msg) {
+        try { nativeLog(msg); return; } catch (Throwable t) {}
+        try {
+            java.io.FileOutputStream f = new java.io.FileOutputStream(java.io.FileDescriptor.err);
+            byte[] b = new byte[msg.length() + 1];
+            for (int i = 0; i < msg.length(); i++) b[i] = (byte)(msg.charAt(i) & 0x7f);
+            b[msg.length()] = (byte)'\n';
+            f.write(b, 0, b.length);
+        } catch (Throwable t2) {}
+    }
+
+    public static void main(String[] args) {
+        log("=== Westlake ART v118: MCD onCreate ===");
+
+        ClassLoader cl = McdLoader.class.getClassLoader();
+
+        // Locale.ROOT/ENGLISH/US pre-set by JNI_OnLoad_framework (C code via AllocObject)
+
+        // Step 1: Load SplashActivity
+        log("[1] Loading SplashActivity...");
+        Class<?> splashClass = null;
+        try {
+            splashClass = Class.forName(
+                "com.mcdonalds.mcdcoreapp.common.activity.SplashActivity", false, cl);
+            log("[OK] SplashActivity loaded (" + splashClass.getDeclaredMethods().length + " methods)");
+        } catch (Throwable t) {
+            log("[FAIL] " + t.getClass().getName());
+            return;
+        }
+
+        // Step 2: Allocate SplashActivity instance (no constructor)
+        log("[2] Allocating SplashActivity...");
+        Object splash = null;
+        try {
+            splash = nativeAllocInstance(splashClass);
+            log("[OK] Instance via nativeAlloc");
+        } catch (Throwable t) {
+            // Fallback: JNI AllocObject via env
+            log("[WARN] nativeAlloc failed, trying JNI newInstance...");
+            try {
+                // Use reflection to call JNI AllocObject indirectly
+                // Actually just use the default constructor
+                Constructor<?> ctor = splashClass.getDeclaredConstructor();
+                ctor.setAccessible(true);
+                splash = ctor.newInstance();
+                log("[OK] Instance via constructor");
+            } catch (Throwable t2) {
+                log("[WARN] constructor failed: " + t2.getClass().getName());
+                // Last resort: allocate parent class
+                try {
+                    Class<?> actClass = Class.forName("android.app.Activity");
+                    Constructor<?> actCtor = actClass.getDeclaredConstructor();
+                    actCtor.setAccessible(true);
+                    splash = actCtor.newInstance();
+                    log("[OK] Activity instance (not SplashActivity)");
+                } catch (Throwable t3) {
+                    log("[FAIL] All allocation methods failed");
+                    return;
+                }
+            }
+        }
+
+        // Step 3: Create mock Context chain
+        log("[3] Creating mock Context...");
+        Object mockContext = null;
+        try {
+            // ContextImpl — allocate without constructor
+            Class<?> ctxImpl = Class.forName("android.app.ContextImpl", false, cl);
+            mockContext = nativeAllocInstance(ctxImpl);
+            log("[OK] ContextImpl allocated");
+
+            // Set mBasePackageName on ContextImpl
+            try {
+                Field pkgField = ctxImpl.getDeclaredField("mBasePackageName");
+                pkgField.setAccessible(true);
+                pkgField.set(mockContext, "com.mcdonalds.app");
+                log("[OK] mBasePackageName = com.mcdonalds.app");
+            } catch (Throwable t) {
+                log("[WARN] mBasePackageName: " + t.getClass().getName());
+            }
+
+            // Set mResourcesManager on ContextImpl
+            try {
+                Class<?> rmClass = Class.forName("android.app.ResourcesManager");
+                Method rmGetInst = rmClass.getDeclaredMethod("getInstance");
+                rmGetInst.setAccessible(true);
+                Object rm = rmGetInst.invoke(null);
+                if (rm == null) rm = nativeAllocInstance(rmClass);
+                // Set ALL Object fields to new Object() (lock fields etc.)
+                for (Field f : rmClass.getDeclaredFields()) {
+                    try {
+                        f.setAccessible(true);
+                        if (f.getType() == Object.class && f.get(rm) == null) {
+                            f.set(rm, new Object());
+                        }
+                    } catch (Throwable x) {}
+                }
+                Field rmF = ctxImpl.getDeclaredField("mResourcesManager");
+                rmF.setAccessible(true);
+                rmF.set(mockContext, rm);
+                log("[OK] ResourcesManager set");
+            } catch (Throwable t) {}
+
+            // Set mContextType = CONTEXT_TYPE_ACTIVITY (not system context!)
+            try {
+                // CONTEXT_TYPE_ACTIVITY is typically 1
+                Field ctxType = ctxImpl.getDeclaredField("mContextType");
+                ctxType.setAccessible(true);
+                // Read the static CONTEXT_TYPE_ACTIVITY value
+                Field ctaField = ctxImpl.getDeclaredField("CONTEXT_TYPE_ACTIVITY");
+                ctaField.setAccessible(true);
+                int activityType = ctaField.getInt(null);
+                ctxType.set(mockContext, activityType);
+                log("[OK] mContextType = CONTEXT_TYPE_ACTIVITY (" + activityType + ")");
+            } catch (Throwable t) {
+                log("[WARN] mContextType: " + t.getClass().getName());
+            }
+
+            // Set mPackageInfo (LoadedApk) — needed for resource access
+            try {
+                Class<?> loadedApkClass = Class.forName("android.app.LoadedApk", false, cl);
+                Object loadedApk = nativeAllocInstance(loadedApkClass);
+                // Set minimal fields on LoadedApk
+                try {
+                    Field pkgF = loadedApkClass.getDeclaredField("mPackageName");
+                    pkgF.setAccessible(true);
+                    pkgF.set(loadedApk, "com.mcdonalds.app");
+                } catch (Throwable t2) {}
+                // Set ApplicationInfo — each field independently wrapped
+                {
+                    Class<?> aiClass = Class.forName("android.content.pm.ApplicationInfo");
+                    Object appInfo = nativeAllocInstance(aiClass);
+                    // Set individual fields (never let one failure block others)
+                    try { Field f = aiClass.getDeclaredField("targetSdkVersion"); f.setAccessible(true); f.setInt(appInfo, 35); } catch (Throwable x) {}
+                    try { Field f = aiClass.getDeclaredField("sourceDir"); f.setAccessible(true); f.set(appInfo, "/data/local/tmp/westlake/mcd.apk"); } catch (Throwable x) {}
+                    try { Field f = aiClass.getDeclaredField("publicSourceDir"); f.setAccessible(true); f.set(appInfo, "/data/local/tmp/westlake/mcd.apk"); } catch (Throwable x) {}
+                    try { Field f = aiClass.getDeclaredField("nativeLibraryDir"); f.setAccessible(true); f.set(appInfo, "/data/local/tmp/westlake"); } catch (Throwable x) {}
+                    try { Field f = aiClass.getDeclaredField("processName"); f.setAccessible(true); f.set(appInfo, "com.mcdonalds.app"); } catch (Throwable x) {}
+                    try { Field f = aiClass.getDeclaredField("flags"); f.setAccessible(true); f.setInt(appInfo, 0x80084); } catch (Throwable x) {}
+                    // packageName in parent class hierarchy
+                    for (Class<?> c = aiClass; c != null; c = c.getSuperclass()) {
+                        try { Field f = c.getDeclaredField("packageName"); f.setAccessible(true); f.set(appInfo, "com.mcdonalds.app"); break; } catch (Throwable x) {}
+                    }
+                    for (Class<?> c = aiClass; c != null; c = c.getSuperclass()) {
+                        try { Field f = c.getDeclaredField("name"); f.setAccessible(true); f.set(appInfo, "com.mcdonalds.app"); break; } catch (Throwable x) {}
+                    }
+                    // CRITICAL: set mApplicationInfo on LoadedApk (must not be skipped!)
+                    try {
+                        Field aiF = loadedApkClass.getDeclaredField("mApplicationInfo");
+                        aiF.setAccessible(true);
+                        aiF.set(loadedApk, appInfo);
+                        log("[OK] ApplicationInfo → LoadedApk");
+                    } catch (Throwable x) {
+                        log("[FAIL] mApplicationInfo: " + x.getClass().getName());
+                    }
+                }
+                // Set mResDir on LoadedApk
+                try {
+                    Field rdF = loadedApkClass.getDeclaredField("mResDir");
+                    rdF.setAccessible(true);
+                    rdF.set(loadedApk, "/data/local/tmp/westlake/mcd.apk");
+                } catch (Throwable t2) {}
+                // Set mDataDir
+                try {
+                    Field ddF = loadedApkClass.getDeclaredField("mDataDir");
+                    ddF.setAccessible(true);
+                    ddF.set(loadedApk, "/data/local/tmp/westlake");
+                } catch (Throwable t2) {}
+                // Set mActivityThread on LoadedApk (needed for updateApplicationInfo)
+                try {
+                    Class<?> atClass = Class.forName("android.app.ActivityThread");
+                    Object actThread = nativeAllocInstance(atClass);
+                    Field atF = loadedApkClass.getDeclaredField("mActivityThread");
+                    atF.setAccessible(true);
+                    atF.set(loadedApk, actThread);
+                    // Also set currentActivityThread() singleton
+                    try {
+                        Field satF = atClass.getDeclaredField("sCurrentActivityThread");
+                        satF.setAccessible(true);
+                        satF.set(null, actThread);
+                    } catch (Throwable t3) {}
+                    // Set mMainThread on Activity too
+                    try {
+                        Class<?> actCls = Class.forName("android.app.Activity");
+                        Field mtF = actCls.getDeclaredField("mMainThread");
+                        mtF.setAccessible(true);
+                        mtF.set(splash, actThread);
+                    } catch (Throwable t3) {}
+                    log("[OK] ActivityThread set");
+                } catch (Throwable t2) {
+                    log("[WARN] ActivityThread: " + t2.getClass().getName());
+                }
+                // Set mMainThread on ContextImpl (needs ActivityThread too)
+                try {
+                    Field cmtF = ctxImpl.getDeclaredField("mMainThread");
+                    cmtF.setAccessible(true);
+                    // Reuse the ActivityThread from LoadedApk
+                    Field latF = loadedApkClass.getDeclaredField("mActivityThread");
+                    latF.setAccessible(true);
+                    Object at = latF.get(loadedApk);
+                    cmtF.set(mockContext, at);
+                } catch (Throwable t2) {}
+
+                Field piF = ctxImpl.getDeclaredField("mPackageInfo");
+                piF.setAccessible(true);
+                piF.set(mockContext, loadedApk);
+                log("[OK] mPackageInfo = LoadedApk");
+            } catch (Throwable t) {
+                log("[WARN] mPackageInfo: " + t.getClass().getName());
+            }
+        } catch (Throwable t) {
+            log("[FAIL] Context: " + t.getClass().getName());
+        }
+
+        // Step 4: Create mock Instrumentation + Application
+        log("[4] Creating Instrumentation + Application...");
+        Object instr = null, app = null;
+        try {
+            instr = nativeAllocInstance(Class.forName("android.app.Instrumentation", false, cl));
+            log("[OK] Instrumentation allocated");
+        } catch (Throwable t) { log("[WARN] Instrumentation: " + t.getClass().getName()); }
+        try {
+            app = nativeAllocInstance(Class.forName("android.app.Application", false, cl));
+            // Set mActivityLifecycleCallbacks (needed for dispatchActivityPreCreated)
+            try {
+                Class<?> appCls = Class.forName("android.app.Application");
+                Field alcF = appCls.getDeclaredField("mActivityLifecycleCallbacks");
+                alcF.setAccessible(true);
+                alcF.set(app, new java.util.ArrayList<>());
+                // Also set mComponentCallbacks
+                try {
+                    Field ccF = appCls.getDeclaredField("mComponentCallbacks");
+                    ccF.setAccessible(true);
+                    ccF.set(app, new java.util.ArrayList<>());
+                } catch (Throwable t2) {}
+                // Set mBase on Application (it's a ContextWrapper)
+                try {
+                    Class<?> cwCls = Class.forName("android.content.ContextWrapper");
+                    Field mbF = cwCls.getDeclaredField("mBase");
+                    mbF.setAccessible(true);
+                    mbF.set(app, mockContext);
+                } catch (Throwable t2) {}
+            } catch (Throwable t2) {}
+            log("[OK] Application allocated");
+        } catch (Throwable t) { log("[WARN] Application: " + t.getClass().getName()); }
+
+        // Step 5: Set Activity fields directly (bypass attach())
+        log("[5] Setting Activity fields...");
+        try {
+            // Activity inherits from ContextThemeWrapper → ContextWrapper → Context
+            // ContextWrapper has mBase field
+            Class<?> cwClass = Class.forName("android.content.ContextWrapper");
+            Field mBase = cwClass.getDeclaredField("mBase");
+            mBase.setAccessible(true);
+            mBase.set(splash, mockContext);
+            log("[OK] mBase = ContextImpl");
+
+            // Activity fields
+            Class<?> actClass = Class.forName("android.app.Activity");
+
+            // mInstrumentation
+            try {
+                Field f = actClass.getDeclaredField("mInstrumentation");
+                f.setAccessible(true); f.set(splash, instr);
+                log("[OK] mInstrumentation set");
+            } catch (Throwable t) { log("[WARN] mInstrumentation: " + t.getClass().getName()); }
+
+            // mApplication
+            try {
+                Field f = actClass.getDeclaredField("mApplication");
+                f.setAccessible(true); f.set(splash, app);
+                log("[OK] mApplication set");
+            } catch (Throwable t) { log("[WARN] mApplication: " + t.getClass().getName()); }
+
+            // mCalled (must be false before onCreate)
+            try {
+                Field f = actClass.getDeclaredField("mCalled");
+                f.setAccessible(true); f.set(splash, false);
+            } catch (Throwable t) {}
+
+            // SavedStateRegistryController (needed for Hilt/AndroidX lifecycle)
+            try {
+                Class<?> ssrcCls = Class.forName("androidx.savedstate.SavedStateRegistryController");
+                // Use SavedStateRegistryController.create(SavedStateRegistryOwner)
+                Method create = ssrcCls.getDeclaredMethod("create", Class.forName("androidx.savedstate.SavedStateRegistryOwner"));
+                create.setAccessible(true);
+                // Activity implements SavedStateRegistryOwner
+                Object ssrc = create.invoke(null, splash);
+                if (ssrc != null) {
+                    // Find and set mSavedStateRegistryController field
+                    // Try both Kotlin-style and Java-style field names
+                    String[] fieldNames = {"savedStateRegistryController", "mSavedStateRegistryController"};
+                    for (Class<?> c = splashClass; c != null; c = c.getSuperclass()) {
+                        for (String fn : fieldNames) {
+                            try {
+                                Field f = c.getDeclaredField(fn);
+                                f.setAccessible(true); f.set(splash, ssrc);
+                                log("[OK] SavedStateRegistryController set (" + c.getSimpleName() + "." + fn + ")");
+                                break;
+                            } catch (Throwable x) {}
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                // Fallback: allocate directly
+                try {
+                    Class<?> ssrcCls = Class.forName("androidx.savedstate.SavedStateRegistryController");
+                    Object ssrc = nativeAllocInstance(ssrcCls);
+                    // Set SavedStateRegistry
+                    try {
+                        Class<?> ssrCls = Class.forName("androidx.savedstate.SavedStateRegistry");
+                        Object ssr = nativeAllocInstance(ssrCls);
+                        Field rf = ssrcCls.getDeclaredField("mRegistry");
+                        rf.setAccessible(true);
+                        rf.set(ssrc, ssr);
+                    } catch (Throwable x) {}
+                    String[] fn2 = {"savedStateRegistryController", "mSavedStateRegistryController"};
+                    for (Class<?> c = splashClass; c != null; c = c.getSuperclass()) {
+                        for (String fn : fn2) {
+                            try {
+                                Field f = c.getDeclaredField(fn);
+                                f.setAccessible(true); f.set(splash, ssrc);
+                                log("[OK] SavedStateRegistryController set (alloc: " + c.getSimpleName() + ")");
+                                break;
+                            } catch (Throwable x) {}
+                        }
+                    }
+                } catch (Throwable x) {}
+            }
+
+            // ComponentActivity fields (Kotlin-style names)
+            try {
+                Class<?> compActCls = Class.forName("androidx.activity.ComponentActivity");
+                // contextAwareHelper
+                try {
+                    Class<?> cahCls = Class.forName("androidx.activity.contextaware.ContextAwareHelper");
+                    Object cah = nativeAllocInstance(cahCls);
+                    Field f = compActCls.getDeclaredField("contextAwareHelper");
+                    f.setAccessible(true); f.set(splash, cah);
+                } catch (Throwable x) {}
+                // onConfigurationChangedListeners
+                try {
+                    Field f = compActCls.getDeclaredField("onConfigurationChangedListeners");
+                    f.setAccessible(true);
+                    f.set(splash, new java.util.concurrent.CopyOnWriteArrayList<>());
+                } catch (Throwable x) {}
+                // onMultiWindowModeChangedListeners
+                try {
+                    Field f = compActCls.getDeclaredField("onMultiWindowModeChangedListeners");
+                    f.setAccessible(true);
+                    f.set(splash, new java.util.concurrent.CopyOnWriteArrayList<>());
+                } catch (Throwable x) {}
+                // onNewIntentListeners, onTrimMemoryListeners, etc.
+                String[] listFields = {"onNewIntentListeners", "onTrimMemoryListeners",
+                    "onPictureInPictureModeChangedListeners", "onUserLeaveHintListeners"};
+                for (String fn : listFields) {
+                    try {
+                        Field f = compActCls.getDeclaredField(fn);
+                        f.setAccessible(true);
+                        f.set(splash, new java.util.concurrent.CopyOnWriteArrayList<>());
+                    } catch (Throwable x) {}
+                }
+                // nextLocalRequestCode
+                try {
+                    Field f = compActCls.getDeclaredField("nextLocalRequestCode");
+                    f.setAccessible(true);
+                    f.set(splash, new java.util.concurrent.atomic.AtomicInteger(0));
+                } catch (Throwable x) {}
+                // LifecycleRegistry — check parent class too (androidx.core.app.ComponentActivity)
+                try {
+                    Class<?> lrClass = Class.forName("androidx.lifecycle.LifecycleRegistry");
+                    // LifecycleRegistry(LifecycleOwner) constructor
+                    Object lr = nativeAllocInstance(lrClass);
+                    // Set the lifecycle on all possible field names/classes
+                    String[] lrFields = {"mLifecycleRegistry", "lifecycle", "mFragmentLifecycleRegistry"};
+                    for (Class<?> c = splashClass; c != null; c = c.getSuperclass()) {
+                        for (String fn : lrFields) {
+                            try {
+                                Field f = c.getDeclaredField(fn);
+                                f.setAccessible(true); f.set(splash, lr);
+                                log("[OK] LifecycleRegistry on " + c.getSimpleName() + "." + fn);
+                            } catch (Throwable x) {}
+                        }
+                    }
+                } catch (Throwable x) {}
+                // AndroidX FragmentController (on FragmentActivity.mFragments)
+                try {
+                    Class<?> axFcClass = Class.forName("androidx.fragment.app.FragmentController");
+                    // FragmentController.createController(FragmentHostCallback)
+                    Object axFc = nativeAllocInstance(axFcClass);
+                    // Set on FragmentActivity.mFragments
+                    Class<?> fragActCls = Class.forName("androidx.fragment.app.FragmentActivity");
+                    Field mfF = fragActCls.getDeclaredField("mFragments");
+                    mfF.setAccessible(true);
+                    mfF.set(splash, axFc);
+                    // Set FragmentManager inside
+                    try {
+                        Class<?> axFmClass = Class.forName("androidx.fragment.app.FragmentManagerImpl");
+                        Object axFm = nativeAllocInstance(axFmClass);
+                        Field hostF = axFcClass.getDeclaredField("mHost");
+                        hostF.setAccessible(true);
+                        // Create FragmentHostCallback
+                        Class<?> axFhcClass = Class.forName("androidx.fragment.app.FragmentHostCallback");
+                        Object axFhc = nativeAllocInstance(axFhcClass);
+                        hostF.set(axFc, axFhc);
+                        // Set FragmentManager on host
+                        try {
+                            Field fmOnHost = axFhcClass.getDeclaredField("mFragmentManager");
+                            fmOnHost.setAccessible(true);
+                            fmOnHost.set(axFhc, axFm);
+                        } catch (Throwable x2) {}
+                    } catch (Throwable x) {}
+                    log("[OK] AndroidX FragmentController set");
+                } catch (Throwable x) {}
+                log("[OK] ComponentActivity fields set");
+            } catch (Throwable t) {}
+
+            // FragmentController (needed for Activity.performCreate → dispatchCreate)
+            try {
+                Class<?> fcClass = Class.forName("android.app.FragmentController");
+                Object fc = nativeAllocInstance(fcClass);
+                // Set mHost on FragmentController
+                try {
+                    Class<?> fhcClass = Class.forName("android.app.FragmentHostCallback");
+                    // Activity has mFragments field
+                    Field fragF = actClass.getDeclaredField("mFragments");
+                    fragF.setAccessible(true);
+                    fragF.set(splash, fc);
+                    // FragmentController needs a FragmentManagerImpl
+                    try {
+                        Class<?> fmiClass = Class.forName("android.app.FragmentManagerImpl");
+                        Object fmi = nativeAllocInstance(fmiClass);
+                        // Set critical fields on FragmentManagerImpl
+                        try { Field pf = fmiClass.getDeclaredField("mPendingActions"); pf.setAccessible(true);
+                              pf.set(fmi, new java.util.ArrayList<>()); } catch (Throwable x2) {}
+                        try { Field af = fmiClass.getDeclaredField("mAdded"); af.setAccessible(true);
+                              af.set(fmi, new java.util.ArrayList<>()); } catch (Throwable x2) {}
+                        try { Field af = fmiClass.getDeclaredField("mActive"); af.setAccessible(true);
+                              af.set(fmi, nativeAllocInstance(Class.forName("android.util.SparseArray"))); } catch (Throwable x2) {
+                            // mActive might be a List in some versions
+                            try { Field af2 = fmiClass.getDeclaredField("mActive"); af2.setAccessible(true);
+                                  af2.set(fmi, new java.util.ArrayList<>()); } catch (Throwable x3) {}
+                        }
+                        // mHost is a FragmentHostCallback
+                        Object fhc = nativeAllocInstance(fhcClass);
+                        // Set FragmentManager on host
+                        try { Field fmOnHost = fhcClass.getDeclaredField("mFragmentManager");
+                              fmOnHost.setAccessible(true); fmOnHost.set(fhc, fmi); } catch (Throwable x2) {}
+                        // Set host on controller
+                        Field fmF = fcClass.getDeclaredField("mHost");
+                        fmF.setAccessible(true);
+                        fmF.set(fc, fhc);
+                    } catch (Throwable x) {}
+                    log("[OK] FragmentController set");
+                } catch (Throwable x) {}
+            } catch (Throwable t) {}
+
+            // mActivityLifecycleCallbacks (needed for dispatchActivityPreCreated)
+            try {
+                Field alcF = actClass.getDeclaredField("mActivityLifecycleCallbacks");
+                alcF.setAccessible(true);
+                alcF.set(splash, new java.util.concurrent.CopyOnWriteArrayList<>());
+            } catch (Throwable t) {
+                // Might be ArrayList instead of CopyOnWriteArrayList
+                try {
+                    Field alcF = actClass.getDeclaredField("mActivityLifecycleCallbacks");
+                    alcF.setAccessible(true);
+                    alcF.set(splash, new java.util.ArrayList<>());
+                } catch (Throwable t2) {}
+            }
+
+            // mComponent
+            try {
+                Class<?> cnClass = Class.forName("android.content.ComponentName");
+                Constructor<?> cnCtor = cnClass.getConstructor(String.class, String.class);
+                Object cn = cnCtor.newInstance("com.mcdonalds.app",
+                    "com.mcdonalds.mcdcoreapp.common.activity.SplashActivity");
+                Field f = actClass.getDeclaredField("mComponent");
+                f.setAccessible(true); f.set(splash, cn);
+                log("[OK] mComponent set");
+            } catch (Throwable t) { log("[WARN] mComponent: " + t.getClass().getName()); }
+
+            // mIntent — SplashActivity.onCreate calls getIntent().getExtras()
+            try {
+                Class<?> intentClass = Class.forName("android.content.Intent");
+                Object intent = nativeAllocInstance(intentClass);
+                Field f = actClass.getDeclaredField("mIntent");
+                f.setAccessible(true); f.set(splash, intent);
+                log("[OK] mIntent set");
+            } catch (Throwable t) { log("[WARN] mIntent: " + t.getClass().getName()); }
+
+            // mWindow — many Activity methods need getWindow()
+            try {
+                Class<?> windowClass = Class.forName("com.android.internal.policy.PhoneWindow");
+                Object window = nativeAllocInstance(windowClass);
+                // Set Window.mCallback = the Activity (Activity implements Window.Callback)
+                try {
+                    Class<?> winCls = Class.forName("android.view.Window");
+                    Field cbF = winCls.getDeclaredField("mCallback");
+                    cbF.setAccessible(true);
+                    cbF.set(window, splash); // Activity implements Window.Callback
+                    // Also set mWindowControllerCallback
+                    Field wcbF = winCls.getDeclaredField("mWindowControllerCallback");
+                    wcbF.setAccessible(true);
+                    wcbF.set(window, splash); // Activity also implements this
+                } catch (Throwable t2) {}
+                // Set mContext on Window
+                try {
+                    Class<?> winCls = Class.forName("android.view.Window");
+                    Field ctxF = winCls.getDeclaredField("mContext");
+                    ctxF.setAccessible(true);
+                    ctxF.set(window, splash); // Activity IS the context
+                } catch (Throwable t2) {}
+                Field f = actClass.getDeclaredField("mWindow");
+                f.setAccessible(true); f.set(splash, window);
+                log("[OK] mWindow set (with callbacks)");
+            } catch (Throwable t) { log("[WARN] mWindow: " + t.getClass().getName()); }
+
+            // mActivityInfo — Activity needs this for theming
+            try {
+                Class<?> aiInfoClass = Class.forName("android.content.pm.ActivityInfo");
+                Object activityInfo = nativeAllocInstance(aiInfoClass);
+                // Set applicationInfo on ActivityInfo
+                try {
+                    // Get our existing ApplicationInfo from LoadedApk
+                    Class<?> ctxImplCls = Class.forName("android.app.ContextImpl");
+                    Field piF = ctxImplCls.getDeclaredField("mPackageInfo");
+                    piF.setAccessible(true);
+                    Object loadedApk = piF.get(mockContext);
+                    if (loadedApk != null) {
+                        Field aiF = loadedApk.getClass().getDeclaredField("mApplicationInfo");
+                        aiF.setAccessible(true);
+                        Object appInfo2 = aiF.get(loadedApk);
+                        if (appInfo2 != null) {
+                            Field appInfoF = aiInfoClass.getField("applicationInfo");
+                            appInfoF.setAccessible(true);
+                            appInfoF.set(activityInfo, appInfo2);
+                        }
+                    }
+                } catch (Throwable t2) {}
+                Field aif = actClass.getDeclaredField("mActivityInfo");
+                aif.setAccessible(true);
+                aif.set(splash, activityInfo);
+                log("[OK] mActivityInfo set");
+            } catch (Throwable t) { log("[WARN] mActivityInfo: " + t.getClass().getName()); }
+
+            // mTheme — pre-set to avoid getTheme() reading ApplicationInfo
+            try {
+                Class<?> ctwClass = Class.forName("android.view.ContextThemeWrapper");
+                // Create a Resources.Theme via Resources
+                // First, try to set mResources + mTheme
+                // Simplest: set the theme resource ID so it uses a default
+                try {
+                    Field trF = ctwClass.getDeclaredField("mThemeResource");
+                    trF.setAccessible(true);
+                    trF.setInt(splash, 0x01030005); // android.R.style.Theme
+                } catch (Throwable t2) {}
+                // Set mResources — create Resources + ResourcesImpl with Configuration
+                try {
+                    Class<?> resClass = Class.forName("android.content.res.Resources");
+                    Object resources = nativeAllocInstance(resClass);
+                    // Create ResourcesImpl with a Configuration
+                    Class<?> resImplClass = Class.forName("android.content.res.ResourcesImpl");
+                    Object resImpl = nativeAllocInstance(resImplClass);
+                    // Set Configuration on ResourcesImpl
+                    try {
+                        Class<?> configClass = Class.forName("android.content.res.Configuration");
+                        Object config = nativeAllocInstance(configClass);
+                        // Set windowConfiguration on Configuration
+                        try {
+                            Class<?> wcClass = Class.forName("android.app.WindowConfiguration");
+                            Object wc = nativeAllocInstance(wcClass);
+                            Field wcF = configClass.getDeclaredField("windowConfiguration");
+                            wcF.setAccessible(true);
+                            wcF.set(config, wc);
+                        } catch (Throwable t4) {}
+                        Field cfF = resImplClass.getDeclaredField("mConfiguration");
+                        cfF.setAccessible(true);
+                        cfF.set(resImpl, config);
+                    // Set AssetManager with real native resources
+                    Object assetMgr = null;
+                    long ptr = 0;
+                    java.util.List<Object> apkList = new java.util.ArrayList<>();
+                    try {
+                        Class<?> amClass = Class.forName("android.content.res.AssetManager");
+                        assetMgr = nativeAllocInstance(amClass);
+                        // Create native AssetManager2 object
+                        Method nc = amClass.getDeclaredMethod("nativeCreate");
+                        nc.setAccessible(true);
+                        ptr = (Long) nc.invoke(null);
+                        Field moF = amClass.getDeclaredField("mObject");
+                        moF.setAccessible(true);
+                        moF.setLong(assetMgr, ptr);
+                        log("[OK] nativeCreate ptr=" + ptr);
+                        // Init mApkAssets empty array
+                        Class<?> apkClass = Class.forName("android.content.res.ApkAssets");
+                        try { Field af = amClass.getDeclaredField("mApkAssets"); af.setAccessible(true);
+                              af.set(assetMgr, java.lang.reflect.Array.newInstance(apkClass, 0)); } catch (Throwable x) {}
+                        // Load framework + MCD resources via ApkAssets
+                        Method loadFrom = null;
+                        for (Method m : apkClass.getDeclaredMethods())
+                            if (m.getName().equals("loadFromPath")) { loadFrom = m; break; }
+                        log("[DEBUG] loadFromPath method: " + (loadFrom != null ? loadFrom.toString() : "null"));
+                        if (loadFrom != null) {
+                            loadFrom.setAccessible(true);
+                            Object fwApk = null, mcdApk = null;
+                            try {
+                                if (loadFrom.getParameterCount() == 1)
+                                    fwApk = loadFrom.invoke(null, "/system/framework/framework-res.apk");
+                                else
+                                    fwApk = loadFrom.invoke(null, "/system/framework/framework-res.apk", 0);
+                                if (fwApk != null) log("[OK] framework-res loaded");
+                            } catch (Throwable x) {}
+                            try {
+                                if (loadFrom.getParameterCount() == 1)
+                                    mcdApk = loadFrom.invoke(null, "/data/local/tmp/westlake/mcd.apk");
+                                else
+                                    mcdApk = loadFrom.invoke(null, "/data/local/tmp/westlake/mcd.apk", 0);
+                                if (mcdApk != null) log("[OK] mcd.apk loaded");
+                            } catch (Throwable x) {}
+                            // Build ApkAssets array and set on native AM
+                            if (fwApk != null) apkList.add(fwApk);
+                            if (mcdApk != null) apkList.add(mcdApk);
+                            log("[DEBUG] apkList.size()=" + apkList.size());
+                            if (!apkList.isEmpty()) {
+                                Object arr = null;
+                                // Use the actual runtime class of loaded ApkAssets for array type
+                                Class<?> actualClass = apkList.get(0).getClass();
+                                try {
+                                    arr = java.lang.reflect.Array.newInstance(actualClass, apkList.size());
+                                    for (int ai = 0; ai < apkList.size(); ai++)
+                                        java.lang.reflect.Array.set(arr, ai, apkList.get(ai));
+                                } catch (Throwable x) {
+                                    // Try with the declared ApkAssets class
+                                    try {
+                                        arr = java.lang.reflect.Array.newInstance(apkClass, apkList.size());
+                                        for (int ai = 0; ai < apkList.size(); ai++)
+                                            java.lang.reflect.Array.set(arr, ai, apkList.get(ai));
+                                    } catch (Throwable x2) {
+                                        arr = apkList.toArray();
+                                    }
+                                }
+                                log("[DEBUG] ApkAssets array: " + (arr != null ? "ok, len=" + java.lang.reflect.Array.getLength(arr) : "null"));
+                                if (arr != null) {
+                                try { Field af = amClass.getDeclaredField("mApkAssets"); af.setAccessible(true);
+                                      af.set(assetMgr, arr); } catch (Throwable x) {}
+                                } // end if arr != null
+                            }
+                            }
+                        } catch (Throwable t4) {
+                            log("[WARN] AssetManager setup: " + t4.getClass().getSimpleName());
+                        }
+                        // Set mAssets and call nativeSetApkAssets inside inner scope
+                        try {
+                            Field amF = resImplClass.getDeclaredField("mAssets");
+                            amF.setAccessible(true);
+                            amF.set(resImpl, assetMgr);
+                            log("[OK] mAssets = AssetManager");
+                        } catch (Throwable t4) {}
+                        if (!apkList.isEmpty()) {
+                            try {
+                                nativeSetApkAssets(assetMgr, apkList.toArray(), ptr);
+                                log("[OK] RESOURCES CONNECTED!");
+                            } catch (Throwable x) {
+                                log("[WARN] nativeSetApkAssets: " + x.getClass().getSimpleName());
+                            }
+                        }
+                    // Set DisplayMetrics on ResourcesImpl
+                    try {
+                        Class<?> dmClass = Class.forName("android.util.DisplayMetrics");
+                        Object dm = nativeAllocInstance(dmClass);
+                        // Set reasonable defaults
+                        try { Field f = dmClass.getDeclaredField("density"); f.setAccessible(true); f.setFloat(dm, 2.0f); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("densityDpi"); f.setAccessible(true); f.setInt(dm, 320); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("widthPixels"); f.setAccessible(true); f.setInt(dm, 1080); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("heightPixels"); f.setAccessible(true); f.setInt(dm, 2340); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("xdpi"); f.setAccessible(true); f.setFloat(dm, 420f); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("ydpi"); f.setAccessible(true); f.setFloat(dm, 420f); } catch (Throwable x) {}
+                        try { Field f = dmClass.getDeclaredField("scaledDensity"); f.setAccessible(true); f.setFloat(dm, 2.0f); } catch (Throwable x) {}
+                        Field dmF = resImplClass.getDeclaredField("mMetrics");
+                        dmF.setAccessible(true);
+                        dmF.set(resImpl, dm);
+                    } catch (Throwable t3) {}
+                    // Set lock objects on Resources (sync-on-null prevention)
+                    try {
+                        Field tlF = resClass.getDeclaredField("mTmpValueLock");
+                        tlF.setAccessible(true);
+                        tlF.set(resources, new Object());
+                    } catch (Throwable t3) {}
+                    try {
+                        Field alF = resClass.getDeclaredField("mAccessLock");
+                        alF.setAccessible(true);
+                        alF.set(resources, new Object());
+                    } catch (Throwable t3) {}
+                    // Set ResourcesImpl on Resources
+                    try {
+                        Field riF = resClass.getDeclaredField("mResourcesImpl");
+                        riF.setAccessible(true);
+                        riF.set(resources, resImpl);
+                        log("[OK] Resources + ResourcesImpl + Configuration");
+                    } catch (Throwable t3) {
+                        log("[WARN] mResourcesImpl: " + t3.getClass().getSimpleName());
+                    }
+                    if (resources != null) {
+                        Field resF = ctwClass.getDeclaredField("mResources");
+                        resF.setAccessible(true);
+                        resF.set(splash, resources);
+                        log("[OK] mResources set");
+                        // Also set on ContextImpl
+                        try {
+                            Class<?> ciClass = Class.forName("android.app.ContextImpl");
+                            Field ciResF = ciClass.getDeclaredField("mResources");
+                            ciResF.setAccessible(true);
+                            ciResF.set(mockContext, resources);
+                        } catch (Throwable t3) {}
+                        // Create a Theme object directly
+                        try {
+                            Class<?> themeClass = Class.forName("android.content.res.Resources$Theme");
+                            Object theme = nativeAllocInstance(themeClass);
+                            // Set mLock (used for synchronization in resolveAttribute)
+                            try {
+                                Field lockF = themeClass.getDeclaredField("mLock");
+                                lockF.setAccessible(true);
+                                lockF.set(theme, new Object());
+                            } catch (Throwable t4) {
+                                // Try 'mKey' or any Object field used as lock
+                                for (Field f : themeClass.getDeclaredFields()) {
+                                    if (f.getType() == Object.class) {
+                                        f.setAccessible(true);
+                                        if (f.get(theme) == null) {
+                                            f.set(theme, new Object());
+                                        }
+                                    }
+                                }
+                            }
+                            // Link Theme to Resources
+                            try {
+                                Field ownerF = themeClass.getDeclaredField("mResources");
+                                ownerF.setAccessible(true);
+                                ownerF.set(theme, resources);
+                            } catch (Throwable t4) {}
+                            // Set mTheme on Activity
+                            Field mThemeF = ctwClass.getDeclaredField("mTheme");
+                            mThemeF.setAccessible(true);
+                            mThemeF.set(splash, theme);
+                            log("[OK] mTheme pre-set (with mLock)");
+                        } catch (Throwable t3) {
+                            log("[WARN] mTheme: " + t3.getClass().getName());
+                        }
+                    }
+                } catch (Throwable t2) { log("[WARN] mResources: " + t2.getClass().getName()); }
+            } catch (Throwable t) { log("[WARN] theme: " + t.getClass().getName()); }
+
+            // Create AppCompatDelegate (needed for AppCompatActivity lifecycle)
+            try {
+                Class<?> acdClass = Class.forName("androidx.appcompat.app.AppCompatDelegateImpl");
+                Object delegate = nativeAllocInstance(acdClass);
+                // Set mHost on delegate (the Activity)
+                try {
+                    for (Class<?> c = acdClass; c != null; c = c.getSuperclass()) {
+                        try {
+                            Field hf = c.getDeclaredField("mHost");
+                            hf.setAccessible(true);
+                            hf.set(delegate, splash);
+                            break;
+                        } catch (Throwable x) {}
+                    }
+                } catch (Throwable x) {}
+                // Set the delegate on the Activity
+                try {
+                    Class<?> acaCls = Class.forName("androidx.appcompat.app.AppCompatActivity");
+                    Field dF = acaCls.getDeclaredField("mDelegate");
+                    dF.setAccessible(true);
+                    dF.set(splash, delegate);
+                    log("[OK] AppCompatDelegate set");
+                } catch (Throwable x) {
+                    // Try superclass
+                    for (Class<?> c = splash.getClass(); c != null; c = c.getSuperclass()) {
+                        try {
+                            Field dF = c.getDeclaredField("mDelegate");
+                            dF.setAccessible(true);
+                            dF.set(splash, delegate);
+                            log("[OK] AppCompatDelegate set (on " + c.getSimpleName() + ")");
+                            break;
+                        } catch (Throwable x2) {}
+                    }
+                }
+            } catch (Throwable t) { log("[WARN] AppCompatDelegate: " + t.getClass().getName()); }
+
+            // mToken — needed for window operations
+            try {
+                Class<?> binderClass = Class.forName("android.os.Binder");
+                Object token = nativeAllocInstance(binderClass);
+                Field f = actClass.getDeclaredField("mToken");
+                f.setAccessible(true); f.set(splash, token);
+                log("[OK] mToken set");
+            } catch (Throwable t) { log("[WARN] mToken: " + t.getClass().getName()); }
+
+            } catch (Throwable t) { log("[WARN] theme block: " + t.getClass().getName()); }
+
+        } catch (Throwable t) {
+            log("[FAIL] fields: " + t.getClass().getName());
+        }
+
+        // Pre-set MCD injected fields that Hilt would normally provide
+        try {
+            // initializationConfigRepository → mock that returns default config
+            Class<?> icrClass = Class.forName("com.mcdonalds.mcdcoreapp.startup.repository.InitializationConfigRepository");
+            Class<?> icClass = Class.forName("com.mcdonalds.mcdcoreapp.startup.model.InitializationConfig");
+            Object config = nativeAllocInstance(icClass);
+            // Create a proxy that returns our config for getConfig()
+            // Since it's an interface, we need a real implementation
+            // Simplest: find MCD's implementation class
+            // For now: just set the field to null and let the NPE happen with more context
+            // OR: create a no-op implementation via dynamic proxy
+            // Can't create proxy/impl in standalone ART — skip this field
+            // SplashActivity.onCreate will NPE on getConfig() but step 8 works
+            log("[INFO] InitConfigRepo is an interface — can't mock without DI");
+            // Can't set the field — no implementation available
+        } catch (Throwable t) {
+            log("[WARN] InitConfigRepo: " + t.getClass().getSimpleName());
+        }
+
+        // Step 6: CALL onCreate(null) !!!
+        log("[6] Calling SplashActivity.onCreate(null)...");
+        log("    (all bytecode runs through Westlake interpreter)");
+        try {
+            Method onCreate = splashClass.getDeclaredMethod("onCreate", Class.forName("android.os.Bundle", false, cl));
+            onCreate.setAccessible(true);
+            onCreate.invoke(splash, (Object) null);
+            log("[OK] onCreate returned!");
+        } catch (Throwable t) {
+            // Use native exception printer to avoid StackOverflow from
+            // getMessage() / string concat in the interpreter
+            try { nativePrintException(t); } catch (Throwable t2) {
+                log("[EXEC] nativePrintException failed");
+            }
+        }
+
+        // Step 7: Try calling AppCompatActivity.onCreate directly if SplashActivity failed
+        log("[7] Trying AppCompatActivity.onCreate...");
+        try {
+            Class<?> appCompatCls = Class.forName("androidx.appcompat.app.AppCompatActivity");
+            Method acOnCreate = appCompatCls.getDeclaredMethod("onCreate", Class.forName("android.os.Bundle", false, cl));
+            acOnCreate.setAccessible(true);
+            acOnCreate.invoke(splash, (Object) null);
+            log("[OK] AppCompatActivity.onCreate returned!");
+        } catch (Throwable t) {
+            try { nativePrintException(t); } catch (Throwable t2) {}
+        }
+
+        // Step 8: Set mCalled=true and test View system
+        log("[8] Setting mCalled=true + testing View system...");
+        try {
+            Class<?> actCls = Class.forName("android.app.Activity");
+            Field calledF = actCls.getDeclaredField("mCalled");
+            calledF.setAccessible(true);
+            calledF.set(splash, true);
+            log("[OK] mCalled = true");
+
+            // Test: create a simple View to see how far rendering gets
+            // Use android.view.View directly (simpler than TextView)
+            try {
+                Class<?> viewClass = Class.forName("android.view.View");
+                Object view = nativeAllocInstance(viewClass);
+                log("[OK] View created via AllocObject");
+
+                // Set layout params
+                try {
+                    Class<?> lpClass = Class.forName("android.view.ViewGroup$LayoutParams");
+                    Object lp = nativeAllocInstance(lpClass);
+                    try { lpClass.getDeclaredField("width").setInt(lp, -1); } catch (Throwable x) {}  // MATCH_PARENT
+                    try { lpClass.getDeclaredField("height").setInt(lp, -1); } catch (Throwable x) {}
+                    Field lpF = viewClass.getDeclaredField("mLayoutParams");
+                    lpF.setAccessible(true);
+                    lpF.set(view, lp);
+                    log("[OK] View layout params set");
+                } catch (Throwable t2) {}
+
+                // Try to add the View to the screen via WindowManager!
+                log("[9] Attempting WindowManager.addView()...");
+                try {
+                    // Get WindowManager via Context.getSystemService
+                    Class<?> ctxClass = Class.forName("android.content.Context");
+                    Method getService = ctxClass.getMethod("getSystemService", String.class);
+                    Object wm = getService.invoke(splash, "window");
+                    log("[DEBUG] WindowManager = " + (wm != null ? wm.getClass().getName() : "null"));
+
+                    if (wm == null) {
+                        // Create WindowManagerImpl directly
+                        try {
+                            Class<?> wmiClass = Class.forName("android.view.WindowManagerImpl");
+                            wm = nativeAllocInstance(wmiClass);
+                            // Set mContext to our Activity
+                            try { Field cf = wmiClass.getDeclaredField("mContext"); cf.setAccessible(true);
+                                  cf.set(wm, splash); } catch (Throwable x) {}
+                            // Set mParentWindow
+                            try { Field pwF = wmiClass.getDeclaredField("mParentWindow"); pwF.setAccessible(true);
+                                  Field wF = Class.forName("android.app.Activity").getDeclaredField("mWindow"); wF.setAccessible(true);
+                                  pwF.set(wm, wF.get(splash)); } catch (Throwable x) {}
+                            // Set the WindowManagerGlobal singleton
+                            try {
+                                Class<?> wmgClass = Class.forName("android.view.WindowManagerGlobal");
+                                Method getInstance = wmgClass.getDeclaredMethod("getInstance");
+                                getInstance.setAccessible(true);
+                                Object wmg = getInstance.invoke(null);
+                                if (wmg != null) {
+                                    Field gF = wmiClass.getDeclaredField("mGlobal");
+                                    gF.setAccessible(true);
+                                    gF.set(wm, wmg);
+                                    log("[OK] WindowManagerImpl set (context+global)");
+                                }
+                            } catch (Throwable x) {}
+                            // Also set on Activity.mWindowManager
+                            try { Field wmF = Class.forName("android.app.Activity").getDeclaredField("mWindowManager"); wmF.setAccessible(true);
+                                  wmF.set(splash, wm); } catch (Throwable x) {}
+                        } catch (Throwable x) {}
+                    }
+
+                    if (wm != null) {
+                        log("[OK] WindowManager = " + wm.getClass().getName());
+                        // Create WindowManager.LayoutParams
+                        Class<?> wmlpClass = Class.forName("android.view.WindowManager$LayoutParams");
+                        Object wmLp = nativeAllocInstance(wmlpClass);
+                        try { wmlpClass.getDeclaredField("width").setInt(wmLp, 300); } catch (Throwable x) {}
+                        try { wmlpClass.getDeclaredField("height").setInt(wmLp, 200); } catch (Throwable x) {}
+                        try { wmlpClass.getDeclaredField("type").setInt(wmLp, 2038); } catch (Throwable x) {} // OVERLAY
+                        try { wmlpClass.getDeclaredField("flags").setInt(wmLp, 8 | 256); } catch (Throwable x) {} // NOT_FOCUSABLE | NOT_TOUCH_MODAL
+                        try { wmlpClass.getDeclaredField("format").setInt(wmLp, -3); } catch (Throwable x) {} // TRANSLUCENT
+                        try { wmlpClass.getDeclaredField("gravity").setInt(wmLp, 48 | 3); } catch (Throwable x) {} // TOP|LEFT
+                        try { wmlpClass.getDeclaredField("x").setInt(wmLp, 100); } catch (Throwable x) {}
+                        try { wmlpClass.getDeclaredField("y").setInt(wmLp, 100); } catch (Throwable x) {}
+                        try {
+                            Method setTitle = wmlpClass.getMethod("setTitle", CharSequence.class);
+                            setTitle.invoke(wmLp, "WestlakeMCD");
+                        } catch (Throwable x) {}
+
+                        // Create a visible overlay via VirtualDisplay + SurfaceControl
+                        // First try: create SurfaceControl as child of display root
+                        try {
+                            Class<?> scClass2 = Class.forName("android.view.SurfaceControl");
+                            // Create a virtual display that mirrors to the real display
+                            Class<?> dmClass2 = Class.forName("android.hardware.display.DisplayManager");
+                            // Get DisplayManager from Context
+                            Method getSvc = splash.getClass().getMethod("getSystemService", String.class);
+                            Object dispMgr = getSvc.invoke(splash, "display");
+                            if (dispMgr != null) {
+                                // createVirtualDisplay(name, width, height, densityDpi, surface, flags)
+                                Method createVD = dmClass2.getDeclaredMethod("createVirtualDisplay",
+                                    String.class, int.class, int.class, int.class,
+                                    Class.forName("android.view.Surface"), int.class);
+                                createVD.setAccessible(true);
+                                // Create a Surface first, then give it to the virtual display
+                                log("[INFO] Trying VirtualDisplay...");
+                            }
+                        } catch (Throwable x) {}
+
+                        // Create a real Surface via SurfaceControl and draw to it!
+                        try {
+                            Class<?> scClass = Class.forName("android.view.SurfaceControl");
+                            // Use SurfaceControl.Builder to create a surface
+                            Class<?> builderClass = Class.forName("android.view.SurfaceControl$Builder");
+                            // SurfaceSession for communication with SurfaceFlinger
+                            Class<?> ssClass = Class.forName("android.view.SurfaceSession");
+                            Object session = ssClass.getDeclaredConstructor().newInstance();
+                            log("[OK] SurfaceSession created (SurfaceFlinger connection)");
+
+                            // Build a SurfaceControl
+                            // Create SurfaceControl via nativeCreate directly
+                            Object surfaceControl = nativeAllocInstance(scClass);
+                            // Call SurfaceControl.nativeCreate
+                            Method nc = scClass.getDeclaredMethod("nativeCreate",
+                                ssClass, String.class, int.class, int.class, int.class, int.class,
+                                long.class, Class.forName("android.os.Parcel"));
+                            nc.setAccessible(true);
+                            // Get the default display token for parenting
+                            long displayToken = 0;
+                            try {
+                                Method getDisplay = scClass.getDeclaredMethod("getInternalDisplayToken");
+                                getDisplay.setAccessible(true);
+                                Object token = getDisplay.invoke(null);
+                                if (token != null) {
+                                    // IBinder token → native handle
+                                    displayToken = 0; // Can't easily convert IBinder to native handle
+                                }
+                            } catch (Throwable x) {}
+                            // Create a DISPLAY via SurfaceControl.createDisplay — this gives us
+                            // a display-level surface that SurfaceFlinger WILL composite
+                            Object westlakeDisplayToken = null;
+                            try {
+                                Method createDisp = scClass.getDeclaredMethod("createDisplay", String.class, boolean.class);
+                                createDisp.setAccessible(true);
+                                westlakeDisplayToken = createDisp.invoke(null, "WestlakeMCD", false);
+                                log("[OK] SurfaceControl.createDisplay('WestlakeMCD') → " + (westlakeDisplayToken != null ? "token" : "null"));
+                            } catch (Throwable x) {
+                                log("[WARN] createDisplay: " + x.getClass().getSimpleName());
+                            }
+                            // Create surface
+                            // Create FULL SCREEN surface for maximum visibility
+                            long scPtr = (Long)nc.invoke(null, session, "WestlakeMCD",
+                                1080, 2280, 1 /*RGBA_8888*/, 0, 0L, null);
+                            log("[OK] SurfaceControl nativeCreate ptr=" + scPtr);
+                            // Set native pointer on SurfaceControl
+                            try {
+                                Field npF = scClass.getDeclaredField("mNativeObject");
+                                npF.setAccessible(true);
+                                npF.setLong(surfaceControl, scPtr);
+                            } catch (Throwable x) {}
+                            try {
+                                Field nameF = scClass.getDeclaredField("mName");
+                                nameF.setAccessible(true);
+                                nameF.set(surfaceControl, "WestlakeMCD");
+                            } catch (Throwable x) {}
+
+                            // Create Surface — use nativeCreateFromSurfaceControl to avoid release
+                            Class<?> surfClass = Class.forName("android.view.Surface");
+                            Object surface = nativeAllocInstance(surfClass);
+                            try {
+                                Method ncfs = surfClass.getDeclaredMethod("nativeCreateFromSurfaceControl", long.class);
+                                ncfs.setAccessible(true);
+                                long surfPtr = (Long)ncfs.invoke(null, scPtr);
+                                Field spF = surfClass.getDeclaredField("mNativeObject");
+                                spF.setAccessible(true);
+                                spF.setLong(surface, surfPtr);
+                                // Set mLock + mCanvas
+                                try { Field lf = surfClass.getDeclaredField("mLock"); lf.setAccessible(true);
+                                      lf.set(surface, new Object()); } catch (Throwable x) {}
+                                // Create Canvas for lockCanvas
+                                try {
+                                    Class<?> canvasCls = Class.forName("android.graphics.Canvas");
+                                    Object canvas = canvasCls.getDeclaredConstructor().newInstance();
+                                    Field cf = surfClass.getDeclaredField("mCanvas");
+                                    cf.setAccessible(true);
+                                    cf.set(surface, canvas);
+                                } catch (Throwable x) {
+                                    try {
+                                        Class<?> canvasCls = Class.forName("android.graphics.Canvas");
+                                        Object canvas = nativeAllocInstance(canvasCls);
+                                        Field cf = surfClass.getDeclaredField("mCanvas");
+                                        cf.setAccessible(true);
+                                        cf.set(surface, canvas);
+                                    } catch (Throwable x2) {}
+                                }
+                                log("[OK] Surface CREATED: nativePtr=" + surfPtr);
+                            } catch (Throwable x) {
+                                // Fallback to constructor
+                                Constructor<?> surfCtor = surfClass.getDeclaredConstructor(scClass);
+                                surfCtor.setAccessible(true);
+                                surface = surfCtor.newInstance(surfaceControl);
+                                log("[OK] Surface via constructor");
+                            }
+
+                            // Get a Canvas and draw!
+                            try {
+                                Method lockCanvas = surfClass.getDeclaredMethod("lockCanvas", Class.forName("android.graphics.Rect"));
+                                lockCanvas.setAccessible(true);
+                                Object canvas = lockCanvas.invoke(surface, (Object)null);
+                                if (canvas != null) {
+                                    log("[OK] Canvas LOCKED — drawing!");
+                                    // Draw red background
+                                    Class<?> canvasClass = Class.forName("android.graphics.Canvas");
+                                    Method drawColor = canvasClass.getDeclaredMethod("drawColor", int.class);
+                                    drawColor.invoke(canvas, 0xFFDA291C); // MCD Red
+                                    log("[OK] drawColor(MCD_RED) — full screen red!");
+                                    // Draw text
+                                    try {
+                                        Class<?> paintClass = Class.forName("android.graphics.Paint");
+                                        Object paint = paintClass.getDeclaredConstructor().newInstance();
+                                        Method setColor = paintClass.getMethod("setColor", int.class);
+                                        setColor.invoke(paint, 0xFFFFFFFF); // White
+                                        Method setTextSize = paintClass.getMethod("setTextSize", float.class);
+                                        setTextSize.invoke(paint, 120f);
+                                        Method drawText = canvasClass.getDeclaredMethod("drawText",
+                                            String.class, float.class, float.class, paintClass);
+                                        drawText.invoke(canvas, "WESTLAKE", 150f, 500f, paint);
+                                        drawText.invoke(canvas, "MCD", 300f, 700f, paint);
+                                        setTextSize.invoke(paint, 60f);
+                                        drawText.invoke(canvas, "Running on ART v118", 100f, 900f, paint);
+                                        drawText.invoke(canvas, "Switch Interpreter", 150f, 1000f, paint);
+                                        log("[OK] Drew text: WESTLAKE MCD");
+                                    } catch (Throwable x) {
+                                        log("[WARN] Text: " + x.getClass().getSimpleName());
+                                    }
+                                    // Unlock and post
+                                    Method unlockAndPost = surfClass.getDeclaredMethod("unlockCanvasAndPost", canvasClass);
+                                    unlockAndPost.invoke(surface, canvas);
+                                    log("[OK] unlockCanvasAndPost — FRAME SUBMITTED TO SURFACEFLINGER!");
+                                    // Make visible via Transaction — must reparent to default display
+                                    Class<?> txClass = Class.forName("android.view.SurfaceControl$Transaction");
+                                    Object tx = txClass.getDeclaredConstructor().newInstance();
+
+                                    // Reparent to default display root layer
+                                    try {
+                                        // Use our created display token
+                                        Object dispTok = westlakeDisplayToken;
+                                        log("[DEBUG] Display token: " + (dispTok != null ? "got" : "null"));
+
+                                        if (dispTok != null) {
+                                            Method setDisplay = txClass.getDeclaredMethod("setDisplaySurface",
+                                                Class.forName("android.os.IBinder"), surfClass);
+                                            setDisplay.setAccessible(true);
+                                            setDisplay.invoke(tx, dispTok, surface);
+                                            // Set display size
+                                            try {
+                                                Method setSize = txClass.getDeclaredMethod("setDisplaySize",
+                                                    Class.forName("android.os.IBinder"), int.class, int.class);
+                                                setSize.setAccessible(true);
+                                                setSize.invoke(tx, dispTok, 500, 300);
+                                            } catch (Throwable x2) {}
+                                            // Set display layer stack to 0 (default display)
+                                            try {
+                                                Method setLS = txClass.getDeclaredMethod("setDisplayLayerStack",
+                                                    Class.forName("android.os.IBinder"), int.class);
+                                                setLS.setAccessible(true);
+                                                setLS.invoke(tx, dispTok, 0);
+                                            } catch (Throwable x2) {}
+                                            // Set display projection
+                                            try {
+                                                Class<?> rectClass = Class.forName("android.graphics.Rect");
+                                                Object srcRect = rectClass.getConstructor(int.class,int.class,int.class,int.class).newInstance(0,0,500,300);
+                                                Object dstRect = rectClass.getConstructor(int.class,int.class,int.class,int.class).newInstance(100,200,600,500);
+                                                Method setProj = txClass.getDeclaredMethod("setDisplayProjection",
+                                                    Class.forName("android.os.IBinder"), int.class, rectClass, rectClass);
+                                                setProj.setAccessible(true);
+                                                setProj.invoke(tx, dispTok, 0, srcRect, dstRect);
+                                            } catch (Throwable x2) {}
+                                            log("[OK] setDisplaySurface called!");
+                                        }
+                                    } catch (Throwable x) {
+                                        // Try creating a virtual display instead
+                                        log("[INFO] setDisplaySurface failed, using show+setLayer");
+                                    }
+
+                                    // Set layer stack to 0 (physical display)
+                                    try {
+                                        Method setLS = txClass.getDeclaredMethod("setLayerStack", scClass, int.class);
+                                        setLS.setAccessible(true);
+                                        setLS.invoke(tx, surfaceControl, 0);
+                                        log("[OK] setLayerStack(0) — physical display");
+                                    } catch (Throwable x) {
+                                        log("[WARN] setLayerStack: " + x.getClass().getSimpleName());
+                                    }
+                                    Method show = txClass.getDeclaredMethod("show", scClass);
+                                    show.setAccessible(true);
+                                    show.invoke(tx, surfaceControl);
+                                    Method setLayer = txClass.getDeclaredMethod("setLayer", scClass, int.class);
+                                    setLayer.setAccessible(true);
+                                    setLayer.invoke(tx, surfaceControl, 0x7FFFFFFF);
+                                    // Full screen — no position needed (defaults to 0,0)
+                                    Method apply = txClass.getDeclaredMethod("apply");
+                                    apply.setAccessible(true);
+                                    apply.invoke(tx);
+                                    log("[OK] Transaction.apply() — layer stack 0, shown, layer MAX, pos(100,200)");
+                                    // Keep alive for 10 seconds so user can see it
+                                    log("[INFO] MCD RED RECTANGLE SHOULD BE VISIBLE ON PHONE SCREEN!");
+                                    // Animate MCD branding using only drawColor (works!)
+                                    log("[INFO] MCD animation — 30 seconds!");
+                                    // MCD color palette
+                                    int MCD_RED = 0xFFDA291C;
+                                    int MCD_GOLD = 0xFFFFC72C;
+                                    int MCD_BROWN = 0xFF27251F;
+                                    int MCD_WHITE = 0xFFFFFFFF;
+                                    int[] palette = {MCD_RED, MCD_GOLD, MCD_BROWN, MCD_RED, MCD_WHITE, MCD_GOLD};
+                                    for (int frame = 0; frame < 60; frame++) {
+                                        try {
+                                            Object c2 = lockCanvas.invoke(surface, (Object)null);
+                                            if (c2 == null) break;
+                                            // Cycle through MCD colors
+                                            drawColor.invoke(c2, palette[frame % palette.length]);
+                                            unlockAndPost.invoke(surface, c2);
+                                        } catch (Throwable x) { break; }
+                                        Thread.sleep(500);
+                                    }
+                                }
+                            } catch (Throwable x) {
+                                log("[WARN] Canvas: " + x.getClass().getSimpleName());
+                                try { nativePrintException(x); } catch (Throwable x2) {}
+                            }
+                        } catch (Throwable t2) {
+                            log("[WARN] SurfaceControl: " + t2.getClass().getSimpleName());
+                            try { nativePrintException(t2); } catch (Throwable t3) {}
+                        }
+
+                        // Call WindowManagerGlobal.addView directly
+                        try {
+                            Class<?> wmgClass = Class.forName("android.view.WindowManagerGlobal");
+                            Method getInstance = wmgClass.getDeclaredMethod("getInstance");
+                            getInstance.setAccessible(true);
+                            Object wmg = getInstance.invoke(null);
+                            if (wmg != null) {
+                                // Get the default Display
+                                Class<?> dispClass = Class.forName("android.view.Display");
+                                Object display = null;
+                                try {
+                                    // Get real display via DisplayManagerGlobal
+                                    Class<?> dmgClass = Class.forName("android.hardware.display.DisplayManagerGlobal");
+                                    Method dmGetInst = dmgClass.getDeclaredMethod("getInstance");
+                                    dmGetInst.setAccessible(true);
+                                    Object dm = dmGetInst.invoke(null);
+                                    if (dm != null) {
+                                        // Try getRealDisplay first (no adjustments needed)
+                                        try {
+                                            Method getRealDisp = dmgClass.getDeclaredMethod("getRealDisplay", int.class);
+                                            getRealDisp.setAccessible(true);
+                                            display = getRealDisp.invoke(dm, 0); // DEFAULT_DISPLAY = 0
+                                        } catch (Throwable x2) {
+                                            // Try getCompatibleDisplay with DisplayAdjustments
+                                            try {
+                                                Class<?> daClass = Class.forName("android.view.DisplayAdjustments");
+                                                Object da = nativeAllocInstance(daClass);
+                                                Method getDisp = dmgClass.getDeclaredMethod("getCompatibleDisplay", int.class, daClass);
+                                                getDisp.setAccessible(true);
+                                                display = getDisp.invoke(dm, 0, da);
+                                            } catch (Throwable x3) {}
+                                        }
+                                    }
+                                } catch (Throwable x) {}
+                                // Ensure Display has valid DisplayInfo (whether from getRealDisplay or mock)
+                                if (display == null) display = nativeAllocInstance(dispClass);
+                                try {
+                                    Class<?> diClass = Class.forName("android.view.DisplayInfo");
+                                    Field diF = dispClass.getDeclaredField("mDisplayInfo");
+                                    diF.setAccessible(true);
+                                    Object di = diF.get(display);
+                                    if (di == null) di = nativeAllocInstance(diClass);
+                                    // Set real display dimensions (from phone: 1080x2280, density 450)
+                                    try { diClass.getDeclaredField("logicalWidth").setInt(di, 1080); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("logicalHeight").setInt(di, 2280); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("logicalDensityDpi").setInt(di, 450); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("physicalXDpi").setFloat(di, 403f); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("physicalYDpi").setFloat(di, 399f); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("appWidth").setInt(di, 1080); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("appHeight").setInt(di, 2280); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("modeId").setInt(di, 1); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("defaultModeId").setInt(di, 1); } catch (Throwable x) {}
+                                    try { diClass.getDeclaredField("renderFrameRate").setFloat(di, 60f); } catch (Throwable x) {}
+                                    // Create Display.Mode array with one valid mode
+                                    try {
+                                        Class<?> modeClass = Class.forName("android.view.Display$Mode");
+                                        Object mode = nativeAllocInstance(modeClass);
+                                        try { modeClass.getDeclaredField("mModeId").setInt(mode, 1); } catch (Throwable x) {}
+                                        try { modeClass.getDeclaredField("mWidth").setInt(mode, 1080); } catch (Throwable x) {}
+                                        try { modeClass.getDeclaredField("mHeight").setInt(mode, 2280); } catch (Throwable x) {}
+                                        try { modeClass.getDeclaredField("mRefreshRate").setFloat(mode, 60f); } catch (Throwable x) {}
+                                        Object modeArr = java.lang.reflect.Array.newInstance(modeClass, 1);
+                                        java.lang.reflect.Array.set(modeArr, 0, mode);
+                                        try { diClass.getDeclaredField("supportedModes").set(di, modeArr); } catch (Throwable x) {}
+                                        try { diClass.getDeclaredField("appsSupportedModes").set(di, modeArr); } catch (Throwable x) {}
+                                    } catch (Throwable x) {}
+                                    diF.set(display, di);
+                                    log("[OK] Display: 1080x2280 @450dpi");
+                                } catch (Throwable x) {}
+                                log("[DEBUG] Display = " + (display != null ? display.getClass().getName() : "null"));
+
+                                // addView(View, LayoutParams, Display, Window, int)
+                                Method addView = wmgClass.getDeclaredMethod("addView",
+                                    Class.forName("android.view.View"),
+                                    Class.forName("android.view.ViewGroup$LayoutParams"),
+                                    dispClass,
+                                    Class.forName("android.view.Window"),
+                                    int.class);
+                                addView.setAccessible(true);
+                                addView.invoke(wmg, view, wmLp, display, null, 0);
+                                log("[OK] WindowManagerGlobal.addView() CALLED — VIEW ADDED!!!");
+                            }
+                        } catch (Throwable t2) {
+                            log("[WARN] addView: " + t2.getClass().getSimpleName());
+                            try { nativePrintException(t2); } catch (Throwable t3) {}
+                        }
+                    }
+                } catch (Throwable t) {
+                    try { nativePrintException(t); } catch (Throwable t2) {}
+                }
+            } catch (Throwable t) {
+                try { nativePrintException(t); } catch (Throwable t2) {}
+            }
+        } catch (Throwable t) {
+            try { nativePrintException(t); } catch (Throwable t2) {}
+        }
+
+        log("=== Westlake: onCreate execution complete ===");
+    }
+}

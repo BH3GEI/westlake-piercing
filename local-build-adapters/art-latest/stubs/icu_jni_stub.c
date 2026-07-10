@@ -1,0 +1,420 @@
+#include <jni.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+static void registerNativesOrSkip(JNIEnv* env, jclass clazz,
+    const JNINativeMethod* methods, int nMethods) {
+    jint result = (*env)->RegisterNatives(env, clazz, methods, nMethods);
+    if (result != 0) {
+        (*env)->ExceptionClear(env);
+        /* Try one at a time */
+        int registered = 0;
+        for (int i = 0; i < nMethods; i++) {
+            if ((*env)->RegisterNatives(env, clazz, &methods[i], 1) == 0) {
+                registered++;
+            } else {
+                (*env)->ExceptionClear(env);
+            }
+        }
+        fprintf(stderr, "[icu] Registered %d/%d methods\n", registered, nMethods);
+    }
+}
+
+/* Stub implementations for com.android.icu.util.Icu4cMetadata native methods */
+
+static jstring Icu4cMetadata_getTzdbVersion(JNIEnv* env, jclass clazz) {
+    return (*env)->NewStringUTF(env, "2021a");
+}
+
+static jstring Icu4cMetadata_getCldrVersion(JNIEnv* env, jclass clazz) {
+    return (*env)->NewStringUTF(env, "39");
+}
+
+static jstring Icu4cMetadata_getIcuVersion(JNIEnv* env, jclass clazz) {
+    return (*env)->NewStringUTF(env, "69.1");
+}
+
+static jstring Icu4cMetadata_getUnicodeVersion(JNIEnv* env, jclass clazz) {
+    return (*env)->NewStringUTF(env, "13.0");
+}
+
+/* ==================== NativeConverter stubs ==================== */
+
+/* Supported charsets - name, canonical ICU name, aliases */
+typedef struct {
+    const char* name;
+    const char* icuName;
+    const char* aliases[8];
+    int aliasCount;
+    float avgBytesPerChar;
+    float aveCharsPerByte;
+    int maxBytesPerChar;
+} CharsetInfo;
+
+static const CharsetInfo CHARSETS[] = {
+    {"UTF-8",       "UTF-8",       {"unicode-1-1-utf-8", "UTF8", "utf8", NULL}, 3, 1.1f, 1.0f, 4},
+    {"US-ASCII",    "US-ASCII",    {"ASCII", "ascii", "us-ascii", "iso-ir-6", NULL}, 4, 1.0f, 1.0f, 1},
+    {"ISO-8859-1",  "ISO-8859-1",  {"latin1", "iso_8859_1", "8859_1", "ISO8859-1", "ISO8859_1", NULL}, 5, 1.0f, 1.0f, 1},
+    {"UTF-16",      "UTF-16",      {"utf16", "UTF_16", NULL}, 2, 2.0f, 0.5f, 4},
+    {"UTF-16BE",    "UTF-16BE",    {"utf16be", "UTF_16BE", NULL}, 2, 2.0f, 0.5f, 2},
+    {"UTF-16LE",    "UTF-16LE",    {"utf16le", "UTF_16LE", NULL}, 2, 2.0f, 0.5f, 2},
+    {"UTF-32",      "UTF-32",      {"utf32", "UTF_32", NULL}, 2, 4.0f, 0.25f, 4},
+    {"UTF-32BE",    "UTF-32BE",    {"utf32be", NULL}, 1, 4.0f, 0.25f, 4},
+    {"UTF-32LE",    "UTF-32LE",    {"utf32le", NULL}, 1, 4.0f, 0.25f, 4},
+};
+#define NUM_CHARSETS (sizeof(CHARSETS) / sizeof(CHARSETS[0]))
+
+static int strcasecmp_ascii(const char* a, const char* b) {
+    while (*a && *b) {
+        char ca = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a;
+        char cb = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+        if (ca != cb) return ca - cb;
+        a++; b++;
+    }
+    return *a - *b;
+}
+
+static const CharsetInfo* findCharset(const char* name) {
+    for (int i = 0; i < (int)NUM_CHARSETS; i++) {
+        if (strcasecmp_ascii(name, CHARSETS[i].name) == 0) return &CHARSETS[i];
+        if (strcasecmp_ascii(name, CHARSETS[i].icuName) == 0) return &CHARSETS[i];
+        for (int j = 0; j < CHARSETS[i].aliasCount; j++) {
+            if (CHARSETS[i].aliases[j] && strcasecmp_ascii(name, CHARSETS[i].aliases[j]) == 0)
+                return &CHARSETS[i];
+        }
+    }
+    return NULL;
+}
+
+/* charsetForName(String) -> Charset */
+static jobject NativeConverter_charsetForName(JNIEnv* env, jclass clazz, jstring jname) {
+    if (!jname) return NULL;
+    const char* name = (*env)->GetStringUTFChars(env, jname, NULL);
+    const CharsetInfo* info = findCharset(name);
+    fprintf(stderr, "[icu] charsetForName(\"%s\") -> %s\n", name, info ? info->name : "NOT FOUND");
+    (*env)->ReleaseStringUTFChars(env, jname, name);
+    if (!info) return NULL;
+
+    /* Create Charset object without calling Charset(String, String[]) constructor.
+     * The constructor calls Collections.unmodifiableSet() which triggers a broken
+     * interface dispatch (Set.iterator() AbstractMethodError) in our standalone build.
+     * Instead, use Unsafe.allocateInstance + manual field setting. */
+    jclass charsetCls = (*env)->FindClass(env, "com/android/icu/charset/CharsetICU");
+    if (!charsetCls) return NULL;
+
+    /* Call CharsetICU constructor normally (sets up ICU fields), but then
+     * replace the aliasSet with a plain HashSet to avoid Collections$UnmodifiableSet
+     * which has broken itable dispatch for Set.iterator(). */
+    jobject result = NULL;
+    {
+        jmethodID ctor = (*env)->GetMethodID(env, charsetCls, "<init>",
+            "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)V");
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        if (ctor) {
+            jclass stringCls = (*env)->FindClass(env, "java/lang/String");
+            jobjectArray aliases = (*env)->NewObjectArray(env, info->aliasCount, stringCls, NULL);
+            for (int i = 0; i < info->aliasCount; i++) {
+                (*env)->SetObjectArrayElement(env, aliases, i,
+                    (*env)->NewStringUTF(env, info->aliases[i]));
+            }
+            result = (*env)->NewObject(env, charsetCls, ctor,
+                (*env)->NewStringUTF(env, info->name),
+                (*env)->NewStringUTF(env, info->icuName),
+                aliases);
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); result = NULL; }
+            /* Replace aliasSet (UnmodifiableSet) with an empty HashSet.
+             * UnmodifiableSet has broken itable dispatch for iterator().
+             * Aliases won't be available via aliases() but cache() won't crash. */
+            if (result) {
+                jclass baseCls = (*env)->FindClass(env, "java/nio/charset/Charset");
+                jfieldID aliasF = baseCls ? (*env)->GetFieldID(env, baseCls, "aliasSet", "Ljava/util/Set;") : NULL;
+                if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                if (aliasF) {
+                    jclass hsCls = (*env)->FindClass(env, "java/util/HashSet");
+                    jmethodID hsInit0 = hsCls ? (*env)->GetMethodID(env, hsCls, "<init>", "()V") : NULL;
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                    if (hsInit0) {
+                        jobject emptySet = (*env)->NewObject(env, hsCls, hsInit0);
+                        if (emptySet && !(*env)->ExceptionCheck(env)) {
+                            (*env)->SetObjectField(env, result, aliasF, emptySet);
+                        }
+                    }
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                }
+            }
+        }
+    }
+
+    if (result) {
+        /* Set Charset fields manually:
+         * - name (String) - canonical name
+         * - aliasSet (Set<String>) - use a plain HashSet to avoid UnmodifiableSet
+         */
+        jclass baseCharsetCls = (*env)->FindClass(env, "java/nio/charset/Charset");
+        if (baseCharsetCls) {
+            jfieldID nameField = (*env)->GetFieldID(env, baseCharsetCls, "name", "Ljava/lang/String;");
+            jfieldID aliasSetField = (*env)->GetFieldID(env, baseCharsetCls, "aliasSet", "Ljava/util/Set;");
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+            if (nameField)
+                (*env)->SetObjectField(env, result, nameField, (*env)->NewStringUTF(env, info->name));
+
+            /* Create a plain HashSet for aliases (avoids Collections.unmodifiableSet) */
+            if (aliasSetField) {
+                jclass hsCls = (*env)->FindClass(env, "java/util/HashSet");
+                jmethodID hsInit = hsCls ? (*env)->GetMethodID(env, hsCls, "<init>", "()V") : NULL;
+                if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                if (hsInit) {
+                    jobject aliasSet = (*env)->NewObject(env, hsCls, hsInit);
+                    if (aliasSet && !(*env)->ExceptionCheck(env)) {
+                        jmethodID addMethod = (*env)->GetMethodID(env, hsCls, "add", "(Ljava/lang/Object;)Z");
+                        if (addMethod) {
+                            for (int i = 0; i < info->aliasCount; i++) {
+                                (*env)->CallBooleanMethod(env, aliasSet, addMethod,
+                                    (*env)->NewStringUTF(env, info->aliases[i]));
+                            }
+                        }
+                        (*env)->SetObjectField(env, result, aliasSetField, aliasSet);
+                    }
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                }
+            }
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+            /* Set CharsetICU.icuCanonicalName */
+            jfieldID icuNameField = (*env)->GetFieldID(env, charsetCls, "icuCanonicalName", "Ljava/lang/String;");
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+            if (icuNameField)
+                (*env)->SetObjectField(env, result, icuNameField, (*env)->NewStringUTF(env, info->icuName));
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        }
+    } else {
+        /* Fallback: try constructor (will fail if UnmodifiableSet is broken) */
+        jmethodID ctor = (*env)->GetMethodID(env, charsetCls, "<init>",
+            "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)V");
+        if (ctor) {
+            jclass stringCls = (*env)->FindClass(env, "java/lang/String");
+            jobjectArray aliases = (*env)->NewObjectArray(env, info->aliasCount, stringCls, NULL);
+            for (int i = 0; i < info->aliasCount; i++) {
+                (*env)->SetObjectArrayElement(env, aliases, i, (*env)->NewStringUTF(env, info->aliases[i]));
+            }
+            result = (*env)->NewObject(env, charsetCls, ctor,
+                (*env)->NewStringUTF(env, info->name),
+                (*env)->NewStringUTF(env, info->icuName),
+                aliases);
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); result = NULL; }
+        }
+    }
+
+    (*env)->DeleteLocalRef(env, charsetCls);
+    return result;
+}
+
+/* getAvailableCharsetNames() -> String[] */
+static jobjectArray NativeConverter_getAvailableCharsetNames(JNIEnv* env, jclass clazz) {
+    jclass stringCls = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray result = (*env)->NewObjectArray(env, (jint)NUM_CHARSETS, stringCls, NULL);
+    for (int i = 0; i < (int)NUM_CHARSETS; i++) {
+        (*env)->SetObjectArrayElement(env, result, i, (*env)->NewStringUTF(env, CHARSETS[i].name));
+    }
+    (*env)->DeleteLocalRef(env, stringCls);
+    return result;
+}
+
+/* openConverter(String) -> long (fake handle) */
+static jlong NativeConverter_openConverter(JNIEnv* env, jclass clazz, jstring jname) {
+    if (!jname) return 0;
+    const char* name = (*env)->GetStringUTFChars(env, jname, NULL);
+    const CharsetInfo* info = findCharset(name);
+    (*env)->ReleaseStringUTFChars(env, jname, name);
+    if (!info) return 0;
+    /* Use index + 1 as fake handle */
+    return (jlong)(info - CHARSETS + 1);
+}
+
+/* closeConverter(long) */
+static void NativeConverter_closeConverter(JNIEnv* env, jclass clazz, jlong handle) {
+    /* no-op for fake handles */
+}
+
+/* getMaxBytesPerChar(long) */
+static jint NativeConverter_getMaxBytesPerChar(JNIEnv* env, jclass clazz, jlong handle) {
+    if (handle < 1 || handle > (jlong)NUM_CHARSETS) return 1;
+    return CHARSETS[handle - 1].maxBytesPerChar;
+}
+
+/* getAveBytesPerChar(long) */
+static jfloat NativeConverter_getAveBytesPerChar(JNIEnv* env, jclass clazz, jlong handle) {
+    if (handle < 1 || handle > (jlong)NUM_CHARSETS) return 1.0f;
+    return CHARSETS[handle - 1].avgBytesPerChar;
+}
+
+/* getAveCharsPerByte(long) */
+static jfloat NativeConverter_getAveCharsPerByte(JNIEnv* env, jclass clazz, jlong handle) {
+    if (handle < 1 || handle > (jlong)NUM_CHARSETS) return 1.0f;
+    return CHARSETS[handle - 1].aveCharsPerByte;
+}
+
+/* contains(String, String) */
+static jboolean NativeConverter_contains(JNIEnv* env, jclass clazz, jstring name1, jstring name2) {
+    /* Simplified: UTF-8 contains everything, ASCII contains ASCII, etc. */
+    return JNI_FALSE;
+}
+
+/* getSubstitutionBytes(long) -> byte[] */
+static jbyteArray NativeConverter_getSubstitutionBytes(JNIEnv* env, jclass clazz, jlong handle) {
+    jbyteArray result = (*env)->NewByteArray(env, 1);
+    jbyte sub = '?';
+    (*env)->SetByteArrayRegion(env, result, 0, 1, &sub);
+    return result;
+}
+
+/* resetByteToChar / resetCharToByte */
+static void NativeConverter_resetByteToChar(JNIEnv* env, jclass clazz, jlong handle) { }
+static void NativeConverter_resetCharToByte(JNIEnv* env, jclass clazz, jlong handle) { }
+
+/* getNativeFinalizer() -> long */
+static jlong NativeConverter_getNativeFinalizer(JNIEnv* env, jclass clazz) {
+    return 0; /* no native finalizer needed for stubs */
+}
+
+/* decode(long handle, byte[] input, int inEnd, char[] output, int outEnd, int[] data, boolean flush)
+   DEX signature: (J[BI[CI[IZ)I */
+static jint NativeConverter_decode(JNIEnv* env, jclass clazz, jlong handle,
+                                    jbyteArray input, jint inEnd,
+                                    jcharArray output, jint outEnd,
+                                    jintArray data, jboolean flush) {
+    jbyte* inBuf = (*env)->GetByteArrayElements(env, input, NULL);
+    jchar* outBuf = (*env)->GetCharArrayElements(env, output, NULL);
+    jint* d = (*env)->GetIntArrayElements(env, data, NULL);
+    jint inPos = d[0];
+    jint outPos = d[1];
+
+    jint count = (inEnd - inPos) < (outEnd - outPos) ? (inEnd - inPos) : (outEnd - outPos);
+    for (jint i = 0; i < count; i++) {
+        outBuf[outPos + i] = (jchar)(inBuf[inPos + i] & 0xFF);
+    }
+    /* CharsetDecoderICU.setPosition() is RELATIVE: buffer.position(position() + data[i]).
+     * So data must hold the DELTA processed this call, not the absolute new position —
+     * otherwise the flush pass (output already advanced) double-counts → IAE newPosition. */
+    d[0] = count;
+    d[1] = count;
+
+    (*env)->ReleaseIntArrayElements(env, data, d, 0);
+    (*env)->ReleaseCharArrayElements(env, output, outBuf, 0);
+    (*env)->ReleaseByteArrayElements(env, input, inBuf, JNI_ABORT);
+    return 0; /* CoderResult.UNDERFLOW */
+}
+
+/* encode(long handle, char[] input, int inEnd, byte[] output, int outEnd, int[] data, boolean flush)
+   DEX signature: (J[CI[BI[IZ)I */
+static jint NativeConverter_encode(JNIEnv* env, jclass clazz, jlong handle,
+                                    jcharArray input, jint inEnd,
+                                    jbyteArray output, jint outEnd,
+                                    jintArray data, jboolean flush) {
+    jchar* inBuf = (*env)->GetCharArrayElements(env, input, NULL);
+    jbyte* outBuf = (*env)->GetByteArrayElements(env, output, NULL);
+    jint* d = (*env)->GetIntArrayElements(env, data, NULL);
+    jint inPos = d[0];
+    jint outPos = d[1];
+
+    jint count = (inEnd - inPos) < (outEnd - outPos) ? (inEnd - inPos) : (outEnd - outPos);
+    for (jint i = 0; i < count; i++) {
+        outBuf[outPos + i] = (jbyte)(inBuf[inPos + i] & 0xFF);
+    }
+    d[0] = inPos + count;
+    d[1] = outPos + count;
+
+    (*env)->ReleaseIntArrayElements(env, data, d, 0);
+    (*env)->ReleaseByteArrayElements(env, output, outBuf, 0);
+    (*env)->ReleaseCharArrayElements(env, input, inBuf, JNI_ABORT);
+    return 0;
+}
+
+/* setCallbackDecode / setCallbackEncode */
+static void NativeConverter_setCallbackDecode(JNIEnv* env, jclass clazz, jlong handle,
+                                               jint onMalformed, jint onUnmappable, jstring subChars) { }
+static void NativeConverter_setCallbackEncode(JNIEnv* env, jclass clazz, jlong handle,
+                                               jint onMalformed, jint onUnmappable, jbyteArray subBytes) { }
+
+/* ==================== JNI_OnLoad ==================== */
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    JNIEnv* env;
+    fprintf(stderr, "[icu_jni] JNI_OnLoad entered\n");
+    if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
+
+    /* Register Icu4cMetadata methods */
+    {
+        jclass cls = (*env)->FindClass(env, "com/android/icu/util/Icu4cMetadata");
+        fprintf(stderr, "[icu_jni] Icu4cMetadata FindClass: %p\n", cls);
+        if (cls) {
+            JNINativeMethod methods[] = {
+                {"getTzdbVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getTzdbVersion},
+                {"getCldrVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getCldrVersion},
+                {"getIcuVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getIcuVersion},
+                {"getUnicodeVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getUnicodeVersion},
+            };
+            (*env)->RegisterNatives(env, cls, methods, 4);
+            (*env)->DeleteLocalRef(env, cls);
+        }
+    }
+
+    /* Register libcore.icu.ICU methods (A15 uses this class name) */
+    {
+        jclass cls = (*env)->FindClass(env, "libcore/icu/ICU");
+        fprintf(stderr, "[icu_jni] libcore.icu.ICU FindClass: %p\n", cls);
+        if (cls) {
+            JNINativeMethod methods[] = {
+                {"getIcuVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getIcuVersion},
+                {"getTZDataVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getTzdbVersion},
+                {"getCldrVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getCldrVersion},
+                {"getUnicodeVersion", "()Ljava/lang/String;", (void*)Icu4cMetadata_getUnicodeVersion},
+            };
+            registerNativesOrSkip(env, cls, methods, sizeof(methods)/sizeof(methods[0]));
+            (*env)->DeleteLocalRef(env, cls);
+        }
+    }
+
+    /* Register NativeConverter methods */
+    {
+        fprintf(stderr, "[icu_jni] About to FindClass NativeConverter...\n");
+        jclass cls = (*env)->FindClass(env, "com/android/icu/charset/NativeConverter");
+        fprintf(stderr, "[icu_jni] NativeConverter FindClass: %p\n", cls);
+        if (cls) {
+            JNINativeMethod methods[] = {
+                {"charsetForName", "(Ljava/lang/String;)Ljava/nio/charset/Charset;", (void*)NativeConverter_charsetForName},
+                {"getAvailableCharsetNames", "()[Ljava/lang/String;", (void*)NativeConverter_getAvailableCharsetNames},
+                {"openConverter", "(Ljava/lang/String;)J", (void*)NativeConverter_openConverter},
+                {"closeConverter", "(J)V", (void*)NativeConverter_closeConverter},
+                {"getMaxBytesPerChar", "(J)I", (void*)NativeConverter_getMaxBytesPerChar},
+                {"getAveBytesPerChar", "(J)F", (void*)NativeConverter_getAveBytesPerChar},
+                {"getAveCharsPerByte", "(J)F", (void*)NativeConverter_getAveCharsPerByte},
+                {"contains", "(Ljava/lang/String;Ljava/lang/String;)Z", (void*)NativeConverter_contains},
+                {"getSubstitutionBytes", "(J)[B", (void*)NativeConverter_getSubstitutionBytes},
+                {"resetByteToChar", "(J)V", (void*)NativeConverter_resetByteToChar},
+                {"resetCharToByte", "(J)V", (void*)NativeConverter_resetCharToByte},
+                {"getNativeFinalizer", "()J", (void*)NativeConverter_getNativeFinalizer},
+                {"decode", "(J[BI[CI[IZ)I", (void*)NativeConverter_decode},
+                {"encode", "(J[CI[BI[IZ)I", (void*)NativeConverter_encode},
+                {"setCallbackDecode", "(JIILjava/lang/String;)V", (void*)NativeConverter_setCallbackDecode},
+                {"setCallbackEncode", "(JII[B)V", (void*)NativeConverter_setCallbackEncode},
+            };
+            fprintf(stderr, "[icu_jni] Registering %d NativeConverter methods...\n", (int)(sizeof(methods)/sizeof(methods[0])));
+            registerNativesOrSkip(env, cls, methods, sizeof(methods)/sizeof(methods[0]));
+            fprintf(stderr, "[icu_jni] NativeConverter registration done\n");
+            (*env)->DeleteLocalRef(env, cls);
+        } else {
+            fprintf(stderr, "[icu_jni] NativeConverter class NOT FOUND - skipping\n"); fflush(stderr);
+            if ((*env)->ExceptionCheck(env)) {
+                fprintf(stderr, "[icu_jni] ExceptionCheck=true, clearing...\n"); fflush(stderr);
+                (*env)->ExceptionClear(env);
+                fprintf(stderr, "[icu_jni] ExceptionClear done\n"); fflush(stderr);
+            }
+        }
+    }
+
+    fprintf(stderr, "[icu_jni] JNI_OnLoad complete\n");
+    return JNI_VERSION_1_6;
+}
