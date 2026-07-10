@@ -1,26 +1,13 @@
-<!-- 当前前沿 · ≤30 行 · 只写"此刻在打哪道墙/最新证据/下一步" -->
-<!-- 每个班次结束由 thinker 更新。历史前沿不留这里,进 DECISIONS.md。 -->
+**更新**：2026-07-10 oracle 纠错 · W-001 · thinker
 
-# 当前前沿 (FRONTIER)
+## 墙 #43 · 卡 W-001
 
-**更新**：2026-07-09 开钻班次 · thinker
-
-## 代码前沿 = 墙 #43 · 卡 W-001
-
-- **卡**：`tasks/todo/W-001.md`（待领做 / 板通后上板）
-- **机理**：AppThemeBar(0x7f15000e) parent 跨包到 framework 0x01，uam 缺 package 0x01 → `uamHasWab=false`
-- **修法**：同一 AM 在 applyStyle **前** addAssetPath(app)+addAssetPath(framework-res)；触发 BuildDynamicRefTable
-- **代码**：`test-fixtures/dayu600-apk-probe/Dayu600ApkStageProbe.java` — uamShared(~1570) 只挂 app；early themeAm2(~2616) 与 W6 themeAm(~2886) 分裂；源码已无 `uamHasWab` 日志字符串，需加回
-
-## 阻塞态
-
-- **hdc 不在 PATH**（2026-07-09 开钻核实）→ board-health 无法测；上板验证暂停
-- BOARDS 里 5583f5be 仍标 online=true（15:42 快照）——**以 hdc 实测为准**，通了再改回/确认
-- 5ce2dcee 仍离线
+- **旧判据作废**：probe 把 `0x010100b0`（`android:autoLink`）当成 windowActionBar；真实 AppCompat attr 是 `0x7f040691`，且目标 APK 的 `AppThemeBar` 直接定义它为 false。旧 `uamHasWab=false` 不能证明双包 parent-chain 断链。
+- **仍有效的实测 FAIL（5583）**：`nativeW001Append(Object, byte[])->int` 两次因 static shorty `ILL` 未进入 native。另发现 native append 用了不存在的三参 `nativeSetApkAssets`，旧 `ck=2` 也不证明 AssetManager2 已挂包。
+- **证据**：`evidence/W-001/2026-07-10-oracle-audit.txt` + `2026-07-10-hashlocked-ill-baseline.txt`（launcher/DEX/SO 与板上全匹配后仍 FAIL）。
 
 ## 下一步
 
-1. 恢复 hdc（PATH / 安装）+ `board-health.sh 5583f5be…` OK
-2. thinker 改 probe：三路 AM 合一 + 顺序正确 + 恢复 uamHasWab/hasColorPrimary/wcoHas 日志
-3. 上板跑 oracle（见 W-001）→ PASS 才跃迁 LEDGER #43
-4. 卡住 → fable/opus 顾问（`--workspace` + 足上下文）
+1. 领卡时只锁 5583；保留已修正的 attr/nativeSet(ZZ) 与 hash-locked oracle，做最小 `ILL → VLL` trampoline，不改 interpreter/class_linker。
+2. A/B 测 app-only 与 app+framework；运行 `oracle/verify/atom-43.sh <serial>`。
+3. 只有匹配本地 artifact、`nativeSet=ok`、`wabAttr=0x7f040691`、`uamHasWab=true` 才跃迁 #43；A/B 决定是否彻底撤销“双包”根因。

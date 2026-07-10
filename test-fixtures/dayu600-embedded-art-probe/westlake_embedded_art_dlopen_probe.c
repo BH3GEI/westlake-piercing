@@ -27,6 +27,9 @@ static void log_text(const char *s);
 static void log_int(const char *prefix, int value);
 static unsigned long slen(const char *s);
 static int describe_pending_exception(JNIEnv *env, const char *prefix);
+static int register_trace_natives_on(JNIEnv *env, jclass trace_class, const char *label);
+static void reregister_trace_via_assetmanager_loader(JNIEnv *env);
+static void c_write_heartbeat(const char *path, const char *text);
 
 /* MotionEvent native stub implementations for RegisterNatives */
 static jlong stub_MotionEvent_nativeInitialize(JNIEnv *env, jclass clazz,
@@ -191,21 +194,27 @@ __attribute__((visibility("default"))) void Java_android_os_Trace_nativeInstantF
 }
 
 __attribute__((visibility("default"))) jboolean Java_android_os_Trace_nativeIsTagEnabled(
-    jlong tag)
+    JNIEnv *env, jclass klass, jlong tag)
 {
+    (void)env;
+    (void)klass;
     (void)tag;
     return 0;
 }
 
 __attribute__((visibility("default"))) void Java_android_os_Trace_nativeSetAppTracingAllowed(
-    jboolean allowed)
+    JNIEnv *env, jclass klass, jboolean allowed)
 {
+    (void)env;
+    (void)klass;
     (void)allowed;
 }
 
 __attribute__((visibility("default"))) void Java_android_os_Trace_nativeSetTracingEnabled(
-    jboolean enabled)
+    JNIEnv *env, jclass klass, jboolean enabled)
 {
+    (void)env;
+    (void)klass;
     (void)enabled;
 }
 
@@ -229,8 +238,10 @@ __attribute__((visibility("default"))) void Java_android_os_Trace_nativeTraceCou
 }
 
 __attribute__((visibility("default"))) void Java_android_os_Trace_nativeTraceEnd(
-    jlong tag)
+    JNIEnv *env, jclass klass, jlong tag)
 {
+    (void)env;
+    (void)klass;
     (void)tag;
 }
 
@@ -1043,6 +1054,302 @@ static jclass westlake_native_find_class(JNIEnv *env, jclass clazz, jstring clas
     return result;
 }
 
+static void westlake_native_register_trace(JNIEnv *env, jclass clazz, jclass trace_class)
+{
+    (void)clazz;
+    if (trace_class == 0) {
+        log_text("nativeRegisterTraceNatives null");
+        return;
+    }
+    register_trace_natives_on(env, trace_class, "Java nativeRegisterTraceNatives");
+}
+
+static int westlake_str_contains(const char *hay, const char *needle)
+{
+    if (hay == 0 || needle == 0) {
+        return 0;
+    }
+    for (; *hay; hay++) {
+        const char *h = hay;
+        const char *n = needle;
+        while (*h && *n && *h == *n) {
+            h++;
+            n++;
+        }
+        if (*n == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static jobject westlake_new_string_from_bytes(JNIEnv *env, jclass string_cls, jbyteArray path_bytes)
+{
+    if (string_cls == 0 || path_bytes == 0) {
+        return 0;
+    }
+    jsize n = (*env)->GetArrayLength(env, path_bytes);
+    if (n <= 0 || n > 1023) {
+        return 0;
+    }
+    /* Always construct via string_cls ctor — boot NewStringUTF breaks dual-String boards. */
+    jmethodID str_ctor = (*env)->GetMethodID(env, string_cls, "<init>", "([BII)V");
+    if (str_ctor != 0 && !(*env)->ExceptionCheck(env)) {
+        jobject o = (*env)->NewObject(env, string_cls, str_ctor, path_bytes, 0, n);
+        if (o != 0 && !(*env)->ExceptionCheck(env)) {
+            return o;
+        }
+        (*env)->ExceptionClear(env);
+    } else {
+        (*env)->ExceptionClear(env);
+    }
+    str_ctor = (*env)->GetMethodID(env, string_cls, "<init>", "([B)V");
+    if (str_ctor == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return 0;
+    }
+    return (*env)->NewObject(env, string_cls, str_ctor, path_bytes);
+}
+
+/* Append via ApkAssets.loadFromPath + AssetManager.setApkAssets — skips addAssetPath SOE.
+ * Builds framework String via NewObject(string_cls, byte[]) — dual-String safe. */
+static jclass westlake_string_class_for_loader(JNIEnv *env, jobject loader)
+{
+    if (loader == 0) {
+        return (*env)->FindClass(env, "java/lang/String");
+    }
+    jclass cl_cls = (*env)->FindClass(env, "java/lang/ClassLoader");
+    jmethodID load = (*env)->GetMethodID(env, cl_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (load == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return (*env)->FindClass(env, "java/lang/String");
+    }
+    jstring jname = (*env)->NewStringUTF(env, "java.lang.String");
+    jclass string_cls = (jclass)(*env)->CallObjectMethod(env, loader, load, jname);
+    if (string_cls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("westlake_string_class_for_loader failed, boot String");
+        return (*env)->FindClass(env, "java/lang/String");
+    }
+    return string_cls;
+}
+
+static jobject westlake_loader_for_am(JNIEnv *env, jobject am)
+{
+    jclass am_runtime = (*env)->GetObjectClass(env, am);
+    jclass class_cls = (*env)->FindClass(env, "java/lang/Class");
+    jmethodID get_cl = (*env)->GetMethodID(env, class_cls, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    if (get_cl == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return 0;
+    }
+    return (*env)->CallObjectMethod(env, am_runtime, get_cl);
+}
+
+static jint westlake_native_append_apk_assets(JNIEnv *env, jclass clazz,
+    jobject am, jbyteArray path_bytes)
+{
+    (void)clazz;
+    c_write_heartbeat("/data/local/tmp/w001-native-append.txt", "ENTER");
+    log_text("nativeAppend ENTER");
+    /* Temporary diagnostic: prove Java/JNI dispatch reaches this fn. */
+    if (am != 0 && path_bytes != 0) {
+        jsize plen = (*env)->GetArrayLength(env, path_bytes);
+        log_int("nativeAppend pathLen=", (int)plen);
+        if (plen > 0) {
+            /* prove-enter marker: always succeed fingerprint for app path first */
+            char p0 = 0;
+            (*env)->GetByteArrayRegion(env, path_bytes, 0, 1, (jbyte *)&p0);
+            if (p0 == '/') {
+                c_write_heartbeat("/data/local/tmp/w001-native-append.txt", "DISPATCH_OK");
+            }
+        }
+    }
+    if (am == 0 || path_bytes == 0) {
+        log_text("nativeAppendApkAssets null args");
+        c_write_heartbeat("/data/local/tmp/w001-native-append.txt", "nullArgs");
+        return -999;
+    }
+    jclass apk_cls = (*env)->FindClass(env, "android/content/res/ApkAssets");
+    if (apk_cls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("nativeAppendApkAssets FindClass ApkAssets failed");
+        return -999;
+    }
+    jobject loader = westlake_loader_for_am(env, am);
+    jclass string_cls = westlake_string_class_for_loader(env, loader);
+    jobject path_obj = westlake_new_string_from_bytes(env, string_cls, path_bytes);
+    if (path_obj == 0 || (*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "nativeAppendApkAssets NewObject String failed");
+        (*env)->ExceptionClear(env);
+        return -998;
+    }
+    jmethodID load = (*env)->GetStaticMethodID(
+        env, apk_cls, "loadFromPath", "(Ljava/lang/String;)Landroid/content/res/ApkAssets;");
+    jobject apk = 0;
+    int use_system = 0;
+    {
+        jsize pn = (*env)->GetArrayLength(env, path_bytes);
+        char pbuf[256];
+        if (pn > 0 && pn < (jsize)(sizeof(pbuf) - 1)) {
+            (*env)->GetByteArrayRegion(env, path_bytes, 0, pn, (jbyte *)pbuf);
+            pbuf[pn] = 0;
+            if (westlake_str_contains(pbuf, "framework-res")) {
+                use_system = 1;
+            }
+        }
+    }
+    if (use_system) {
+        (*env)->ExceptionClear(env);
+        load = (*env)->GetStaticMethodID(
+            env, apk_cls, "loadFromPath", "(Ljava/lang/String;I)Landroid/content/res/ApkAssets;");
+        if (load != 0 && !(*env)->ExceptionCheck(env)) {
+            jint prop = 1;
+            jfieldID pf = (*env)->GetStaticFieldID(env, apk_cls, "PROPERTY_SYSTEM", "I");
+            if (pf != 0 && !(*env)->ExceptionCheck(env)) {
+                prop = (*env)->GetStaticIntField(env, apk_cls, pf);
+            } else {
+                (*env)->ExceptionClear(env);
+            }
+            log_text("nativeAppendApkAssets calling loadFromPath(String,PROPERTY_SYSTEM)");
+            apk = (*env)->CallStaticObjectMethod(env, apk_cls, load, path_obj, prop);
+        }
+    } else if (load != 0 && !(*env)->ExceptionCheck(env)) {
+        log_text("nativeAppendApkAssets calling loadFromPath(String)");
+        apk = (*env)->CallStaticObjectMethod(env, apk_cls, load, path_obj);
+    } else {
+        (*env)->ExceptionClear(env);
+        load = (*env)->GetStaticMethodID(
+            env, apk_cls, "loadFromPath", "(Ljava/lang/String;I)Landroid/content/res/ApkAssets;");
+        if (load == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            log_text("nativeAppendApkAssets loadFromPath missing");
+            return -999;
+        }
+        log_text("nativeAppendApkAssets calling loadFromPath(String,int)");
+        apk = (*env)->CallStaticObjectMethod(env, apk_cls, load, path_obj, 0);
+    }
+    if (apk == 0 || (*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "nativeAppendApkAssets loadFromPath threw");
+        (*env)->ExceptionClear(env);
+        return -999;
+    }
+    jclass am_cls = (*env)->GetObjectClass(env, am);
+    jfieldID m_apk = (*env)->GetFieldID(env, am_cls, "mApkAssets", "[Landroid/content/res/ApkAssets;");
+    if (m_apk == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("nativeAppendApkAssets mApkAssets missing");
+        return -999;
+    }
+    jobjectArray old_arr = (jobjectArray)(*env)->GetObjectField(env, am, m_apk);
+    jsize old_len = 0;
+    if (old_arr != 0) {
+        old_len = (*env)->GetArrayLength(env, old_arr);
+    }
+    jobjectArray new_arr = (*env)->NewObjectArray(env, old_len + 1, apk_cls, 0);
+    jsize i;
+    for (i = 0; i < old_len; i++) {
+        jobject o = (*env)->GetObjectArrayElement(env, old_arr, i);
+        (*env)->SetObjectArrayElement(env, new_arr, i, o);
+        if (o != 0) {
+            (*env)->DeleteLocalRef(env, o);
+        }
+    }
+    (*env)->SetObjectArrayElement(env, new_arr, old_len, apk);
+    /* Sentinel AssetManager(boolean): setApkAssets() NPEs on null ArraySet — set field directly. */
+    (*env)->SetObjectField(env, am, m_apk, new_arr);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "nativeAppendApkAssets SetObjectField mApkAssets threw");
+        (*env)->ExceptionClear(env);
+        return -999;
+    }
+    /* Refresh the native peer. A Java-array length is not a cookie/proof until
+     * the adapter's AssetManager2 accepted the same ApkAssets array. */
+    {
+        jfieldID m_obj = (*env)->GetFieldID(env, am_cls, "mObject", "J");
+        if (m_obj != 0 && !(*env)->ExceptionCheck(env)) {
+            jlong ptr = (*env)->GetLongField(env, am, m_obj);
+            if (ptr == 0) {
+                log_text("nativeAppendApkAssets mObject is zero");
+                return -999;
+            }
+            jmethodID native_set = (*env)->GetStaticMethodID(
+                env, am_cls, "nativeSetApkAssets",
+                "(J[Landroid/content/res/ApkAssets;ZZ)V");
+            if (native_set != 0 && !(*env)->ExceptionCheck(env)) {
+                (*env)->CallStaticVoidMethod(
+                    env, am_cls, native_set, ptr, new_arr, JNI_TRUE, JNI_FALSE);
+                if ((*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "nativeAppendApkAssets nativeSetApkAssets threw");
+                    (*env)->ExceptionClear(env);
+                    return -999;
+                }
+            } else {
+                log_text("nativeAppendApkAssets nativeSetApkAssets(ZZ) missing");
+                (*env)->ExceptionClear(env);
+                return -999;
+            }
+        } else {
+            log_text("nativeAppendApkAssets mObject missing");
+            (*env)->ExceptionClear(env);
+            return -999;
+        }
+    }
+    log_int("nativeAppendApkAssets nativeSet=ok cookie=", (int)(old_len + 1));
+    {
+        char cbuf[24];
+        int v = (int)(old_len + 1);
+        unsigned int pos = 0;
+        const char *prefix = "nativeSet=ok ck=";
+        unsigned int pi = 0;
+        while (prefix[pi] != 0 && pos + 1 < sizeof(cbuf)) {
+            cbuf[pos++] = prefix[pi++];
+        }
+        if (v >= 10) cbuf[pos++] = (char)('0' + (v / 10));
+        cbuf[pos++] = (char)('0' + (v % 10));
+        cbuf[pos++] = '\n';
+        cbuf[pos] = 0;
+        c_write_heartbeat("/data/local/tmp/w001-native-append.txt", cbuf);
+    }
+    return (jint)(old_len + 1);
+}
+
+static jint westlake_native_call_add_asset_path(JNIEnv *env, jclass clazz,
+    jobject am, jbyteArray path_bytes, jclass string_cls)
+{
+    (void)clazz;
+    if (am == 0 || path_bytes == 0 || string_cls == 0) {
+        log_text("nativeCallAddAssetPath null am/path/stringClass");
+        return -999;
+    }
+    jobject path_j = westlake_new_string_from_bytes(env, string_cls, path_bytes);
+    if (path_j == 0 || (*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "nativeCallAddAssetPath NewObject String failed");
+        (*env)->ExceptionClear(env);
+        return -999;
+    }
+    jclass am_cls = (*env)->GetObjectClass(env, am);
+    if (am_cls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("nativeCallAddAssetPath GetObjectClass failed");
+        return -999;
+    }
+    jmethodID mid = (*env)->GetMethodID(env, am_cls, "addAssetPath", "(Ljava/lang/String;)I");
+    if (mid == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("nativeCallAddAssetPath GetMethodID (I) failed");
+        return -999;
+    }
+    jint cookie = (*env)->CallIntMethod(env, am, mid, path_j);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "nativeCallAddAssetPath CallIntMethod threw");
+        (*env)->ExceptionClear(env);
+        return -999;
+    }
+    log_int("nativeCallAddAssetPath cookie=", (int)cookie);
+    return cookie;
+}
+
 static void westlake_native_write_text(JNIEnv *env, jclass clazz, jstring path_j, jstring text_j)
 {
     (void)clazz;
@@ -1315,6 +1622,19 @@ static int register_system_natives(JNIEnv *env)
         return 42;
     }
     log_text("RegisterNatives System ok");
+
+    /* AssetManager/addAssetPath touches android.os.Trace; board libandroid_runtime
+     * may not have registered these. Explicit RegisterNatives so W-001 early oracle
+     * does not UnsatisfiedLinkError on nativeIsTagEnabled. */
+    jclass trace_class = (*env)->FindClass(env, "android/os/Trace");
+    if (trace_class == 0 || (*env)->ExceptionCheck(env)) {
+        log_text("RegisterNatives Trace class missing (ok if unused)");
+        (*env)->ExceptionClear(env);
+    } else {
+        if (register_trace_natives_on(env, trace_class, "boot FindClass Trace") != 0) {
+            /* already logged */
+        }
+    }
     return 0;
 }
 
@@ -1663,6 +1983,203 @@ static int call_activity_thread_step_probe(JNIEnv *env)
     return 0;
 }
 
+typedef struct {
+    JavaVM *vm;
+    jclass probe_class;
+    jmethodID main_method;
+    jstring arg0;
+    jstring arg1;
+    jstring arg2;
+    jint rc;
+} embedded_fat_args;
+
+/* Absolute-path heartbeat that does not go through Java (diagnoses fat-thread I/O). */
+static void c_write_heartbeat(const char *path, const char *text)
+{
+    long fd = syscall4(56, AT_FDCWD, (long)path,
+        O_WRONLY | O_CREAT | O_APPEND, LOG_MODE);
+    if (fd < 0) {
+        log_int("c_write_heartbeat open rc=", (int)fd);
+        return;
+    }
+    syscall3(64, fd, (long)text, slen(text));
+    syscall3(57, fd, 0, 0);
+}
+
+static void *embedded_fat_thread(void *opaque)
+{
+    embedded_fat_args *a = (embedded_fat_args *)opaque;
+    JNIEnv *fat_env = 0;
+    c_write_heartbeat("/data/local/tmp/w001-c-before-attach.txt", "before AttachCurrentThread");
+    if ((*a->vm)->AttachCurrentThread(a->vm, (void **)&fat_env, 0) != 0 || fat_env == 0) {
+        c_write_heartbeat("/data/local/tmp/w001-c-attach-fail.txt", "AttachCurrentThread failed");
+        a->rc = 97;
+        return 0;
+    }
+    c_write_heartbeat("/data/local/tmp/w001-c-before-java.txt", "before CallStaticIntMethod");
+    /* Also exercise the same nativeWriteText path Java uses, from this thread. */
+    {
+        jstring pj = (*fat_env)->NewStringUTF(fat_env, "/data/local/tmp/w001-c-nativetest.txt");
+        jstring tj = (*fat_env)->NewStringUTF(fat_env, "nativeWriteText from fat thread");
+        if (pj != 0 && tj != 0 && !(*fat_env)->ExceptionCheck(fat_env)) {
+            westlake_native_write_text(fat_env, a->probe_class, pj, tj);
+        }
+        if ((*fat_env)->ExceptionCheck(fat_env)) {
+            describe_pending_exception(fat_env, "fat-thread nativeWriteText test threw");
+            (*fat_env)->ExceptionClear(fat_env);
+        }
+    }
+    a->rc = (*fat_env)->CallStaticIntMethod(
+        fat_env, a->probe_class, a->main_method, a->arg0, a->arg1, a->arg2);
+    if ((*fat_env)->ExceptionCheck(fat_env)) {
+        describe_pending_exception(fat_env, "embeddedMainNoExit on fat stack threw");
+        a->rc = 99;
+        (*fat_env)->ExceptionClear(fat_env);
+    }
+    {
+        char rcbuf[32];
+        /* tiny itoa for heartbeat */
+        int v = (int)a->rc;
+        int neg = 0;
+        unsigned int pos = 0;
+        char tmp[16];
+        unsigned int n = 0;
+        if (v < 0) { neg = 1; v = -v; }
+        do { tmp[n++] = (char)('0' + (v % 10)); v /= 10; } while (v && n < sizeof(tmp));
+        if (neg) rcbuf[pos++] = '-';
+        while (n > 0 && pos + 1 < sizeof(rcbuf)) rcbuf[pos++] = tmp[--n];
+        rcbuf[pos] = 0;
+        c_write_heartbeat("/data/local/tmp/w001-c-after-java.txt", rcbuf);
+    }
+    (*a->vm)->DetachCurrentThread(a->vm);
+    return 0;
+}
+
+static int register_trace_natives_on(JNIEnv *env, jclass trace_class, const char *label)
+{
+    if (trace_class == 0) {
+        return -1;
+    }
+    JNINativeMethod tmethods[] = {
+        {"nativeIsTagEnabled", "(J)Z",
+            (void *)Java_android_os_Trace_nativeIsTagEnabled},
+        {"nativeSetAppTracingAllowed", "(Z)V",
+            (void *)Java_android_os_Trace_nativeSetAppTracingAllowed},
+        {"nativeSetTracingEnabled", "(Z)V",
+            (void *)Java_android_os_Trace_nativeSetTracingEnabled},
+        {"nativeTraceBegin", "(JLjava/lang/String;)V",
+            (void *)Java_android_os_Trace_nativeTraceBegin},
+        {"nativeTraceEnd", "(J)V",
+            (void *)Java_android_os_Trace_nativeTraceEnd},
+        {"nativeTraceCounter", "(JLjava/lang/String;J)V",
+            (void *)Java_android_os_Trace_nativeTraceCounter},
+    };
+    jint trc = (*env)->RegisterNatives(
+        env, trace_class, tmethods, (jint)(sizeof(tmethods) / sizeof(tmethods[0])));
+    if (trc != 0 || (*env)->ExceptionCheck(env)) {
+        log_text(label);
+        log_text("RegisterNatives Trace failed");
+        (*env)->ExceptionClear(env);
+        return -1;
+    }
+    log_text(label);
+    log_text("RegisterNatives Trace ok");
+    return 0;
+}
+
+/* Dual Trace classes: FindClass may bind the wrong one. Re-bind using AssetManager's loader. */
+static void reregister_trace_via_assetmanager_loader(JNIEnv *env)
+{
+    jclass am_cls = (*env)->FindClass(env, "android/content/res/AssetManager");
+    if (am_cls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("W001: AssetManager class missing for Trace rebind");
+        return;
+    }
+    jclass class_cls = (*env)->FindClass(env, "java/lang/Class");
+    if (class_cls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    jmethodID get_cl = (*env)->GetMethodID(
+        env, class_cls, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    if (get_cl == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    jobject loader = (*env)->CallObjectMethod(env, am_cls, get_cl);
+    if (loader == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("W001: AssetManager ClassLoader null");
+        return;
+    }
+    jclass loader_cls = (*env)->GetObjectClass(env, loader);
+    jmethodID load_class = (*env)->GetMethodID(
+        env, loader_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (load_class == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    jstring tname = (*env)->NewStringUTF(env, "android.os.Trace");
+    jclass trace = (jclass)(*env)->CallObjectMethod(env, loader, load_class, tname);
+    if (trace == 0 || (*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "W001: loadClass android.os.Trace via AM loader failed");
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    register_trace_natives_on(env, trace, "W001: AM-loader Trace");
+    /* Same dual-class issue for System.currentTimeMillis (Thread.join). */
+    jstring sname = (*env)->NewStringUTF(env, "java.lang.System");
+    jclass system = (jclass)(*env)->CallObjectMethod(env, loader, load_class, sname);
+    if (system != 0 && !(*env)->ExceptionCheck(env)) {
+        JNINativeMethod smethods[] = {
+            {"currentTimeMillis", "()J", (void *)Java_java_lang_System_currentTimeMillis},
+            {"nanoTime", "()J", (void *)Java_java_lang_System_nanoTime},
+        };
+        jint src = (*env)->RegisterNatives(env, system, smethods, 2);
+        if (src != 0 || (*env)->ExceptionCheck(env)) {
+            log_text("W001: AM-loader System RegisterNatives failed");
+            (*env)->ExceptionClear(env);
+        } else {
+            log_text("W001: AM-loader System RegisterNatives ok");
+        }
+    } else {
+        (*env)->ExceptionClear(env);
+    }
+}
+
+static jint call_embedded_main_no_exit(JNIEnv *env, const char *stage,
+    jclass probe_class, jmethodID main_method,
+    jstring arg0, jstring arg1, jstring arg2)
+{
+    /* W-001: do NOT wrap in a native pthread.
+     * AttachCurrentThread on a fresh 8MB pthread dies before Java (only
+     * w001-c-before-attach appears). Constructor/toybox thread already has a
+     * valid JNIEnv; Java early oracle uses sync path on this thread. */
+    (void)stage;
+    c_write_heartbeat("/data/local/tmp/w001-c-direct-java.txt", "CallStaticIntMethod on constructor thread");
+    reregister_trace_via_assetmanager_loader(env);
+    {
+        jstring pj = (*env)->NewStringUTF(env, "/data/local/tmp/w001-c-nativetest.txt");
+        jstring tj = (*env)->NewStringUTF(env, "nativeWriteText from constructor thread");
+        if (pj != 0 && tj != 0 && !(*env)->ExceptionCheck(env)) {
+            westlake_native_write_text(env, probe_class, pj, tj);
+        }
+        if ((*env)->ExceptionCheck(env)) {
+            describe_pending_exception(env, "constructor-thread nativeWriteText test threw");
+            (*env)->ExceptionClear(env);
+        }
+    }
+    jint rc = (*env)->CallStaticIntMethod(
+        env, probe_class, main_method, arg0, arg1, arg2);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "embeddedMainNoExit on constructor thread threw");
+        (*env)->ExceptionClear(env);
+        return 99;
+    }
+    return rc;
+}
+
 static int run_stage_probe(void *handle, void *create_vm_symbol, const char *stage_override)
 {
     log_text("RUN_STAGE_PROBE ENTERED");
@@ -1670,7 +2187,10 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     JavaVM *vm = 0;
     JNIEnv *env = 0;
 
-    JavaVMOption options[9];
+    /* 10 slots: 8 base + optional -Xss override + optional -Ximage.
+     * Board default Java stack is ~124KB; AssetManager/ApkAssets.loadFromPath
+     * StackOverflows there during W-001 early oracle. Force 2m unless overridden. */
+    JavaVMOption options[10];
     options[0].optionString = build_bootclasspath_option();
     options[0].extraInfo = 0;
     options[1].optionString = "-classpath";
@@ -1690,13 +2210,35 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
 
     int dayu_nopt = 8;
     {
+        static char xss_buf[64];
+        const char *xss = getenv("WESTLAKE_XSS");
+        if (xss == 0 || xss[0] == 0) {
+            xss = "2m";
+        }
+        /* snprintf may be unavailable in this freestanding-ish build; hand-build. */
+        xss_buf[0] = '-'; xss_buf[1] = 'X'; xss_buf[2] = 's'; xss_buf[3] = 's';
+        {
+            size_t i = 0;
+            while (xss[i] != 0 && i + 1 < sizeof(xss_buf) - 4) {
+                xss_buf[4 + i] = xss[i];
+                i++;
+            }
+            xss_buf[4 + i] = 0;
+        }
+        options[dayu_nopt].optionString = xss_buf;
+        options[dayu_nopt].extraInfo = 0;
+        dayu_nopt++;
+        log_text("W001: Java stack -Xss");
+        log_text(xss_buf);
+    }
+    {
         char *img = getenv("WESTLAKE_BOOT_IMAGE");
-        if (img != 0 && img[0] == '1') {
-            options[8].optionString = build_image_option();
-            options[8].extraInfo = 0;
-            dayu_nopt = 9;
+        if (img != 0 && img[0] == '1' && dayu_nopt < 10) {
+            options[dayu_nopt].optionString = build_image_option();
+            options[dayu_nopt].extraInfo = 0;
+            dayu_nopt++;
             log_text("WESTLAKE_BOOT_IMAGE=1: adding -Ximage");
-            log_text(options[8].optionString);
+            log_text(options[dayu_nopt - 1].optionString);
         }
     }
 
@@ -1789,9 +2331,12 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
         log_text("inputVerify: falling through to Java");
     }
 
-    // Skip inputVerify for uptodownProbe — IVS class not on classpath
+    // Skip inputVerify for uptodownProbe — IVS class not on classpath.
+    // Call Java DIRECTLY here (do not rely on fallthrough past the broken-brace IVS else).
     if (streq(stage, "uptodownProbe")) {
         log_text("inputVerify SKIPPED for uptodownProbe stage");
+        log_text("W001: uptodownProbe direct Java path");
+        goto call_java_probe;
     } else {
     // Agent-D3: inputVerify — call InputVerifyStage.run() via reflection
     // Uses ActivityThread.systemMain().getSystemContext() + Class.forName from app classloader
@@ -2017,6 +2562,7 @@ load_ivs_with_context:
         }  // end IVS try block (ivs_saved_sig == 0)
     }  // end else (skip inputVerify for uptodownProbe)
 
+call_java_probe:
     log_text("run_stage_probe: past stage-specific checks, stage=");
     log_text(stage);
 
@@ -2064,17 +2610,38 @@ load_ivs_with_context:
         return 24;
     }
     {
-        JNINativeMethod methods[] = {
-            {"nativeFindClass", "(Ljava/lang/String;)Ljava/lang/Class;",
-                (void *)westlake_native_find_class},
-            {"nativeWriteText", "(Ljava/lang/String;Ljava/lang/String;)V",
-                (void *)westlake_native_write_text},
+        /* Register one-by-one so a signature mismatch does not drop all natives. */
+        JNINativeMethod m0 = {"nativeFindClass", "(Ljava/lang/String;)Ljava/lang/Class;",
+            (void *)westlake_native_find_class};
+        JNINativeMethod m1 = {"nativeWriteText", "(Ljava/lang/String;Ljava/lang/String;)V",
+            (void *)westlake_native_write_text};
+        JNINativeMethod m2 = {"nativeRegisterTraceNatives", "(Ljava/lang/Class;)V",
+            (void *)westlake_native_register_trace};
+        JNINativeMethod m3 = {"nativeCallAddAssetPath", "(Ljava/lang/Object;[BLjava/lang/Class;)I",
+            (void *)westlake_native_call_add_asset_path};
+        JNINativeMethod m4 = {"nativeAppendApkAssets",
+            "(Ljava/lang/Object;[B)I",
+            (void *)westlake_native_append_apk_assets};
+        JNINativeMethod m5 = {"nativeW001Append",
+            "(Ljava/lang/Object;[B)I",
+            (void *)westlake_native_append_apk_assets};
+        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5 };
+        const char *names[] = {
+            "nativeFindClass", "nativeWriteText", "nativeRegisterTraceNatives",
+            "nativeCallAddAssetPath", "nativeAppendApkAssets", "nativeW001Append"
         };
-        jint register_rc = (*env)->RegisterNatives(env, probe_class, methods, 2);
-        if (register_rc != 0 || (*env)->ExceptionCheck(env)) {
-            describe_pending_exception(env, "RegisterNatives Dayu600ApkStageProbe natives failed");
-        } else {
-            log_text("RegisterNatives Dayu600ApkStageProbe natives ok");
+        int i;
+        for (i = 0; i < 6; i++) {
+            jint register_rc = (*env)->RegisterNatives(env, probe_class, all[i], 1);
+            if (register_rc != 0 || (*env)->ExceptionCheck(env)) {
+                log_text("RegisterNatives ONE failed:");
+                log_text(names[i]);
+                describe_pending_exception(env, names[i]);
+                (*env)->ExceptionClear(env);
+            } else {
+                log_text("RegisterNatives ONE ok:");
+                log_text(names[i]);
+            }
         }
     }
 
@@ -2106,7 +2673,8 @@ load_ivs_with_context:
 
     if (no_exit) {
         log_text("CallStaticIntMethod Dayu600ApkStageProbe.embeddedMainNoExit begin");
-        jint probe_rc = (*env)->CallStaticIntMethod(env, probe_class, main_method, arg0, arg1, arg2);
+        jint probe_rc = call_embedded_main_no_exit(
+            env, stage, probe_class, main_method, arg0, arg1, arg2);
         log_int("Dayu600ApkStageProbe.embeddedMainNoExit rc=", (int)probe_rc);
     } else {
         log_text("CallStaticVoidMethod Dayu600ApkStageProbe.embeddedMain begin");

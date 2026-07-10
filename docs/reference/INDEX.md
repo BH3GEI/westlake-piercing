@@ -17,8 +17,10 @@
 ## 工具
 
 - **`cli-fleet.md`**
-  CLI 舰队速查（bark/agent/codex/claude/kimi/mmx），2026-07-09 逐条实测。headless 调用的坑（stdin 挂起、无 timeout、--trust）、求助通道命令、成本阶梯。**派活或求助前先翻它。**
+  CLI 舰队速查。`gpt-5.6-sol` 已用 Codex Desktop CLI 实跑；单问题顾问默认 `max`，worker 用 `xhigh`，`ultra` 仅在明确允许自动派生任务时用。**禁止依赖全局默认模型。**
 
+- **`host-build.md`**
+  编译与主机工具：**重编译走 `ssh compiler`**；hdc；embed `.so` 必须 `-nostdlib`；uptodown probe 上板入口。
 ## 坐标系与规格（跨线通用）
 
 - **`westlake-atom-function-board-L01-L14.html`** (267K)

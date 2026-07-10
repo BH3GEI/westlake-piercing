@@ -7,7 +7,7 @@ description: Use when working in the westlake-piercing repository, especially fo
 
 Read `AGENTS.md` at the repository root first. It is the role router: a thinker reads bounded live state and repo infra; a one-shot worker reads only its assigned card plus `protocol/WORKER.md`.
 
-This is the Claude Code discovery adapter. Do not duplicate the full rules here. `AGENTS.md` owns collaboration and live-state routing; `REPO_SKILL.md` owns reproduction and verification infrastructure.
+This is the Codex discovery adapter. Do not duplicate the full rules here. `AGENTS.md` owns collaboration and live-state routing; `REPO_SKILL.md` owns reproduction and verification infrastructure.
 
 The repository collaboration contract is carried by:
 

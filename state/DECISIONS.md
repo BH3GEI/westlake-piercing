@@ -3,6 +3,10 @@
 
 # 决策日志 (DECISIONS)
 
+- **2026-07-10** W-001 oracle 纠错：旧 probe/白板把 `0x010100b0`(android:autoLink)当 windowActionBar；目标 APK 的 AppCompat attr 实为 `0x7f040691`，AppThemeBar 直接定义 false。旧 `uamHasWab=false` 不再作为双包断链证据。native `ck` 也必须在四参 `nativeSetApkAssets(...,ZZ)` 成功后才有效；oracle 锁 launcher/dex/so hash、清理结果和 run rc。
+- **2026-07-10** 入口与事实域校准：独立接班会话默认 thinker，先跑只读 `dot_runner.py handoff`；worker 仍只读卡。live 进度/板锁认 state，版本/hash/setup/deploy 认 LOCK/PIPELINE，README/STATUS 明确为 DAYU200 legacy。结构 PASS 不等于 oracle PASS。
+- **2026-07-10** `gpt-5.6-sol` 已用 Codex Desktop 内置 CLI 0.144.0-alpha.4 实跑只读 hello（model=sol, effort=max, exit 0），可作单问题顾问；默认 `max`，`ultra` 会自动派生任务，只在明确需要多 agent 时用。gpt-5.5 保留为旧 CLI fallback。
+- **2026-07-10** Git 发布状态不冒充合并：当前开发分支未进 main/未完整推到同名远端；orphan 的 PiercingInfra delivery 独立管理。任何 agent 不自动 merge/push。
 - **2026-07-09** 落盘重构：白板+长驻 agent 形态停用。改为「无状态 thinker(班次制) + 弱模型一次性 worker + 四板 lane」。状态全落 state/,session 用完即扔。理由:D→D2→D3 接班丢状态、九 agent 伪并行陪跑一道墙、弱模型在长上下文里放大短板。
 - **2026-07-09** 仓库 /Users/yao/westlake-piercing → /Users/yao/Desktop/code/westlake-piercing,旧路径留软链。4 条 agent cron 注释停用(备份 ~/crontab-backup-2026-07-09.txt)。
 - **2026-07-09** 撤掉 opus-dispatcher 层:派活是搬文件级动作,由 thinker 顺手做,不单设贵模型。dispatcher = 脚本。
@@ -18,6 +22,8 @@
 - **2026-07-09** 证据纪律:只留对穿刺/复核有帮助的事实。推 GitHub/VPN/代理失败等基建噪音不进 `evidence/`。F-001 的 push 失败 log 已删;PASS 只记远程 SHA。见 `evidence/INDEX.md`。
 - **2026-07-09** 墙↔规格对齐:`state/ATOM-MAP.md` 映射 #1–53 到 L{NN}.A{NN}(多为 related;AppCompat 等为 none 规格缺口)。进度事实源仍是 LEDGER;看板 `docs/dashboard/progress.html` 由 `oracle/refresh-dashboard.sh` 生成,力工刷板,禁止手改 HTML。big-clean=打墙;small=辅助调试。定稿 protocol/AGENTS chmod 只读。
 - **2026-07-09** claude `--bg` 会在 `.claude/worktrees/` 建 git worktree(已 gitignore)。F-001 残留已 unlock+remove+prune。收工纪律写进 DISPATCH/cli-fleet。
+- **2026-07-09** 派力工:**禁止** Cursor 内置 Task/subagent;只走本机 CLI。便宜重复活用 claude/kimi;**主力多用 `codex -m gpt-5.5 -c 'model_reasoning_effort="xhigh"'`**(实测通,可干活可顾问)。默认 `gpt-5.3-codex-spark` 偏笨且曾 tool 400,不派重活。见 `docs/reference/cli-fleet.md`。
+- **2026-07-09/10** 重编译走中国 Linux 编译机；当前实测 SSH Host=`compiler`（旧 `huawei` 名称未配置）。embed `.so` 必须 `-nostdlib -nodefaultlibs`(裸 gcc 链 glibc → 板上 LD_PRELOAD 失败)。见 `docs/reference/host-build.md`。
 
 ## 战略裁决 (值不值得打)
 

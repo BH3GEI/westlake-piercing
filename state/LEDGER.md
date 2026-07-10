@@ -57,12 +57,12 @@
 | 40 | Surface/RenderThread renderer 4 native 自注册 | L5 | ✅ | ? | C | COORD L2864 |
 | 41 | createSubDecor 要 Theme.AppCompat(Material.Light 无 windowActionBar) | L6 | ✅ | ? | B | COORD L2801 |
 | 42 | setTheme 换 AppThemeBar 0x7f15000e | L6 | ✅ | ? | A·E | COORD L2817 |
-| 43 | ★前沿:AppThemeBar 双包 parent-chain 断链(uamHasWab=false) | L6 | 🔧 | - | B | COORD L2892 · 见 FRONTIER.md |
+| 43 | ★前沿:AppCompatTheme 真 WAB oracle(旧双包判据错用了 autoLink) | L6 | 🔧 | - | B | W-001 oracle audit · 见 FRONTIER.md |
 | 44 | Canvas draw native 分类,show() crit 缩到 2 | L5 | 🔧 | - | C | COORD L2947 |
 | 45 | onClick mAttachInfo 墙 → attachForInput 内联(已编未上板) | L6 | ✅ | ✗ | D | COORD L2535 |
 | 46 | 5ce2dcee ~50% 早停 lottery(板 vs bug,悬案) | L1 | 🔧 | - | H | COORD L2768 · INCONCLUSIVE |
 | 47 | IME 文字输入(WestlakeTextPump) | L6 | 🔧 | - | D | COORD L2916 |
-| 48 | 硬外部墙:全板离线 → **已恢复 2026-07-09 15:42(5ce2dcee 除外)** | L1 | ✅ | ✔ | F | CHAT 15:42 |
+| 48 | 硬外部墙:全板离线 → **四板已恢复 2026-07-10** | L1 | ✅ | ✔ | F | evidence/F-002 |
 | 49 | WestlakeGenericJni 接线 :769+:2262(现 0 调用点) | L2/L6 | ⏳ | - | B | COORD L1632 |
 | 50 | createSubDecor windowActionBar 解析出 → subDecor | L6 | ⏳ | - | B | COORD L2910 |
 | 51 | setContentView(app R.layout.main) → content FrameLayout | L6 | ⏳ | - | B | **app 布局至今从未 inflate** |
@@ -71,8 +71,8 @@
 
 ## 2. 计数 (honest)
 
-- **claimed PASS**: 42/53 · **已复核(V=✔)**: 2(#22 蓝像素,#48 板恢复) · **矛盾(V=✗)**: 3(#4,#9,#45)
-- 42 个 claimed 里绝大多数 V=? (从未按当前板/路径复现)。**复核 = 工厂队列第一批(见 QUEUE.md)。**
+- **✅ 状态**: 43/53 = **已复核(V=✔)** 2(#22,#48) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
+- 38 个 claimed 未复核项不得当作当前板事实。**复核 = 工厂队列第一批(见 QUEUE.md)。**
 - 真·首帧(#53)仍未达；app 自己的 R.layout.main(#51)至今一次都没 inflate。
 
 ## 3. 诚实警告 (必须带上)

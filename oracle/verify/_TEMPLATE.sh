@@ -5,10 +5,8 @@
 set -uo pipefail
 SERIAL="${1:-}"
 
-# 例(墙 #43 AppThemeBar 双包):跑 probe → grep uamHasWab=true
-# S=/data/local/tmp/westlake-dayu600-substrate
-# hdc -t "$SERIAL" shell "$S/run-utd-probe.sh" > /tmp/utd.log 2>&1
-# if grep -q "uamHasWab=true" /tmp/utd.log && grep -q "createSubDecor OK" /tmp/utd.log; then
-#   echo PASS; else echo FAIL; fi
+# 例(墙 #43):直接调用该墙的实现；它还会校验 repo-owned launcher/DEX/SO hash、
+# 清理结果、run rc、nativeSet heartbeat 与正确的 AppCompat attr marker。
+# oracle/verify/atom-43.sh "$SERIAL"
 
 echo "FAIL"   # 未实现的复核默认 FAIL,不许默认 PASS

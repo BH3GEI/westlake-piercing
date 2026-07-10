@@ -1,7 +1,7 @@
 digraph westlake_repo_history {
   graph [
-    format="repo-skill-history-v0",
-    rule="each node records one agent-facing change; commit=self is allowed only for the node introduced by the current commit"
+    format="repo-skill-milestone-dag-v1",
+    rule="milestones, not every commit; commit=self is allowed only for the node introduced by the current commit; orphan deliveries are dashed"
   ];
 
   repo_skill_v0 [
@@ -41,7 +41,7 @@ digraph westlake_repo_history {
   ];
 
   dayu600_port_target [
-    commit="pending",
+    commit="570a81bc",
     base_commit="f926081",
     actor="Yao/Codex",
     title="declare DAYU600 as active port target",
@@ -53,8 +53,8 @@ digraph westlake_repo_history {
   ];
 
   dayu600_2048_appspawn_child [
-    commit="self",
-    base_commit="pending",
+    commit="9920dbe7",
+    base_commit="570a81bc",
     actor="Yao/Codex",
     title="run real 2048 APK inside DAYU600 app child",
     user_input="Run the attached 2048 APK on the OpenHarmony DAYU600 board using the A2OH/westlake-piercing port, not a rewritten clone.",
@@ -65,8 +65,8 @@ digraph westlake_repo_history {
   ];
 
   dayu600_hwui_gate1_2 [
-    commit="self",
-    base_commit="pending",
+    commit="0b080c40",
+    base_commit="9920dbe7",
     actor="Yao/Claude",
     title="build libhwui.so + prove hwui renders on the DAYU600 panel",
     user_input="Drive the DAYU600 port toward running an Android game visibly on the board; build the real Android graphics stack and prove it renders.",
@@ -77,8 +77,8 @@ digraph westlake_repo_history {
   ];
 
   agent_d3_input_verify_progress [
-    commit="self",
-    base_commit="pending",
+    commit="ecd3f01c",
+    base_commit="0b080c40",
     actor="Yao/Claude",
     title="Agent-D3 input verification boot image and WM stub progress",
     user_input="Continue Agent-D3 mission: verify WestLake input chain on DAYU600 board 5583f5be and produce WLTEST/WLTEXT markers in hilog.",
@@ -89,8 +89,8 @@ digraph westlake_repo_history {
   ];
 
   agent_audio_native_chain_verified [
-    commit="self",
-    base_commit="pending",
+    commit="53f1a277",
+    base_commit="ecd3f01c",
     actor="Yao/Claude",
     title="Agent-Audio native audio chain verified end-to-end on DAYU600",
     user_input="Port the WestLake noice tap-to-speaker audio chain to 64-bit OHOS-6.1/A16 and verify it on DAYU600 boards; pause and document progress.",
@@ -100,5 +100,54 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-09-agent-audio-native-chain-verified.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified;
+  stateless_thinker_state_layer [
+    commit="461f2495",
+    base_commit="53f1a277",
+    actor="Yao/Claude/Codex",
+    title="replace whiteboard resident agents with bounded state and shift workers",
+    user_input="Stop pseudo-parallel resident agents, preserve the real frontier, and make sessions disposable.",
+    agent_action="Added AGENTS role routing, bounded state, task lanes, board locks, oracle discipline, atom mapping, dashboard generation, and CLI fleet guidance.",
+    code_delta="Collaboration architecture changed; runtime claims were not promoted without oracle evidence.",
+    verify="state budgets and generated dashboard checked; historical claimed PASS items intentionally remain unverified",
+    note="state/DECISIONS.md (2026-07-09 entries)"
+  ];
+
+  wall43_frontier [
+    commit="3656ddd7",
+    base_commit="461f2495",
+    actor="Yao/Claude",
+    title="cast W-001 for DAYU600 AppCompat parent-chain wall",
+    user_input="Continue the real DAYU600 first-frame path from the bounded frontier.",
+    agent_action="Created W-001 and moved live focus to LEDGER wall 43.",
+    code_delta="Task/state checkpoint only; the working tree later accumulated an unverified early-theme/native-append prototype.",
+    verify="card existed; wall remained in progress with no oracle PASS",
+    note="tasks/todo/W-001.md"
+  ];
+
+  piercinginfra_slim [
+    commit="509a1e12",
+    base_commit="orphan",
+    actor="Yao/Claude",
+    title="publish a slim PiercingInfra delivery as an orphan history",
+    user_input="Publish the reusable infrastructure without scratchpad or generated binaries.",
+    agent_action="Created and pushed the independent slim branch.",
+    code_delta="Separate repository history; not merged into westlake main.",
+    verify="piercinginfra/main resolves to 509a1e12",
+    note="state/QUEUE.md F-001"
+  ];
+
+  repo_handoff_hardening [
+    commit="self",
+    base_commit="3656ddd7",
+    actor="Yao/Codex",
+    title="harden repository handoff and align live state with infra docs",
+    user_input="Audit branches and merges, compare repo state with tree docs, improve project/global agent entrypoints, persist the bottleneck, and add GPT-5.6-Sol as a consultant.",
+    agent_action="Audited Git topology; added a read-only handoff oracle; aligned role entries, state, card, board locks, lock/pipeline/history docs; marked DAYU200 docs legacy; verified a bounded Sol model invocation; removed credentials from always-on global guidance while retaining private pre-compression backups.",
+    code_delta="Repository entry/state/check infrastructure plus the accumulated W-001 Java/native prototype; corrected the AppCompat attr oracle, nativeSetApkAssets signature and stale-artifact checks. No claim that wall 43 passed.",
+    verify="see .repo-skill/turns/2026-07-10-repo-handoff-hardening.md",
+    note=".repo-skill/turns/2026-07-10-repo-handoff-hardening.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening;
+  stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }

@@ -44,12 +44,18 @@ kimi -p "$(cat protocol/WORKER.md tasks/doing/<card>.md)" -y
 # Claude Code(便宜力工:自家路由接 kimi/minimax 后端,settings.json 的 model 会被路由重置,不作数)
 claude --bg -n "<card>" -p "$(cat protocol/WORKER.md tasks/doing/<card>.md)"
 
-# Codex(稳定执行器,中价;必须 </dev/null;占板卡 sandbox 从 workspace-write 起试)
-codex exec "$(cat protocol/WORKER.md tasks/doing/<card>.md)" --skip-git-repo-check --sandbox workspace-write < /dev/null
+# Codex 判断型 worker：显式 Sol+xhigh，不依赖全局默认；必须 </dev/null。
+"/Applications/ChatGPT.app/Contents/Resources/codex" exec \
+  -m gpt-5.6-sol -c 'model_reasoning_effort="xhigh"' \
+  "$(cat protocol/WORKER.md tasks/doing/<card>.md)" \
+  --skip-git-repo-check --sandbox workspace-write -o /tmp/worker-out.txt < /dev/null
 
 # mmx = 内容 API(无文件/shell 工具),不能领卡;只用于批量文本消化/搜索/媒体。
 # agent(cursor-agent)= thinker 求助通道,不当 worker(见 THINKER.md)。
 ```
+
+**选型(更新 2026-07-10)**:机械力工用 claude/kimi；要判断的 worker 用 Sol+xhigh；Sol+max 只读顾问见 THINKER。Sol ultra 会自动派生任务，不用于星型 worker 卡。**禁止** Cursor 内置 Task/subagent。细节见 `docs/reference/cli-fleet.md`。
+占板/hdc 卡若 `workspace-write` 无法访问设备，只有卡片明确授权设备操作时才改为 `danger-full-access`；host 卡保持最小权限。
 
 ## 并发与限额
 

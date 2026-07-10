@@ -1,0 +1,31 @@
+date=2026-07-10T13:00+09:00
+verdict=OLD_ORACLE_INVALID
+
+[framework attrs: Android SDK 35 android.jar via javap -constants android.R$attr]
+autoLink=0x010100b0
+windowActionBar=0x010102cd
+windowContentOverlay=0x01010059
+colorPrimary=0x01010433
+
+[target APK /tmp/test-uptodown.apk: apktool public.xml + styles.xml]
+com.uptodown.R.attr.windowActionBar=0x7f040691
+com.uptodown.R.attr.colorPrimary=0x7f040141
+AppThemeBar(0x7f15000e) directly contains windowActionBar=false and windowNoTitle=true.
+
+[target APK: JADX R.java + AppCompatDelegateImpl]
+AppCompatTheme_windowActionBar index=0x75.
+The styleable entry at that index is com.uptodown.R.attr.windowActionBar.
+createSubDecor() calls hasValue(AppCompatTheme_windowActionBar).
+
+[native peer]
+westlake-art-runtime/westlake_assetmanager_jni.cpp registers:
+nativeSetApkAssets (J[Landroid/content/res/ApkAssets;ZZ)V
+The W-001 sidecar had looked up the nonexistent three-argument form, cleared the
+failure, then wrote ck=N from Java array length. Old ck=2 was not native proof.
+
+[conclusion]
+The old probe tested android:autoLink while labeling it windowActionBar, so old
+uamHasWab=false does not establish an AppCompat or dual-package parent-chain
+failure. The 2026-07-10 ILL baseline remains valid only as proof that the static
+JNI dispatcher stopped before native entry. Re-test with attr=0x7f040691,
+nativeSet=ok heartbeat, matching launcher/dex/so hashes, and app-only vs dual A/B.

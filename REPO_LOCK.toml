@@ -6,7 +6,7 @@ upstream = "A2OH/westlake-piercing"
 fork = "BH3GEI/westlake-piercing"
 base_commit = "b9ede74ac6a19e9e05e09800a4c8757b60ea48d5"
 default_branch = "main"
-locked_at = "2026-06-30"
+locked_at = "2026-07-10"
 
 [project]
 name = "Westlake"
@@ -18,7 +18,7 @@ board = "DAYU600 / uis7885"
 userspace = "64-bit arm64-v8a"
 transport = "hdc"
 full_replay_requires_board = true
-port_status = "DAYU600 2048 APK real MainActivity headless RC0; temporary AppSpawnX app-child route runs embedded ART/real APK probe RC0 inside m.digiplex.game and reaches OHOS AbilityTransitionDone; visible Android UI adapter still missing"
+port_status = "Live progress is state/LEDGER.md; current frontier is state/FRONTIER.md. Dated 2048/HWUI milestones below remain reproducibility evidence, not the active wall."
 
 [hardware.legacy_dayu200]
 board = "DAYU200 / RK3568"
@@ -33,7 +33,9 @@ os = "OpenHarmony-6.1.0.31"
 api = "6.1.0.31(23)"
 abi = "arm64-v8a"
 storage = "UFS"
-hdc_serial = "5ce2dcee00000000000000000923012c"
+hdc_serial = "5583f5be00000000000000000323012c"
+board_registry = "state/BOARDS.toml"
+primary_role = "big-clean DAYU600 frontier board; do not duplicate live locks here"
 normal_usb = ["USB\\VID_18D1&PID_5000", "USB\\VID_2207&PID_5000"]
 screen = "1920x1200"
 
@@ -44,6 +46,15 @@ android_sdk = "$HOME/android-sdk"
 jdk = "17"
 dex2oat64 = "$HOME/tools/dex2oat64"
 restool = "$HOME/openharmony/out/sdk/ohos-sdk/linux/toolchains/restool"
+python_min = "3.11"
+
+[host.current_mac]
+hdc = "$HOME/.local/bin/hdc"
+hdc_version = "3.2.0b"
+heavy_build_host = "ssh compiler"
+compiler_jni_headers = "/usr/lib/jvm/java-17-openjdk-amd64/include"
+codex_sol_binary = "/Applications/ChatGPT.app/Contents/Resources/codex"
+codex_sol_verified_version = "0.144.0-alpha.4"
 
 [apps.catalog]
 package = "io.material.catalog"
@@ -80,7 +91,7 @@ gate4 = "liboh_mediacodec_shim.so md5 9994fc79ef5e2398e1de47fe31272bb5; MediaCod
 gate5 = "pthread_key detach in shim; prevents ART abort"
 gate6 = "OH_AudioStreamBuilder / OH_AudioRenderer verified on both boards via native_audiotest2_arm64 (440Hz tone, 5s) and toneplayer_arm64; MUSIC stream unmuted with VOLUME_UP key event"
 gate1_loader = "ActivityThread.main patched to System.loadLibrary(oh_inproc_service) in framework.patched.jar"
-gate_crash_chain = "7 gaps patched: PendingIntent(4) MediaSession AudioProductStrategy AudioVolumeGroup DisplayManagerGlobal MediaRouter\$Static ShortcutManager(2) SystemServiceRegistry\$90"
+gate_crash_chain = "7 gaps patched: PendingIntent(4) MediaSession AudioProductStrategy AudioVolumeGroup DisplayManagerGlobal MediaRouter$Static ShortcutManager(2) SystemServiceRegistry$90"
 audio_board_blocker = "5ce2dcee (hdc serial 5ce2dcee00000000000000000923012c) must be online for deploy+validate"
 
 [apps.dayu600_2048_probe]
@@ -88,6 +99,18 @@ package = "com.digiplex.game"
 apk = "C:/Users/ufop/Downloads/2048-2-9.apk"
 deployed_apk_path = "/data/app/el1/bundle/public/com.digiplex.game/android/base.apk"
 status = "stock APK real MainActivity/onCreate, privateR, gameStateJson, and gameMoveJson run RC0 under the DAYU600 standalone aarch64 ART probe; temporary AppSpawnX app-child route runs onCreateNullTrace RC0 inside m.digiplex.game; visible Android UI still requires the DAYU600 ViewRoot/Surface adapter."
+milestone_date = "2026-07-02"
+
+[apps.uptodown_dayu600]
+package = "com.uptodown"
+apk = "/data/local/tmp/westlake-dayu600-substrate/apks/test-uptodown.apk"
+live_status = "state/FRONTIER.md"
+ledger_wall = 43
+oracle = "oracle/verify/atom-43.sh"
+device_launcher = "oracle/device/run-utd-w001.sh"
+appcompat_window_action_bar_attr = "0x7f040691"
+invalid_legacy_probe_attr = "0x010100b0 is android:autoLink, not windowActionBar"
+native_set_apk_assets_signature = "(J[Landroid/content/res/ApkAssets;ZZ)V"
 
 [artifacts.policy]
 large_binaries_committed = false
@@ -146,9 +169,20 @@ base_apk_sha256 = "b92fadb1b854901aec7354edbcfb9d9983c2bb2e006d809adf53ed93c06df
 remote_root = "/data/local/tmp/westlake-dayu600"
 verified_date = "2026-07-02"
 
+[artifacts.w001_oracle_checkpoint]
+device_launcher_sha256 = "b2dd0ac9ef53f80d0da4bbcd591a8228a4f7adeb4f1add937025c7dbcd39a235"
+apk_probe_dex_sha256 = "931e8a6beaf7b3c5a5d1e5bbfc1b0a7ba8b04165047278c094f44dc3eff7dbb3"
+embedded_art_probe_sha256 = "b1776cee8636dd67a00a8358bcf63d5aade9c209fb90ec353835ac566a58912d"
+board = "5583f5be00000000000000000323012c"
+verified_date = "2026-07-10"
+oracle_verdict = "FAIL: static JNI shorty ILL before native entry"
+
 [verification]
-primary_status_doc = "STATUS.md"
+primary_status_doc = "state/LEDGER.md"
+current_frontier_doc = "state/FRONTIER.md"
+board_registry = "state/BOARDS.toml"
+legacy_dayu200_status_doc = "STATUS.md"
 unified_replay_doc = "UNIFIED-CONFIG-REPRODUCE.md"
 full_reproduction_doc = "docs/REPRODUCTION-GUIDE.md"
-helper_scripts = ["scripts/livetest.sh", "scripts/navtour.sh"]
-known_blocker = "Full replay cannot pass on a host without DAYU200/RK3568 hdc access and external binary baseline."
+helper_scripts = ["oracle/verify/atom-43.sh", "scripts/livetest.sh", "scripts/navtour.sh"]
+known_blocker = "Active DAYU600 wall is read from state/FRONTIER.md; legacy DAYU200 full replay separately requires its board and external baseline."

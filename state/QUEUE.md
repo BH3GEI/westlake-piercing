@@ -3,7 +3,7 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-09 开钻 · W-001 已铸
+**更新**：2026-07-10 交接校准 · W-001 待领
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -13,21 +13,21 @@
 
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
-| W-001 | #43 AppThemeBar 双包 parent-chain | todo | big-clean | 已铸;hdc 缺失阻塞上板;thinker 主攻 |
+| W-001 | #43 AppCompatTheme 真 WAB oracle | todo | big-clean | hash-locked oracle FAIL;当前无锁;新 thinker 只锁 5583 |
 
 ## 工厂队列 (factory) — 弱模型舰队
 
 | 卡 | 内容 | 状态 | 板需求 | oracle |
 |---|---|---|---|---|
 | (待铸) | 复核 #4 onCreate 越框架墙 vs boot-image clinit 矛盾 | todo | big-any | 重跑 → 是否真过 clinit |
-| (待铸) | 复核 42 个 claimed PASS 逐一(V=? → ✔/✗) | todo | 混合 | oracle/verify/atom-NN.sh |
+| (待铸) | 复核 38 个 claimed 未复核项(V=? → ✔/✗) | todo | 混合 | oracle/verify/atom-NN.sh |
 | (待铸) | MotionEvent 52 native 桩表复核(host) | todo | none | 对 A16 smali 差分 |
 
 ## 冻结/待命
 
 - **F-001** ✅ 已推：`piercinginfra/main` = `509a1e12`（orphan 瘦身，无 scratchpad/.so，~11MB）。本地工作分支仍 `dayu600-hwui-gate1-2`。
 
-- lottery 实验(#46)：暂停,等 5ce2dcee 恢复 + probe bundle。
+- lottery 实验(#46)：5ce2dcee 已恢复，实验仍暂停，等独立 probe bundle 后再 A/B。
 - Unity 线(D600-5bb5,另一 workstream)：独立坐标,暂不进本队列;需要时按 L{NN}.A{NN} 对齐。
 
 ## 铸卡纪律

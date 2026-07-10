@@ -8,6 +8,12 @@ public final class Dayu600ApkStageProbe {
 
     private static native Class<?> nativeFindClass(String name);
     private static native void nativeWriteText(String path, String text);
+    private static native void nativeRegisterTraceNatives(Class<?> traceClass);
+    private static native int nativeCallAddAssetPath(Object assetManager, byte[] pathUtf8, Class<?> stringClass);
+    /** Append via ApkAssets.loadFromPath + setApkAssets (ApkAssets class resolved in native). */
+    private static native int nativeAppendApkAssets(Object assetManager, byte[] pathUtf8);
+    /** W-001: separate entry to avoid stale/wrong native binding. Returns 77 on enter-before-work. */
+    private static native int nativeW001Append(Object assetManager, byte[] pathUtf8);
 
     private static Class<?> tryNativeFindClass(String name) {
         try {
@@ -494,7 +500,73 @@ public final class Dayu600ApkStageProbe {
      * reflection/Proxy path that touches MethodType NPEs. Re-seed the missing
      * statics reflectively before we install OHServiceManager or do other work.
      */
+    /**
+     * Boot-image skew leaves {@code java.io.File.fs} null. Any {@code new File(...)} /
+     * {@code FileOutputStream} then NPEs inside {@code FileSystem.normalize}. Seed UnixFileSystem
+     * via Unsafe.allocateInstance (avoid constructor — it may touch File while fs is still null).
+     */
+    private static void repairJavaIoFileSystem() {
+        try {
+            java.lang.reflect.Field fsField = java.io.File.class.getDeclaredField("fs");
+            fsField.setAccessible(true);
+            if (fsField.get(null) != null) return;
+            Class<?> ufsCls = null;
+            String[] candidates = { "java.io.UnixFileSystem", "java.io.LinuxFileSystem" };
+            for (String n : candidates) {
+                try {
+                    ufsCls = Class.forName(n);
+                    break;
+                } catch (Throwable ig) {}
+            }
+            if (ufsCls == null) return;
+            Object ufs = null;
+            try {
+                Class<?> unsafeCls = Class.forName("sun.misc.Unsafe");
+                java.lang.reflect.Field theUnsafe = unsafeCls.getDeclaredField("theUnsafe");
+                theUnsafe.setAccessible(true);
+                Object unsafe = theUnsafe.get(null);
+                ufs = unsafeCls.getMethod("allocateInstance", Class.class).invoke(unsafe, ufsCls);
+            } catch (Throwable ig) {
+                // Fallback: no-arg ctor (may NPE if ctor touches File).
+                try {
+                    java.lang.reflect.Constructor<?> c = ufsCls.getDeclaredConstructor();
+                    c.setAccessible(true);
+                    ufs = c.newInstance();
+                } catch (Throwable ig2) {}
+            }
+            if (ufs != null) fsField.set(null, ufs);
+        } catch (Throwable ig) { /* keep going */ }
+    }
+
+    /**
+     * Minimal MethodType/MethodHandle static repair for early reflection.
+     * Full {@link #repairMethodHandleStatics} also writes logs and touches more classes;
+     * that StackOverflow'd on the 124KB toybox stack before the early oracle.
+     */
+    private static void repairMethodHandleStaticsLite() {
+        repairJavaIoFileSystem();
+        String[] clsNames = {"java.lang.invoke.MethodType", "java.lang.invoke.MethodHandle"};
+        for (String clsName : clsNames) {
+            try {
+                Class<?> cls = Class.forName(clsName);
+                for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+                    if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    Class<?> ft = f.getType();
+                    if (ft == null) continue;
+                    String ftn = ft.getName();
+                    if (!(ftn.contains("ConcurrentWeakInternSet") || ftn.contains("WeakInternSet"))) continue;
+                    if (f.get(null) != null) continue;
+                    java.lang.reflect.Constructor<?> c = ft.getDeclaredConstructor();
+                    c.setAccessible(true);
+                    f.set(null, c.newInstance());
+                }
+            } catch (Throwable t) { /* keep going */ }
+        }
+    }
+
     private static void repairMethodHandleStatics() {
+        repairJavaIoFileSystem();
         int fixed = 0;
         String[] clsNames = {"java.lang.invoke.MethodType", "java.lang.invoke.MethodHandle"};
         for (String clsName : clsNames) {
@@ -555,6 +627,289 @@ public final class Dayu600ApkStageProbe {
         try {
             writeText(probeLogPath("uptodown-probe.txt"), "MHSTATIC=repaired:" + fixed);
         } catch (Throwable ignored) {}
+    }
+
+    /** Field.set hits broken MethodHandle VarHandles on this board — use Unsafe.putObject. */
+    private static void unsafePutObjectField(Object obj, java.lang.reflect.Field field, Object value)
+            throws Exception {
+        field.setAccessible(true);
+        Object unsafe = null;
+        Class<?> uc = null;
+        for (String n : new String[] { "sun.misc.Unsafe", "jdk.internal.misc.Unsafe" }) {
+            try {
+                uc = Class.forName(n);
+                java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                tf.setAccessible(true);
+                unsafe = tf.get(null);
+                break;
+            } catch (Throwable ig) {}
+        }
+        if (unsafe == null || uc == null) {
+            field.set(obj, value); // last resort
+            return;
+        }
+        long off = ((Number) uc.getMethod("objectFieldOffset", java.lang.reflect.Field.class)
+                .invoke(unsafe, field)).longValue();
+        uc.getMethod("putObject", Object.class, long.class, Object.class)
+                .invoke(unsafe, obj, Long.valueOf(off), value);
+    }
+
+    /**
+     * Add an apk/zip path to an AssetManager. Board framework.jar may hide
+     * {@code addAssetPath(String)} from the public API surface ({@code getMethod} fails);
+     * try declared + ApkAssets.loadFromPath/setApkAssets.
+     */
+    private static int addAssetPathCompat(android.content.res.AssetManager am, String path)
+            throws Exception {
+        Class<?> amCls = android.content.res.AssetManager.class;
+        // 1) public or hidden addAssetPath(String)
+        for (boolean declared : new boolean[] { false, true }) {
+            try {
+                java.lang.reflect.Method m = declared
+                        ? amCls.getDeclaredMethod("addAssetPath", String.class)
+                        : amCls.getMethod("addAssetPath", String.class);
+                m.setAccessible(true);
+                Object ck = m.invoke(am, path);
+                return ck instanceof Number ? ((Number) ck).intValue() : 0;
+            } catch (NoSuchMethodException ig) {
+            }
+        }
+        // 2) addAssetPathInternal(String, boolean) / similar
+        String[] internals = { "addAssetPathInternal", "addAssetPathAsSharedLibrary" };
+        for (String name : internals) {
+            try {
+                java.lang.reflect.Method m = amCls.getDeclaredMethod(name, String.class, boolean.class);
+                m.setAccessible(true);
+                Object ck = m.invoke(am, path, Boolean.FALSE);
+                return ck instanceof Number ? ((Number) ck).intValue() : 0;
+            } catch (NoSuchMethodException ig) {
+            }
+        }
+        // 3) ApkAssets.loadFromPath + setApkAssets append
+        Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+        Object apkAssets;
+        try {
+            apkAssets = apkAssetsCls.getMethod("loadFromPath", String.class).invoke(null, path);
+        } catch (NoSuchMethodException nsm) {
+            apkAssets = apkAssetsCls.getMethod("loadFromPath", String.class, int.class)
+                    .invoke(null, path, Integer.valueOf(0));
+        }
+        java.lang.reflect.Field mApk = amCls.getDeclaredField("mApkAssets");
+        mApk.setAccessible(true);
+        Object oldArr;
+        try {
+            oldArr = mApk.get(am);
+        } catch (Throwable t) {
+            oldArr = null;
+        }
+        int oldLen = oldArr == null ? 0 : java.lang.reflect.Array.getLength(oldArr);
+        Object newArr = java.lang.reflect.Array.newInstance(apkAssetsCls, oldLen + 1);
+        for (int i = 0; i < oldLen; i++) {
+            java.lang.reflect.Array.set(newArr, i, java.lang.reflect.Array.get(oldArr, i));
+        }
+        java.lang.reflect.Array.set(newArr, oldLen, apkAssets);
+        try {
+            java.lang.reflect.Method setAA = amCls.getMethod("setApkAssets", newArr.getClass(), boolean.class);
+            setAA.invoke(am, newArr, Boolean.TRUE);
+        } catch (NoSuchMethodException nsm) {
+            mApk.set(am, newArr);
+            try {
+                java.lang.reflect.Method invalidate =
+                        amCls.getDeclaredMethod("invalidateCachesLocked", int.class);
+                invalidate.setAccessible(true);
+                invalidate.invoke(am, Integer.valueOf(-1));
+            } catch (Throwable ig) {}
+        }
+        return oldLen + 1;
+    }
+
+    /** Prefer ApkAssets.loadFromPath — NEVER fall back to addAssetPath (dead-recursion SOE).
+     * Dual-class board: no Java-side String Class.forName (getModifiers NPE). JNI builds path String. */
+    private static int addAssetPathDirect(android.content.res.AssetManager am, String path)
+            throws Exception {
+        int ck = nativeAppendApkAssets(am, asciiPathBytes(path));
+        if (ck <= 0) {
+            throw new IllegalStateException("nativeAppendApkAssets failed ck=" + ck);
+        }
+        return ck;
+    }
+
+    private static byte[] asciiPathBytes(String path) {
+        int n = path.length();
+        byte[] b = new byte[n];
+        for (int i = 0; i < n; i++) {
+            b[i] = (byte) path.charAt(i);
+        }
+        return b;
+    }
+
+    private static final byte[] W001_APK_PATH = asciiPathBytes(
+            "/data/local/tmp/westlake-dayu600-substrate/apks/test-uptodown.apk");
+    private static final byte[] W001_FW_PATH = asciiPathBytes(
+            "/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk");
+
+    private static void ensureTraceNatives() {
+        try {
+            nativeRegisterTraceNatives(android.os.Trace.class);
+        } catch (Throwable ig) {}
+        try {
+            nativeRegisterTraceNatives(Class.forName("android.os.Trace"));
+        } catch (Throwable ig) {}
+        try {
+            ClassLoader cl = android.content.res.AssetManager.class.getClassLoader();
+            if (cl != null) {
+                nativeRegisterTraceNatives(Class.forName("android.os.Trace", false, cl));
+            }
+        } catch (Throwable ig) {}
+    }
+
+    /** Dual-package AM via addAssetPath only (lighter stack than ApkAssets.loadFromPath). */
+    private static android.content.res.AssetManager makeDualPackageAmLite(String appPath, String fwPath)
+            throws Exception {
+        Class<?> amCls = android.content.res.AssetManager.class;
+        Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+        java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
+        amC.setAccessible(true);
+        android.content.res.AssetManager am =
+                (android.content.res.AssetManager) amC.newInstance(Boolean.TRUE);
+        java.lang.reflect.Field mApk = amCls.getDeclaredField("mApkAssets");
+        mApk.setAccessible(true);
+        Object empty = java.lang.reflect.Array.newInstance(apkAssetsCls, 0);
+        try {
+            unsafePutObjectField(am, mApk, empty);
+        } catch (Throwable ig) {
+            mApk.set(am, empty);
+        }
+        // Pass path as Object to Method.invoke — avoids dual-String ArrayStore in some
+        // MethodHandle/varargs paths on this board.
+        int ckApp = addAssetPathDirect(am, appPath);
+        int ckFw = addAssetPathDirect(am, fwPath);
+        if (ckApp <= 0 || ckFw <= 0) {
+            throw new IllegalStateException("addAssetPath app=" + ckApp + " fw=" + ckFw);
+        }
+        return am;
+    }
+
+    /**
+     * W-001 early oracle. The current embed path calls embeddedMainNoExit synchronously
+     * on the constructor/toybox thread; the attempted 8MB native pthread could not attach.
+     */
+    /** Dual-String board: never concatenate Strings in early path (ArrayStoreException). */
+    private static void earlyWriteLiteral(String path, String literal) {
+        try {
+            writeText(path, literal);
+        } catch (Throwable ig) {}
+    }
+
+    private static int runEarlyThemeOracle() {
+        int stepCode = 0;
+        try {
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY syncMain");
+            Class<?> amCls = android.content.res.AssetManager.class;
+            java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
+            amC.setAccessible(true);
+            android.content.res.AssetManager am =
+                    (android.content.res.AssetManager) amC.newInstance(Boolean.TRUE);
+            stepCode = 1;
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addApp");
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY preNative");
+            int ckApp = nativeW001Append(am, W001_APK_PATH);
+            if (ckApp == -999) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "m999");
+            } else if (ckApp == -998) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "m998");
+            } else if (ckApp == 0) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "0");
+            } else if (ckApp == 1) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "1");
+            } else if (ckApp > 1) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "gt1");
+            } else {
+                earlyWriteLiteral("/data/local/tmp/w001-ckApp.txt", "neg");
+            }
+            stepCode = 2;
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addFw");
+            int ckFw = nativeW001Append(am, W001_FW_PATH);
+            if (ckFw == -999) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "m999");
+            } else if (ckFw == -998) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "m998");
+            } else if (ckFw == 0) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "0");
+            } else if (ckFw == 1) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "1");
+            } else if (ckFw == 2) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "2");
+            } else if (ckFw > 2) {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "gt2");
+            } else {
+                earlyWriteLiteral("/data/local/tmp/w001-ckFw.txt", "neg");
+            }
+            if (ckApp <= 0 || ckFw <= 0) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt",
+                        "EARLY_THEME_FAIL:step=append:ckBad");
+                return 43;
+            }
+            stepCode = 3;
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=res");
+            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+            try { dm.setToDefaults(); } catch (Throwable ig) {
+                dm.density = 1.0f; dm.widthPixels = 1200; dm.heightPixels = 1920;
+            }
+            android.content.res.Resources res =
+                    new android.content.res.Resources(am, dm, new android.content.res.Configuration());
+            stepCode = 4;
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=applyStyle");
+            android.content.res.Resources.Theme th = res.newTheme();
+            th.applyStyle(0x7f15000e, true);
+            stepCode = 5;
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=obtain");
+            // Match AppCompatTheme, not similarly named framework attrs:
+            // app windowActionBar=0x7f040691, android windowContentOverlay=0x01010059,
+            // app colorPrimary=0x7f040141 (verified from the target APK resource table).
+            int[] probeAttrs = new int[] { 0x7f040691, 0x01010059, 0x7f040141 };
+            android.content.res.TypedArray ta = th.obtainStyledAttributes(probeAttrs);
+            boolean uamHasWab = ta.hasValue(0);
+            boolean wcoHas = ta.hasValue(1);
+            boolean hasColorPrimary = ta.hasValue(2);
+            ta.recycle();
+            String result;
+            if (uamHasWab && wcoHas && hasColorPrimary) {
+                result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=true hasColorPrimary=true";
+            } else if (uamHasWab) {
+                result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=false hasColorPrimary=false";
+            } else {
+                result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=false wcoHas=false hasColorPrimary=false";
+            }
+            if (uamHasWab && wcoHas && !hasColorPrimary) {
+                result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=true hasColorPrimary=false";
+            } else if (uamHasWab && !wcoHas && hasColorPrimary) {
+                result = "EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=false hasColorPrimary=true";
+            }
+            earlyWriteLiteral(
+                    "/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/uptodown-probe.txt",
+                    result);
+            earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", result);
+            return uamHasWab ? 0 : 43;
+        } catch (Throwable et) {
+            if (stepCode == 0) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=pre");
+            } else if (stepCode == 1) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=addApp");
+            } else if (stepCode == 2) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=addFw");
+            } else if (stepCode == 3) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=res");
+            } else if (stepCode == 4) {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=applyStyle");
+            } else {
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=obtain");
+            }
+            earlyWriteLiteral(
+                    "/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/uptodown-probe.txt",
+                    "EARLY_THEME_FAIL:caught");
+            return 43;
+        }
     }
 
     private static boolean finishOrExit(int code) {
@@ -1080,12 +1435,15 @@ public final class Dayu600ApkStageProbe {
     }
 
     public static int embeddedMainNoExit(String target, String stage, String directionArg) throws Exception {
+        embeddedNoExit = "1".equals(System.getenv("WESTLAKE_NO_EXIT"));
         // Absolute-path heartbeat: confirms the method was entered before any probeLogPath
         // or reflection work that might silently fail.
         try {
-            java.io.FileOutputStream direct = new java.io.FileOutputStream("/data/local/tmp/embedded-direct.txt");
-            direct.write(("embeddedMainNoExit entered target=" + target + " stage=" + stage + " dir=" + directionArg).getBytes());
-            direct.close();
+            repairJavaIoFileSystem();
+        } catch (Throwable ig) {}
+        try {
+            writeText("/data/local/tmp/embedded-direct.txt",
+                    "embeddedMainNoExit entered target=" + target + " stage=" + stage + " dir=" + directionArg);
         } catch (Throwable ignored) {}
         try {
             writeText(probeLogPath("embedded-entry.txt"),
@@ -1094,14 +1452,24 @@ public final class Dayu600ApkStageProbe {
         try {
             runResolved(target, stage, directionArg);
         } catch (Throwable t) {
-            // Log the crash but don't rethrow — VM must survive for diagnostics
+            // Log the crash but don't rethrow — VM must survive for diagnostics.
+            // Write a SHORT line first: StackOverflowError can SOE again inside printStackTrace.
+            String shortMsg = "CRASH:" + t.getClass().getSimpleName() + ":"
+                    + (t.getMessage() == null ? "" : t.getMessage());
+            try { writeText("/data/local/tmp/uptodown-crash.txt", shortMsg); } catch (Throwable ignored3) {}
+            try { writeText(probeLogPath("uptodown-probe.txt"), shortMsg); } catch (Throwable ignored3) {}
             try {
                 java.io.StringWriter sw = new java.io.StringWriter();
                 t.printStackTrace(new java.io.PrintWriter(sw));
-                String msg = "embeddedMainNoExit CRASH: " + t.getClass().getName() + ": " + t.getMessage() + "\n" + sw.toString().substring(0, Math.min(sw.toString().length(), 1000));
-                writeText(probeLogPath("uptodown-probe.txt"), msg);
+                String msg = "embeddedMainNoExit CRASH: " + t.getClass().getName() + ": " + t.getMessage()
+                        + "\n" + sw.toString().substring(0, Math.min(sw.toString().length(), 1000));
+                try { writeText("/data/local/tmp/uptodown-crash.txt", msg); } catch (Throwable ignored3) {}
+                try { writeText(probeLogPath("uptodown-probe.txt"), msg); } catch (Throwable ignored3) {}
             } catch (Throwable ignored2) {}
             return 99;
+        }
+        if (embeddedNoExit) {
+            return embeddedLastExitCode;
         }
         return 0;
     }
@@ -1111,6 +1479,28 @@ public final class Dayu600ApkStageProbe {
             writeText(probeLogPath("runresolved-entry.txt"),
                     "runResolved entered target=" + target + " stage=" + stage + " dir=" + directionArg);
         } catch (Throwable ignored) {}
+        String stageNorm = stage == null ? "" : stage.trim();
+        try {
+            writeText("/data/local/tmp/uptodown-early.txt",
+                    "runResolved stageNorm=[" + stageNorm + "] eq="
+                            + "uptodownProbe".equals(stageNorm));
+        } catch (Throwable ig) {}
+        // W-001: early oracle MUST run before targetClassLoader() — PathClassLoader(2048)
+        // can StackOverflow on the thin main stack and never reach uptodownProbe.
+        if ("uptodownProbe".equals(stageNorm)) {
+            try {
+                writeText("/data/local/tmp/uptodown-early.txt", "EARLY beforeOracle");
+            } catch (Throwable ig) {}
+            try {
+                writeText(probeLogPath("uptodown-probe.txt"),
+                        "ENTRY:uptodownProbe pid=" + android.os.Process.myPid());
+            } catch (Throwable ignored) {}
+            int earlyRc = runEarlyThemeOracle();
+            finishOrExit(earlyRc);
+            if (!"1".equals(System.getenv("WESTLAKE_FULL_UPTODOWN"))) {
+                return;
+            }
+        }
         ClassLoader loader = targetClassLoader();
         if ("assetProbe".equals(stage)) {
             int st = 200;
@@ -1490,17 +1880,13 @@ public final class Dayu600ApkStageProbe {
             return;
         }
         if ("uptodownProbe".equals(stage)) {
-            // Absolute-path heartbeat for the uptodownProbe block.
+            // Early oracle already ran at top of runResolved (before targetClassLoader).
+            // This block is WESTLAKE_FULL_UPTODOWN only.
             try {
-                java.io.FileOutputStream direct = new java.io.FileOutputStream("/data/local/tmp/uptodown-direct.txt");
-                direct.write(("uptodownProbe block entered pid=" + android.os.Process.myPid()).getBytes());
-                direct.close();
+                writeText("/data/local/tmp/uptodown-direct.txt",
+                        "uptodownProbe FULL path pid=" + android.os.Process.myPid());
             } catch (Throwable ignored) {}
-            // Early heartbeat: confirm we entered the uptodownProbe stage before any
-            // reflection/ICU/ServiceManager work that might crash on boot-image skew.
-            try {
-                writeText(probeLogPath("uptodown-probe.txt"), "ENTRY:uptodownProbe pid=" + android.os.Process.myPid());
-            } catch (Throwable ignored) {}
+
             // Point ICU4J at the repackaged ICU data (device icudt74 relabeled icudt75l) so
             // android.icu UResourceBundle locale lookups (needed in onCreate) resolve. The
             // dataPath property is read once at ICUBinary.<clinit> (already run at boot with an
@@ -1521,6 +1907,7 @@ public final class Dayu600ApkStageProbe {
                 writeText(probeLogPath("uptodown-probe.txt"),
                         "icuData=FAIL:" + icx.getClass().getSimpleName() + ":" + icx.getMessage());
             }
+            // NOTE: do not clobber EARLY theme line — append OHSM after.
             // Install the in-process ServiceManager stub BEFORE any ActivityThread/View/Window
             // initialization, otherwise WindowManagerGlobal.getWindowManagerService() returns null
             // and ViewConfiguration.get() SIGSEGVs on WMS.hasNavigationBar().
@@ -1541,12 +1928,18 @@ public final class Dayu600ApkStageProbe {
             // its arsc, dex classload, then headless UptodownApp/MainActivity bring-up. Incremental
             // writeText so partial progress survives a crash.
             StringBuilder ulog = new StringBuilder();
+            ulog.append(ohsmStatus).append(' ');
             java.io.File apkF = new java.io.File(apkPath("test-uptodown.apk"));
             // AssetManager the resource-enum stage builds over the app APK; reused as the app's
             // base-Context AssetManager so we don't re-load the same APK (which would hit the
             // unregistered ApkAssets.nativeIsUpToDate cache-check native).
             android.content.res.AssetManager uamShared = null;
             ulog.append("apk=").append(apkF.exists() ? apkF.length() : -1).append(' ');
+            try {
+                java.io.FileOutputStream hb = new java.io.FileOutputStream("/data/local/tmp/uptodown-hb.txt");
+                hb.write(ulog.toString().getBytes());
+                hb.close();
+            } catch (Throwable ignored) {}
             writeText(probeLogPath("uptodown-probe.txt"), ulog.toString());
             try {
                 try {
@@ -1567,8 +1960,14 @@ public final class Dayu600ApkStageProbe {
                     uaf.set(uam, java.lang.reflect.Array.newInstance(apkCls2, 0));
                     Object ck = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
                             .invoke(uam, apkF.getAbsolutePath());
+                    // Wall #43: same AM must carry app(0x7f) + framework-res(0x01) BEFORE any
+                    // newTheme/applyStyle, or AppCompat parent-chain into package 0x01 dies
+                    // (uamHasWab=false). Prefer substrate framework-res (md5 76a92b8f on board).
+                    String fwResForUam = "/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk";
+                    Object ckFw = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                            .invoke(uam, fwResForUam);
                     uamShared = uam;
-                    ulog.append("cookie=").append(ck).append(' ');
+                    ulog.append("cookie=").append(ck).append(" fwCookie=").append(ckFw).append(' ');
                     java.lang.reflect.Method ngn = android.content.res.AssetManager.class
                             .getDeclaredMethod("nativeGetResourceName", long.class, int.class);
                     ngn.setAccessible(true);
@@ -2608,20 +3007,57 @@ public final class Dayu600ApkStageProbe {
                 android.content.res.Resources themeResForProxy = null;
                 Object themeNativeForProxy = null;
                 try {
-                    // Build minimal theme resources (needed for WlProxyContext constructor)
+                    // WlProxyContext theme AM: MUST be app + framework-res on ONE AssetManager,
+                    // both addAssetPath'd BEFORE newTheme/applyStyle (wall #43 / W-001).
+                    // Previous bug: only framework-res was loaded, then applyStyle(0x7f15000e)
+                    // (app style id) → parent chain into 0x01 never indexed → uamHasWab=false.
                     java.lang.reflect.Constructor<android.content.res.AssetManager> amCtor2 =
                             android.content.res.AssetManager.class.getDeclaredConstructor(boolean.class);
                     amCtor2.setAccessible(true);
                     android.content.res.AssetManager themeAm2 = amCtor2.newInstance(Boolean.TRUE);
-                    android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
-                            .invoke(themeAm2, "/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk");
+                    java.lang.reflect.Field mApkF2 =
+                            android.content.res.AssetManager.class.getDeclaredField("mApkAssets");
+                    mApkF2.setAccessible(true);
+                    Class<?> apkAssetsCls2 = Class.forName("android.content.res.ApkAssets");
+                    mApkF2.set(themeAm2, java.lang.reflect.Array.newInstance(apkAssetsCls2, 0));
+                    String fwResEarly = "/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk";
+                    Object ckApp2 = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                            .invoke(themeAm2, apkF.getAbsolutePath());
+                    Object ckFw2 = android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
+                            .invoke(themeAm2, fwResEarly);
+                    ulog.append("themeAm2.appCookie=").append(ckApp2)
+                        .append(" fwCookie=").append(ckFw2).append(' ');
                     android.util.DisplayMetrics dm2 = actBaseCtx.getResources().getDisplayMetrics();
                     android.content.res.Configuration cfg2 = actBaseCtx.getResources().getConfiguration();
                     themeResForProxy = new android.content.res.Resources(themeAm2, dm2, cfg2);
+                    // Identifier proof that package 0x01 attrs are visible on this AM
+                    int fwWabId = themeResForProxy.getIdentifier("windowActionBar", "attr", "android");
+                    int wcoId = themeResForProxy.getIdentifier("windowContentOverlay", "attr", "android");
+                    ulog.append("fwWabId=0x").append(Integer.toHexString(fwWabId))
+                        .append(" wcoId=0x").append(Integer.toHexString(wcoId)).append(' ');
                     themeNativeForProxy = themeResForProxy.newTheme();
                     Class<?> themeCls2 = Class.forName("android.content.res.Resources$Theme");
                     java.lang.reflect.Method applyStyleM2 = themeCls2.getMethod("applyStyle", int.class, boolean.class);
                     applyStyleM2.invoke(themeNativeForProxy, appCompatThemeId, Boolean.TRUE);
+                    // Oracle fields (W-001): theme attrs after applyStyle(AppThemeBar)
+                    try {
+                        android.content.res.Resources.Theme th =
+                                (android.content.res.Resources.Theme) themeNativeForProxy;
+                        // AppCompatTheme ids from the target APK; 0x010100b0 is
+                        // android:autoLink and must never be used as windowActionBar.
+                        int[] probeAttrs = new int[] { 0x7f040691, 0x01010059, 0x7f040141 };
+                        android.content.res.TypedArray ta = th.obtainStyledAttributes(probeAttrs);
+                        boolean uamHasWab = ta.hasValue(0);
+                        boolean wcoHas = ta.hasValue(1);
+                        boolean hasColorPrimary = ta.hasValue(2);
+                        ulog.append("uamHasWab=").append(uamHasWab)
+                            .append(" wcoHas=").append(wcoHas)
+                            .append(" hasColorPrimary=").append(hasColorPrimary).append(' ');
+                        ta.recycle();
+                    } catch (Throwable diagT) {
+                        ulog.append("themeDiag=").append(diagT.getClass().getSimpleName())
+                            .append(':').append(diagT.getMessage()).append(' ');
+                    }
 
                     java.lang.reflect.Constructor<?> proxyCtor =
                             Class.forName("Dayu600ApkStageProbe$WlProxyContext")
@@ -2883,62 +3319,17 @@ public final class Dayu600ApkStageProbe {
                     ulog.append("+liErr:").append(liErr.getClass().getSimpleName());
                 }
                 writeText(probeLogPath("ckpt1.txt"), "ckpt1:liMap-done");
-                // ── W6: theme setup over native AssetManager ───────────────────────────
+                // ── W6: reuse early dual-package theme (do NOT rebuild a split AM) ─────
                 try {
-                    java.lang.reflect.Constructor<android.content.res.AssetManager> amCtor =
-                            android.content.res.AssetManager.class.getDeclaredConstructor(boolean.class);
-                    amCtor.setAccessible(true);
-                    android.content.res.AssetManager themeAm = amCtor.newInstance(Boolean.TRUE);
-                    java.lang.reflect.Field mApkF =
-                            android.content.res.AssetManager.class.getDeclaredField("mApkAssets");
-                    mApkF.setAccessible(true);
-                    Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
-                    mApkF.set(themeAm, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
-                    String apkPath = apkF.getAbsolutePath();
-                    android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
-                            .invoke(themeAm, apkPath);
-                    String fwResPath = null;
-                    java.io.File sysF = new java.io.File("/system");
-                    if (sysF.exists()) {
-                        java.io.File[] subs = sysF.listFiles();
-                        if (subs != null) for (java.io.File f : subs) {
-                            if (f.getName().startsWith("framework-res")) { fwResPath = f.getAbsolutePath(); break; }
-                        }
-                    }
-                    if (fwResPath == null) {
-                        java.io.File fwFd = new java.io.File("/system/framework");
-                        if (fwFd.exists()) {
-                            java.io.File[] ff = fwFd.listFiles();
-                            if (ff != null) for (java.io.File f : ff) {
-                                if (f.getName().startsWith("framework-res")) { fwResPath = f.getAbsolutePath(); break; }
-                            }
-                        }
-                    }
-                    ulog.append("fwResPath=").append(fwResPath != null ? fwResPath : "null").append(' ');
-                    if (fwResPath != null) {
-                        android.content.res.AssetManager.class.getMethod("addAssetPath", String.class)
-                                .invoke(themeAm, fwResPath);
-                    }
-                    // Build a native Resources with our AssetManager (bypasses WlResources overrides)
-                    final android.content.Context actCtxForW6 = storedActCtx;
-                    android.util.DisplayMetrics dm = actCtxForW6.getResources().getDisplayMetrics();
-                    android.content.res.Configuration cfg = actCtxForW6.getResources().getConfiguration();
-                    android.content.res.Resources themeRes =
-                            new android.content.res.Resources(themeAm, dm, cfg);
-                    // Create theme and apply AppCompat style via native path
-                    Object themeNative = themeRes.newTheme();
-                    Class<?> themeCls = Class.forName("android.content.res.Resources$Theme");
-                    java.lang.reflect.Method applyStyleM = themeCls.getMethod("applyStyle", int.class, boolean.class);
-                    applyStyleM.invoke(themeNative, appCompatThemeId, Boolean.TRUE);
-                    ulog.append("nativeTheme=OK ");
+                    ulog.append("fwResPath=/data/local/tmp/westlake-dayu600-substrate/android/framework/framework-res.apk ");
+                    ulog.append("nativeTheme=").append(themeNativeForProxy != null ? "reuse" : "missing").append(' ');
                     // Use the already-created ctxProxyForBase, themeResForProxy from early setup.
-                    // ctxProxyForBase already has getSystemService override → cached LayoutInflater.
+                    // That AM already has app+framework-res before applyStyle (wall #43).
                     if (ctxProxyForBase != null) {
                         ulog.append("ctxProxy=reuse ");
                     } else {
                         ulog.append("ctxProxy=missing ");
                     }
-                    // Use themeResForProxy for setTheme() — already has AppCompat style applied
                     if (themeResForProxy != null) {
                         ulog.append("themeRes=reuse ");
                     } else {

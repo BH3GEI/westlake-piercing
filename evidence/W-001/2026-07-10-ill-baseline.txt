@@ -1,0 +1,17 @@
+date=2026-07-10T12:13:36+09:00
+board=5583f5be00000000000000000323012c
+command=oracle/verify/atom-43.sh 5583f5be00000000000000000323012c
+full_log=/tmp/westlake-w001-20260710-121336.log
+full_log_bytes=4679678
+full_log_sha256=fa072043ad9f890481abf952f73edad65706e1d6c0ba5b7df2c6a9e9cc0392f6
+run_rc=0
+
+[InterpJni] int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[]) shorty='ILL' len=3 dexIdx=167
+interpreter.cc:1189] InterpreterJni: unhandled static shorty 'ILL' for int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[])
+[InterpJni] int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[]) shorty='ILL' len=3 dexIdx=167
+interpreter.cc:1189] InterpreterJni: unhandled static shorty 'ILL' for int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[])
+__W001_NATIVE__
+__W001_EARLY__
+EARLY_THEME_FAIL:step=append:ckBad
+__W001_PROBE__
+FAIL

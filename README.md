@@ -1,5 +1,7 @@
 # Westlake — stock Android apps on OpenHarmony
 
+> **Active development (DAYU600 / uis7885):** live progress is `state/LEDGER.md`, the current wall is `state/FRONTIER.md`, and agent startup is `AGENTS.md`. The remainder of this README documents the legacy DAYU200/RK3568 reproduction baseline. Do not use its flash/reboot commands as current DAYU600 operating policy.
+
 Run **unmodified Android APKs** on an OpenHarmony (OHOS) DAYU200 / RK3568 board,
 via the **`appspawn-x`** AOSP-app adapter (a Zygote-style fork that loads Android
 apps under an Android-compatible BOOTCLASSPATH + a custom `libart`).
@@ -17,7 +19,7 @@ APK (`catalog-smali-patches/`, `noice-smali-patches/`) — each app runs without
 them. Everything that makes Android apps run on OHOS lives in the **adapter**
 (`libart`, the bridges, the BCP jars, the boot image, the launcher `entry.hap`).
 
-> Honest status of exactly what works / what doesn't: **[`STATUS.md`](STATUS.md)**.
+> Historical DAYU200 status: **[`STATUS.md`](STATUS.md)**. Current DAYU600 status is in `state/`.
 
 > **★ Latest (2026-06-28): a single unified generation now runs BOTH apps at once** (one libart +
 > one framework + one boot image), plus boot-time auto-start of appspawn-x, the noice launcher icon,
@@ -33,7 +35,7 @@ adapter (Phases 1–3) must be built and deployed before either app will run; th
 two apps (Phase 4) are independent and can be built in parallel.
 
 ### Phase 0 — Prerequisites → [`docs/REPRODUCTION-GUIDE.md`](docs/REPRODUCTION-GUIDE.md) §2
-- Hardware: DAYU200 / RK3568 board (DC-powered; mock battery — reboots are always safe, see [`notes/device-safety.md`](notes/device-safety.md)).
+- Hardware for this legacy flow: DAYU200 / RK3568 board. Reboot/flash steps are historical operator instructions, not permission for an agent to reboot any current board; follow the active machine policy and explicit user authority.
 - Host (WSL2 / Linux): `hdc`; the OHOS source tree + clang; `dex2oat64` (OAT v230); `restool`; Android SDK + Gradle + JDK 17; baksmali/smali (`scripts/SmaliAssemble.java`).
 
 ### Phase 1 — Flash the OHOS base → [`docs/REPRODUCTION-GUIDE.md`](docs/REPRODUCTION-GUIDE.md) §2

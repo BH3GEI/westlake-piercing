@@ -1,13 +1,15 @@
 # AGENTS — 唯一入口
 
 > 2026-07-09 起，本仓库从「白板 + 长驻 agent」改为「无状态 thinker(班次制) + 一次性 worker + 四板 lane」。
-> 任何 session 上岗，**第一步永远是读 `state/`**，不要从 git log 或聊天记忆推断现状。
+> 第一动作是判角色。拿到 `tasks/doing/<卡>.md` 的一次性执行任务才是 worker；其余独立接班/继续会话默认是 thinker。
 
 ## 我是谁？按角色翻到对应手册
 
-- **thinker(脑子 · Cursor 强模型)** → 读 `protocol/THINKER.md`。上岗先读 `state/`（含 ATOM-MAP）。卡住硬墙 → fable/opus 顾问（必须 `--workspace` 本仓 + 足上下文，见 THINKER「顾问通道」）。
+- **thinker(脑子 · 强模型)** → 先运行只读 `python3 -B .repo-skill/src/dot_runner.py handoff`，再读 `state/` 全部、`protocol/THINKER.md` 和 repo infra。卡住硬墙可问 `gpt-5.6-sol` / fable / opus 顾问，见 THINKER。
 - **worker(手 · kimi/codex/claude 一次性)** → 只读派给你的那张卡 + `protocol/WORKER.md`。别读 state/、别读别的卡、别读 archive/。
 - **派活** → `protocol/DISPATCH.md`。
+
+`handoff` 的 STRUCTURE PASS 只证明入口、state、卡和板锁自洽，不代表任何 oracle PASS。thinker 上岗先是 `inspect_only`：保护 dirty tree，不切分支，不 fetch/merge/push，不碰板；报告现场后再选班次。
 
 ## 状态在哪(事实源)
 
@@ -29,6 +31,8 @@ docs/reference/ ← 架构/规格/方法论原件;按需定点取,勿整包读
 archive/     ← 史料,默认不读(白板时代 COORD/CHAT 等)
 ```
 
+事实域不要混：实时进度/板锁只认 `state/`；任务所有权只认 `tasks/`；版本、hash、setup/deploy/verify 合同认 `REPO_LOCK.toml` / `REPO_PIPELINE.dot`；DAYU200 的 `README.md` / `STATUS.md` 是 legacy reproduction 文档。
+
 ## 六条合同(整套机制靠这个撑)
 
 1. **读取**：thinker 读 state/ 全部(含 ATOM-MAP);worker 只读自己的卡;谁都不默认读 archive/。
@@ -40,13 +44,14 @@ archive/     ← 史料,默认不读(白板时代 COORD/CHAT 等)
 
 ## 原有工程纪律(保留)
 
-交接前(班次结束)照跑 `REPO_SKILL.md` 的 check flow,或说明为何跑不了：
+交接前先跑只读 `python3 -B .repo-skill/src/dot_runner.py handoff`。DAYU600 设备/部署假设变化时再跑 `dayu600-audit`；通用 `check` 是 legacy DAYU200 全回放门，不再作为每个 DAYU600 班次的默认门。
 - 运行/环境/产物/设备假设变了 → 更新 `REPO_LOCK.toml`；
 - setup/build/deploy/verify 步骤变了 → 更新 `REPO_PIPELINE.dot`；
 - 用户请求 + agent 动作 + 代码 delta + 验证结果 → 记 `.repo-skill/turns/`。
 
 不要声称本仓库 clone-and-run：需 DAYU600/uis7885 板 + 重建/替换全部 arm 运行时产物。
 大型生成二进制不进 git(.gitignore 排除)：来源和 hash 记 `REPO_LOCK.toml` + `ARTIFACT-INVENTORY.txt`。
+任何 agent 不得自动合并 `main` 或 push；先报告 branch、upstream、ahead/behind、dirty tree 和 oracle 结果，由用户决定发布动作。
 
 ## 遗留(短期过渡)
 

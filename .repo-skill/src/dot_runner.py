@@ -134,15 +134,18 @@ def run_flow(flow: str) -> int:
         "duration_ms": int((time.time() - started) * 1000),
         "steps": [result.__dict__ for result in results],
     }
-    out = root / ".repo-skill" / "last-run.json"
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"\nlast run: {out}", flush=True)
+    if nodes[flow].get("record", "true").lower() != "false":
+        out = root / ".repo-skill" / "last-run.json"
+        out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"\nlast run: {out}", flush=True)
+    else:
+        print("\nread-only flow: no run record written", flush=True)
     return 0 if status == "pass" else 1
 
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2 or argv[1] in {"-h", "--help"}:
-        print("usage: dot_runner.py <up|check|dayu600-audit|dayu600-2048|sync>", flush=True)
+        print("usage: dot_runner.py <handoff|up|check|dayu600-audit|dayu600-2048|sync>", flush=True)
         return 2
     return run_flow(argv[1].replace("-", "_"))
 

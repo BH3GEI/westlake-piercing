@@ -1,5 +1,15 @@
 # Westlake Repo Skill
 
+## Entry and truth domains
+
+`AGENTS.md` is the only role router. A fresh standalone/continue session is a thinker: run `python3 -B .repo-skill/src/dot_runner.py handoff`, read bounded `state/`, then `protocol/THINKER.md` and this infra contract. A worker reads only its assigned card plus `protocol/WORKER.md`.
+
+- Live wall progress and verification state: `state/LEDGER.md` / `state/FRONTIER.md`
+- Task ownership and board locks: `tasks/` / `state/BOARDS.toml`
+- Reproducible versions, hashes, setup, deploy and checks: `REPO_LOCK.toml` / `REPO_PIPELINE.dot`
+- Milestone history: `REPO_HISTORY.dot` / `.repo-skill/turns/`
+- Legacy DAYU200 reproduction narrative: `README.md` / `STATUS.md` / long reproduction guides
+
 This repository is a source-available, artifact-required reproduction package for running stock Android APKs on OpenHarmony through `appspawn-x`.
 
 The original baseline is DAYU200/RK3568/32-bit ARM. The active porting target is now HH-SCDAYU600 / DAYU600 on Unisoc/Spreadtrum uis7885, aarch64 / arm64-v8a, OpenHarmony 6.1.0.31. Treat DAYU200 artifacts as the reference implementation, not as directly deployable binaries for DAYU600.
@@ -22,6 +32,7 @@ Local runner:
 
 ```bash
 python3 .repo-skill/src/dot_runner.py up
+python3 .repo-skill/src/dot_runner.py handoff
 python3 .repo-skill/src/dot_runner.py check
 python3 .repo-skill/src/dot_runner.py dayu600-audit
 python3 .repo-skill/src/dot_runner.py dayu600-2048
@@ -38,27 +49,29 @@ This leaves the `/data/local/tmp` AppSpawnX prototype alive so later
 launcher/`aa start` requests can reach `com.digiplex.game`. It is still a
 temporary non-`/system` setup and does not provide visible Android UI rendering.
 
-The `up` flow is intentionally honest. It checks the host, the external artifact baseline, and the legacy DAYU200/hdc connection before pointing to the app replay docs. If any required part is missing, it fails instead of pretending the repo can fully run from source alone.
+The `handoff` flow is strictly read-only and checks the role entries, bounded state, task/board locks, frontier card and Git worktree. STRUCTURE PASS is not a feature/oracle PASS.
+
+The `up` and generic `check` flows are intentionally legacy DAYU200 full-reproduction gates. They check the external artifact baseline and DAYU200 connection; failure there does not invalidate a DAYU600 thinker shift.
 
 Use `dayu600-audit` before any DAYU600 deployment. It must establish the live board architecture, HDC state, `/system/android` substrate state, and appspawn/appspawn-x availability without flashing or overwriting system files.
 
-Use `dayu600-2048` to reproduce the current DAYU600 APK milestone: the real
+Use `dayu600-2048` to reproduce the dated 2026-07-02 DAYU600 APK milestone: the real
 `com.digiplex.game` 2048 APK `MainActivity` and game model return RC:0 under the
 standalone aarch64 ART probe, and the temporary AppSpawnX app-child route runs
 the same real APK probe inside the OHOS `com.digiplex.game` child process while
 AMS reaches `AbilityTransitionDone`. This is not yet visible Android UI; the next hard gap is
-the aarch64 adapter path that runs Android runtime/framework code inside the
-OHOS app child and attaches Android `ViewRoot` / `Surface` rendering.
+at that dated milestone was the aarch64 adapter path toward Android `ViewRoot` /
+`Surface` rendering. Do not use this paragraph as the live frontier; read
+`state/FRONTIER.md` and its referenced card.
 
-Primary read order:
+Thinker read order:
 
-1. `REPO_SKILL.md`
-2. `REPO_LOCK.toml`
-3. `REPO_PIPELINE.dot`
-4. `STATUS.md`
-5. `UNIFIED-CONFIG-REPRODUCE.md`
-6. `docs/REPRODUCTION-GUIDE.md`
-7. `docs/DAYU600-PORT.md`
-8. `docs/DAYU600-APK-2048-2026-07-02.md`
+1. `AGENTS.md`
+2. `state/`全部（顺序见 AGENTS）
+3. `protocol/THINKER.md`
+4. `REPO_SKILL.md`, `REPO_LOCK.toml`, `REPO_PIPELINE.dot`
+5. 当前卡明确引用的源码、oracle 和 reference
+
+不要默认整包读 `STATUS.md`、legacy reproduction guides 或 `archive/`。
 
 When code, artifacts, or deployment steps change, update this repo skill in the same commit.

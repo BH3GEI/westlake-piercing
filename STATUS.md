@@ -1,5 +1,7 @@
 # STATUS — Android apps on OpenHarmony (noice + Material Catalog)
 
+> **Legacy snapshot:** this file records the DAYU200/RK3568 noice/catalog baseline. It is not the current DAYU600 progress source. For current work read `AGENTS.md` → `state/LEDGER.md` / `state/FRONTIER.md`. Reboot references below are historical observations, not authorization for an agent to reboot a board.
+
 Honest snapshot of what works end-to-end today, for **both** apps this repo
 covers. See `REPRODUCE.md` (noice) and `CATALOG-REPRODUCE.md` (catalog) for the
 how, `BUILD-FROM-SOURCE.md` to build either stock APK, and `docs/` for the full
@@ -157,8 +159,7 @@ runtime `16e08711` (**un-rebuildable** base) · bridge `2967c30c` · libhwui
 - displayId compositing race can render the launcher over the app in screenshots.
 - direct-UDP DNS ignores `/etc/hosts` + `resolv.conf`, so the noice subscription
   network failure can't be force-reproduced on the bench (intermittent ~10-20%).
-- The board is DC-powered with a MOCK battery — "low battery 11%" is fake;
-  **reboot is always safe** (see `notes/device-safety.md`).
+- The legacy DAYU200 board reported a mock battery. This observation does not authorize automated or remote reboot; current safety policy and explicit user direction control every reboot.
 
 ## The two foundational walls (shared, adapter-level, NOT per-app)
 1. **Synthetic input → `InputConnection` not bridged** (catalog IME text-commit +

@@ -1,0 +1,26 @@
+date=2026-07-10T13:12:05+09:00
+board=5583f5be00000000000000000323012c
+command=W001_TIMEOUT_SECONDS=45 oracle/verify/atom-43.sh 5583f5be00000000000000000323012c
+run_rc=0
+verdict=FAIL
+
+launcher_sha256=b2dd0ac9ef53f80d0da4bbcd591a8228a4f7adeb4f1add937025c7dbcd39a235
+dex_sha256=931e8a6beaf7b3c5a5d1e5bbfc1b0a7ba8b04165047278c094f44dc3eff7dbb3
+sidecar_sha256=b1776cee8636dd67a00a8358bcf63d5aade9c209fb90ec353835ac566a58912d
+remote_hashes_matched_local=true
+
+full_log=/tmp/westlake-w001-20260710-131205.log
+full_log_bytes=4497376
+full_log_sha256=623d7aac79c39e475ab33417248bd7df99df923d53c7a7cbd1cac8259ac3dfbb
+
+[InterpJni] int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[]) shorty='ILL' len=3 dexIdx=167
+interpreter.cc:1189] InterpreterJni: unhandled static shorty 'ILL' for int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[])
+[InterpJni] int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[]) shorty='ILL' len=3 dexIdx=167
+interpreter.cc:1189] InterpreterJni: unhandled static shorty 'ILL' for int Dayu600ApkStageProbe.nativeW001Append(java.lang.Object, byte[])
+__W001_NATIVE__
+__W001_EARLY__
+EARLY_THEME_FAIL:step=append:ckBad
+__W001_PROBE__
+
+No nativeSet heartbeat and no corrected WAB marker were produced. The hash-locked
+oracle correctly returned FAIL; wall #43 remains unverified.

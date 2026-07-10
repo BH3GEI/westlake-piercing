@@ -6,8 +6,12 @@
 | 日期 | 卡/墙 | 类型 | 板号 | hash | 命令 | 产物路径 |
 |---|---|---|---|---|---|---|
 | 2026-07-09 | #22 蓝像素引擎 | 截图 | 5583f5be | 08f400a8 | (见 LEDGER #22) | scratchpad-shared/(待收编) |
-| 2026-07-09 | #48 板恢复 | hdc | 3 板 | - | hdc list targets | CHAT 15:42 |
+| 2026-07-10 | #48 板恢复 | hdc | 4 板 | - | hdc list targets | `evidence/F-002/` |
 | 2026-07-09 | F-001 PiercingInfra 瘦身推送 | remote SHA | - | 509a1e12 | git ls-remote piercinginfra refs/heads/main | 远程 main(无本地 evidence 目录) |
+| 2026-07-09 | F-002 hdc 恢复 | CLI+四板可达 | 4 板 | - | `which hdc; hdc version; hdc list targets` | `evidence/F-002/` |
+| 2026-07-10 | W-001 #43 | oracle FAIL | 5583f5be | sha256 fa072043… | `oracle/verify/atom-43.sh <serial>` | `evidence/W-001/2026-07-10-ill-baseline.txt` |
+| 2026-07-10 | W-001 #43 | oracle audit | host/APK | - | javap + apktool + JADX + source diff | `evidence/W-001/2026-07-10-oracle-audit.txt` |
+| 2026-07-10 | W-001 #43 | hash-locked oracle FAIL | 5583f5be | sha256 623d7aac… | `W001_TIMEOUT_SECONDS=45 oracle/verify/atom-43.sh <serial>` | `evidence/W-001/2026-07-10-hashlocked-ill-baseline.txt` |
 
 ## 什么算证据(该留)
 

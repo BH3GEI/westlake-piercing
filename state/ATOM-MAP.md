@@ -66,7 +66,7 @@
 | 40 | Surface/RenderThread 自注册 | L05.A05 / L11.A04 | related | |
 | 41 | createSubDecor 要 Theme.AppCompat | — | none | **规格无 AppCompat 原子** |
 | 42 | setTheme AppThemeBar | — | none | 同上 |
-| 43 | ★双包 parent-chain 断链 | L10.A06 (+AppCompat 缺口) | related | 前沿；规格缺 AppCompat |
+| 43 | ★AppCompatTheme 真 WAB oracle | L10.A06 (+AppCompat 缺口) | related | 旧双包判据错用 autoLink；根因待 A/B |
 | 44 | Canvas draw / show crit | L11.A08 / L05.A01 | related | |
 | 45 | onClick mAttachInfo | L06.A01 INPUT-CLICK-DISPATCH | related | |
 | 46 | 5ce2dcee lottery | L13.A01 PROCESS-ALIVE | related | 板病 |

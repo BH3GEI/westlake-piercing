@@ -2,7 +2,7 @@
 # 锁 = tasks/doing 里领了此板的卡 id;dispatcher 领卡时写,交卡时清。
 # 恢复命令 = oracle/board-recover.sh <serial>:bark 用户手动断电重插 + 守着等板回来重挂。
 
-updated = "2026-07-09-drill"
+updated = "2026-07-10-handoff"
 
 # ---- 等级定义 ----
 # big-clean : 打墙/前沿验证主战场,最稳,一次一卡(5583f5be)
@@ -15,27 +15,27 @@ serial   = "5583f5be00000000000000000323012c"
 alias    = "5583f5be"
 tier      = "big-clean"
 role      = "渲染/窗口/主线首帧主力板;#43 前沿在此"
-online   = true          # 2026-07-09 15:42 恢复
-lock     = ""            # 空=空闲
+online   = true          # 2026-07-10 12:05 board-health PASS
+lock     = ""
 forbidden = ["wipe", "flash"]
-note     = "从 5ce2dcee 迁来;开钻时本机无 hdc,online 待 board-health 复核"
+note     = "从 5ce2dcee 迁来;board-health OK (hdc 3.2.0b via ~/.local/bin/hdc)"
 
 [[board]]
 serial   = "5ce2dcee00000000000000000923012c"
 alias    = "5ce2dcee"
 tier      = "big-any"
 role      = "退化板,~50% 早停 lottery(墙 #46 悬案)"
-online   = false         # 2026-07-09 仍未恢复
+online   = true          # 2026-07-10 12:05 board-health PASS
 lock     = ""
 forbidden = ["wipe", "flash", "runtime 修改", "framework jar 替换"]
-note     = "lottery 实验暂停;恢复后可与 5583f5be 跑同 probe 对照定 #46"
+note     = "lottery 实验暂停;可与 5583f5be 跑同 probe 对照定 #46"
 
 [[board]]
 serial   = "dd011a4144363141301012200971ac00"
 alias    = "0971ac00"
 tier      = "small"
 role      = "32 位小板,uptodown 修复旁支"
-online   = true          # 2026-07-09 15:42 恢复
+online   = true          # 2026-07-10 12:05 board-health PASS
 lock     = ""
 forbidden = ["wipe", "flash", "擦除 blob 16e08711"]
 note     = "🔴 不可重建 blob 16e08711 只在此板,绝不擦不刷"
@@ -45,7 +45,7 @@ serial   = "dd011a4144363141301012500404ac00"
 alias    = "0404ac00"
 tier      = "small"
 role      = "32 位小板"
-online   = true          # 2026-07-09 15:42 恢复
+online   = true          # 2026-07-10 12:05 board-health PASS
 lock     = ""
 forbidden = ["wipe", "flash"]
 note     = ""

@@ -5,7 +5,7 @@ description: Repository skill for BH3GEI/westlake-piercing. Use when working in 
 
 # Westlake Repo Skill
 
-Read `REPO_SKILL.md` first. It is the human-facing entry for this repo skill.
+Read `AGENTS.md` first to determine thinker versus worker. Thinkers then read `REPO_SKILL.md`; workers stay inside their assigned card contract.
 
 This directory is the installable skill payload:
 
@@ -17,6 +17,7 @@ Current local entrypoint:
 
 ```powershell
 python .repo-skill/src/dot_runner.py up
+python .repo-skill/src/dot_runner.py handoff
 python .repo-skill/src/dot_runner.py check
 python .repo-skill/src/dot_runner.py dayu600-audit
 python .repo-skill/src/dot_runner.py dayu600-2048
@@ -37,18 +38,17 @@ Do not treat `up` as a normal app bootstrap. Westlake needs hardware and externa
 
 Do not deploy legacy DAYU200/RK3568 32-bit artifacts to DAYU600. Use `dayu600-audit` first, then rebuild or replace architecture-specific components for `arm64-v8a`.
 
-Use `dayu600-2048` to replay the current DAYU600 real-APK milestone. It runs the
+Use `dayu600-2048` to replay the dated 2026-07-02 DAYU600 real-APK milestone. It runs the
 stock 2048 APK through the standalone ART probe and the temporary AppSpawnX
 app-child route. Treat a passing result as proof of APK/runtime/request-chain
 progress, not as proof of visible Android UI rendering.
 
-Before changing code or handing work to another agent, read:
+Thinker startup order:
 
-1. `REPO_SKILL.md`
-2. `REPO_LOCK.toml`
-3. `REPO_PIPELINE.dot`
-4. `STATUS.md`
-5. `UNIFIED-CONFIG-REPRODUCE.md`
-6. `docs/REPRODUCTION-GUIDE.md`
-7. `docs/DAYU600-PORT.md`
-8. `docs/DAYU600-APK-2048-2026-07-02.md`
+1. `AGENTS.md`
+2. `state/` in the order defined there
+3. `protocol/THINKER.md`
+4. `REPO_SKILL.md`, `REPO_LOCK.toml`, `REPO_PIPELINE.dot`
+5. The current task card and only the reference docs it names
+
+`STATUS.md`, `UNIFIED-CONFIG-REPRODUCE.md`, and the long reproduction guides describe the legacy DAYU200 baseline or dated milestones. Read them only for a task that needs that history.

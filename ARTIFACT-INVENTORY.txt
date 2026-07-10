@@ -82,6 +82,18 @@ Verified 2026-07-02:
 - OHOS AbilityTransitionDone succeeds and WindowManager focuses game0
 - visible Android ViewRoot/Surface adapter still missing
 
+================================================================================
+W-001 AppCompatTheme oracle checkpoint - verified 2026-07-10
+================================================================================
+Generated outputs are not committed. These exact artifacts were deployed only to
+the 5583 `/data/local/tmp/westlake-dayu600-substrate` prototype and were accepted
+by the hash-locked atom-43 preflight; the functional oracle then returned FAIL at
+static JNI shorty ILL before native entry.
+
+b2dd0ac9ef53f80d0da4bbcd591a8228a4f7adeb4f1add937025c7dbcd39a235  oracle/device/run-utd-w001.sh
+931e8a6beaf7b3c5a5d1e5bbfc1b0a7ba8b04165047278c094f44dc3eff7dbb3  dayu600-apk-probe.dex
+b1776cee8636dd67a00a8358bcf63d5aade9c209fb90ec353835ac566a58912d  libwestlake_embedded_art_dlopen_probe.so
+
 NOTE on md5 reconciliation: the SAME BCP jar shows competing md5s across sessions
 per feature (e.g. ohaf 300581d1->4690cae1; framework.jar f5fd86ef->e6f9e1a3; arb
 d5d39a05->6e32a253->c026e80c; libart 2813065e->ba40f173; boot-framework.oat

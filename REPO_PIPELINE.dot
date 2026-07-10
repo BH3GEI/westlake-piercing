@@ -1,8 +1,14 @@
 digraph westlake_repo_skill {
   graph [
     skill="westlake-piercing",
-    version="0.1",
+    version="0.2",
     default_runner=".repo-skill/src/dot_runner.py"
+  ];
+
+  handoff [
+    type="workflow",
+    record="false",
+    steps="verify_handoff"
   ];
 
   up [
@@ -17,7 +23,7 @@ digraph westlake_repo_skill {
 
   dayu600_audit [
     type="workflow",
-    steps="doctor_host verify_docs check_dayu600 runbook_dayu600"
+    steps="verify_handoff doctor_host verify_docs check_dayu600 runbook_dayu600"
   ];
 
   dayu600_2048 [
@@ -27,7 +33,13 @@ digraph westlake_repo_skill {
 
   sync [
     type="workflow",
-    steps="sync_skill sync_lock sync_history"
+    steps="sync_entries sync_skill sync_lock sync_history"
+  ];
+
+  verify_handoff [
+    kind="cmd",
+    cmd="python3 -B .repo-skill/src/westlake_checks.py handoff",
+    purpose="read-only check of role entries, bounded state, task/board locks, frontier card, and Git worktree"
   ];
 
   doctor_host [
@@ -89,6 +101,11 @@ digraph westlake_repo_skill {
     purpose="update REPO_SKILL.md and .repo-skill/SKILL.md if project knowledge changed"
   ];
 
+  sync_entries [
+    kind="agent",
+    purpose="keep AGENTS.md, CLAUDE.md, and both westlake-repo skill adapters aligned"
+  ];
+
   sync_lock [
     kind="agent",
     purpose="update REPO_LOCK.toml if versions, hashes, hardware, tools, or artifacts changed"
@@ -99,9 +116,10 @@ digraph westlake_repo_skill {
     purpose="append REPO_HISTORY.dot and .repo-skill/turns/<change>.md before commit"
   ];
 
+  handoff -> verify_handoff;
   up -> doctor_host -> check_artifacts -> check_device -> runbook;
   check -> doctor_host -> verify_docs -> check_artifacts -> check_device -> runbook;
-  dayu600_audit -> doctor_host -> verify_docs -> check_dayu600 -> runbook_dayu600;
+  dayu600_audit -> verify_handoff -> doctor_host -> verify_docs -> check_dayu600 -> runbook_dayu600;
   dayu600_2048 -> verify_docs -> check_dayu600 -> run_dayu600_2048_headless -> run_dayu600_2048_appspawn;
-  sync -> sync_skill -> sync_lock -> sync_history;
+  sync -> sync_entries -> sync_skill -> sync_lock -> sync_history;
 }
