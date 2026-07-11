@@ -49,3 +49,70 @@ Next executable work:
 Claim boundary:
 - W-003/#49 has a separate clean-relink oracle PASS on 5583 in worker commit 2854df46.
 - This handoff does NOT claim R2, color recording, panel pixels, or W-004 PASS on 5ce.
+
+================================================================================
+SESSION UPDATE — 2026-07-12 (canonical checkout, branch dayu600-hwui-gate1-2)
+Shared-infra portion of the W-004 front, done device-free. Still WIP; not PASS.
+
+Progress against the "Next executable work" list above:
+- [DONE] item 2 — colorApk probe stage. runColorApk() in Dayu600ApkStageProbe.java:
+  loads com.westlake.colorapk.ColorView from color-smoke.apk's OWN dex (DexClassLoader,
+  parent=probe loader so its superclass android.view.View resolves to the substrate View),
+  unsafe-allocs it (mirrors firstFrame53's device-proven prep: skip View(Context)/measure,
+  seed mColor=PALETTE[0]=red, wlEnsureRenderNodes, wlForceViewBounds), records red -> stable
+  native RenderNode ptr -> nativeInit==2 -> frame0 push+read, then the APP's own nextColor()
+  (red->green) -> re-record same root -> frame1 push+read. Routed via WESTLAKE_SUBSTAGE=colorApk.
+  Commit b849d3eb.
+- [DONE] item 3 — two-frame pixel readback, BUT wired via egl_interposer, NOT g214bb.
+  DEVIATION (deliberate, an improvement): the readback is NOT hwui_oh_abi_patch's
+  g214bb_raw_read_pixel (a main-thread glReadPixels — reads nothing because the EGL context
+  is bound to the RenderThread, and its 0xAABBGGRR pack fails the red check). Instead
+  egl_interposer.cpp captures the center pixel INSIDE eglSwapBuffers[WithDamageKHR] on the
+  RenderThread (EGL-current, pre-swap = the only place the just-drawn frame is readable),
+  packs ARGB = (A<<24)|(R<<16)|(G<<8)|B into volatile g_wl_last_swap_argb, and the renderer's
+  new nativeLastSwapArgb() (JNI) hands it to the Java driver AFTER g_proxy->fence() makes the
+  swap synchronous. ARGB pack verified against the oracle: red app-color 0xFFFF0000 -> px
+  R,G,B,A=FF,00,00,FF -> 0xffff0000; green 0xFF00FF00 -> 00,FF,00,FF -> 0xff00ff00. Exactly
+  the oracle's pixel0=ffff0000 / pixel1=ff00ff00. Commit b74e39d7.
+- [DONE] item 4 (build half) — probe dex builds. build-probe-mac.sh: javac+d8 PASS,
+  dayu600-apk-probe.dex 240664 bytes. Deploy half (into private root) still pending (no board).
+- [BONUS] firstFrame53 hardened: "ok" now requires a real captured swap pixel
+  (nativeLastSwapArgb>=0), not just ir==2. Kills the "JNI returned but nothing swapped"
+  false positive. Commit 6707b283.
+- [BONUS] color APK build determinism VERIFIED this session: build-color-apk.sh built TWICE,
+  both sha256 = 082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4 = the oracle's
+  pinned hash. The oracle's hard APK-hash gate is de-risked; the on-device APK will match.
+
+BLOCKER (honest) — .so cannot be built in THIS canonical env:
+- egl_interposer.o compiles standalone (only EGL/system headers): exact reproduction of
+  build-hwui-2048.sh:198-200 -> exit 0, 19416 bytes, llvm-nm shows g_wl_last_swap_argb +
+  g_wl_swap_count in BSS. This is the substantive native change and it is verified.
+- The renderer TU (westlake_upscreen_renderer.cpp) + full libwestlake_upscreen_renderer.so
+  link CANNOT be built here: the AOSP hwui source tree is absent — /Users/yao/a2oh-source-audit
+  contains only ohos-sdk (no aosp-frameworks-base-15-r9, no aosp-15-headers, no skia,
+  no graphic_graphic_2d), so AnimationContext.h etc. are nowhere. Same class of gap as
+  ohos_display_surface's transaction/rs_interfaces.h. The renderer edits (fence(); extern
+  globals matching egl's defs; jlong nativeLastSwapArgb; kMethods entry) are CODE-REVIEWED
+  only. The .so must be produced on the build machine that has the source (the W-003-color
+  worktree used for the ART build, or wherever build-upscreen-renderer.sh actually links).
+
+Remaining path to W-004 PASS (unchanged gates, now with the wiring in place):
+1. On a build host WITH the AOSP hwui + OHOS graphic_2d source, run
+   build-upscreen-renderer.sh to produce libwestlake_upscreen_renderer.so (carries the new
+   egl_interposer capture + nativeLastSwapArgb). Also needs the #49 pointer-publish (W-003
+   2854df46) and R2 same-source libhwui in the same substrate.
+2. Rebuild dayu600-apk-probe.dex (already reproducible here) and re-pin WCOLOR_DEX_SHA.
+3. Deploy ART/dex/sidecar/.so/color-smoke.apk ONLY into /data/local/tmp/wl-color-codex on 5ce
+   (WESTLAKE_ROOT=/data/local/tmp/wl-color-codex so apkPath() resolves color-smoke.apk there).
+   Do NOT overwrite the original substrate.
+4. Run the probe with WESTLAKE_STAGE=uptodownProbe WESTLAKE_SUBSTAGE=colorApk; it writes
+   /data/local/tmp/color-smoke-{result,pixels}.txt.
+5. WCOLOR_ART_SHA=<sha> WCOLOR_DEX_SHA=<sha> oracle/verify/color-smoke-5ce.sh 5ce2dcee...0923012c
+   Do not claim panel rendering before it prints PASS.
+
+Commits this session (canonical, branch dayu600-hwui-gate1-2):
+  b74e39d7 pre-swap pixel readback (egl_interposer -> nativeLastSwapArgb)
+  b849d3eb colorApk probe stage
+  6707b283 firstFrame53 "ok" requires real swap pixel
+  (earlier same line: 4ef98820 AndroidRuntime boot-gate, 6585f1c2 WestlakeUpscreen into build)
+No board touched this session; no deploy; no oracle run.
