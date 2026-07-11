@@ -208,6 +208,18 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-12-w003-atom49-binding-fail.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified -> color_apk_takeover_reconcile -> w003_correct_claim -> w003_atom49_binding_fail;
+  w003_atom49_clean_relink_pass [
+    commit="self",
+    base_commit="f1b64450ab65aa077024ad74a5976d12d55759e1",
+    actor="Yao/Cursor-Worker",
+    title="W-003 clean (A)(B) relink passes atom-49 and atom-43",
+    user_input="Worker W-003: verify/fix critical-native publication path; oracle atom-49 on 5583; commit delivery.",
+    agent_action="Confirmed committed (A)(B), rebuilt libwestlake_art.so from clean HEAD, redeployed 5583, re-ran atom-49, synced KNOWN_ART_SHA/REPO_LOCK, dropped accidental build binaries from tracking.",
+    code_delta="Hash locks + evidence + launcher APEX align; runtime patches already present; no ABI flag changes.",
+    verify="atom-49 PASS crit-bind nGetFlags=5 expected=5 ok normal=ok; nested atom-43 PASS; art=0742f1c4…",
+    note=".repo-skill/turns/2026-07-12-w003-atom49-clean-relink-pass.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified -> color_apk_takeover_reconcile -> w003_correct_claim -> w003_atom49_binding_fail -> w003_atom49_clean_relink_pass;
   stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }

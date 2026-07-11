@@ -4,7 +4,8 @@ set -uo pipefail
 SERIAL="${1:-}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HDC="${HDC:-$(command -v hdc 2>/dev/null || true)}"
-KNOWN_ART_SHA="${W049_ART_SHA:-REPLACE_AFTER_BUILD}"
+# Clean HEAD (A)(B) relink of Makefile.ohos-arm64 → libwestlake_art.so; verified atom-49+atom-43 on 5583.
+KNOWN_ART_SHA="${W049_ART_SHA:-0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e}"
 LOCAL_RUN="$ROOT/oracle/device/run-critbind49.sh"
 LOCAL_DEX="${W049_DEX:-$ROOT/test-fixtures/dayu600-apk-probe/out/dayu600-apk-probe.dex}"
 LOCAL_SO="${W049_SO:-$ROOT/test-fixtures/dayu600-embedded-art-probe/out/libwestlake_embedded_art_dlopen_probe.so}"
@@ -14,7 +15,6 @@ S=/data/local/tmp/westlake-dayu600-substrate
 fail() { echo "$1"; echo FAIL; exit 1; }
 [ -n "$SERIAL" ] || fail "usage: atom-49.sh <serial>"
 [ -n "$HDC" ] || fail "missing hdc"
-[ "$KNOWN_ART_SHA" != REPLACE_AFTER_BUILD ] || fail "set W049_ART_SHA after ART build"
 "$ROOT/oracle/board-health.sh" "$SERIAL" || fail "board health"
 for f in "$LOCAL_RUN" "$LOCAL_DEX" "$LOCAL_SO"; do [ -f "$f" ] || fail "missing $f"; done
 

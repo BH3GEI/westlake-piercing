@@ -39,7 +39,9 @@ REMOTE_SO_COPY="/data/local/tmp/westlake-dayu600-substrate/android/lib64/sidecar
 # clean build from local-build-adapters/art-latest/Makefile.ohos-arm64. See REPO_LOCK w001_substrate_art
 # and evidence/W-001/2026-07-11-5583-acceptance-pass-artlib-rootcause.txt.
 REMOTE_ART="/data/local/tmp/westlake-dayu600-substrate/art/libwestlake_art.so"
-KNOWN_ART_SHA="${W001_ART_SHA:-3ea7b69d07fb9591a1ac1420e4444b658d2cb6c83794f41f07d0bd5a858f6d09}"
+# W-003 / #49: after critical-native publication fix, lock to the clean relink that
+# still keeps #43 green on 5583 (same recipe Makefile.ohos-arm64).
+KNOWN_ART_SHA="${W001_ART_SHA:-0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e}"
 LOCAL_RUN="$ROOT/oracle/device/run-utd-w001.sh"
 LOCAL_DEX="${W001_DEX:-$ROOT/test-fixtures/dayu600-apk-probe/out/dayu600-apk-probe.dex}"
 LOCAL_SO="${W001_SO:-$ROOT/test-fixtures/dayu600-embedded-art-probe/out/libwestlake_embedded_art_dlopen_probe.so}"
