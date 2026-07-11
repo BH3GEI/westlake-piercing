@@ -2211,6 +2211,7 @@ public final class Dayu600ApkStageProbe {
             Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
             /* Alloc'd RelativeLayout.onMeasure NPEs — never call WestlakeUpscreen.layout/show. */
             int r = -1;
+            long swapArgb = -1L;
             try {
                 java.lang.reflect.Method record = ups.getMethod("record",
                         android.view.View.class, int.class, int.class);
@@ -2248,6 +2249,18 @@ public final class Dayu600ApkStageProbe {
                     java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
                     nDraw.setAccessible(true);
                     nDraw.invoke(null);
+                    // Pixel evidence: nativeLastSwapArgb() >= 0 proves the RenderThread reached
+                    // eglSwap and egl_interposer captured a real frame — not merely that the JNI
+                    // triple returned without throwing. -1 means NO swap happened (RenderProxy
+                    // silently produced nothing); that must NOT report ok even with ir==2.
+                    try {
+                        java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
+                        nSwap.setAccessible(true);
+                        Object sv = nSwap.invoke(null);
+                        swapArgb = (sv instanceof Long) ? ((Long) sv).longValue() : -1L;
+                    } catch (Throwable ig) { swapArgb = -1L; }
+                    res.append("02b swapArgb=").append(hex8((int) swapArgb))
+                       .append(swapArgb >= 0L ? " captured" : " NO-SWAP").append('\n');
                     r = 2;
                 } else {
                     r = ir;
@@ -2258,10 +2271,13 @@ public final class Dayu600ApkStageProbe {
                 /* Do NOT fall back to show() — layout() NPEs on alloc'd RelativeLayout. */
             }
             res.append("02 show r=").append(String.valueOf(r)).append('\n');
-            if (r == 2 && realTree) {
-                res.append("firstframe=ok r=2 sentinel=no\n");
-            } else if (r == 2) {
+            boolean swapped = swapArgb >= 0L;
+            if (r == 2 && realTree && swapped) {
+                res.append("firstframe=ok r=2 sentinel=no swap=yes\n");
+            } else if (r == 2 && !realTree) {
                 res.append("firstframe=fail sentinel=yes r=2\n");
+            } else if (r == 2 && !swapped) {
+                res.append("firstframe=fail no-swap r=2\n");
             } else {
                 res.append("firstframe=fail r=").append(String.valueOf(r)).append('\n');
             }
@@ -2270,7 +2286,8 @@ public final class Dayu600ApkStageProbe {
                 hb.append("firstframe r=").append(String.valueOf(r));
                 hb.append(" realTree=").append(realTree ? "ok" : "fail");
                 hb.append(" children=").append(String.valueOf(childCount));
-                hb.append(" sentinel=").append((r == 2 && !realTree) ? "yes" : "no").append('\n');
+                hb.append(" sentinel=").append((r == 2 && !realTree) ? "yes" : "no");
+                hb.append(" swap=").append(swapArgb >= 0L ? "yes" : "no").append('\n');
                 writeText("/data/local/tmp/firstframe-heartbeat.txt", hb.toString());
             } catch (Throwable ig) {}
         } catch (Throwable t) {
