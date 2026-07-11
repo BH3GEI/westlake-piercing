@@ -244,6 +244,14 @@ substrate_path = "/data/local/tmp/westlake-dayu600-substrate/art/libwestlake_art
 verified_boards = "5583f5be (atom-43 PASS x4), 5ce2dcee (atom-43 PASS)"
 verified_date = "2026-07-11"
 oracle_hashlock = "oracle/verify/atom-43.sh KNOWN_ART_SHA"
+
+[artifacts.dayu600_color_apk]
+sha256 = "082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4"
+bytes = 1075
+build_recipe = "test-fixtures/dayu600-color-apk/build-color-apk.sh"
+output = "test-fixtures/dayu600-color-apk/out/color-smoke.apk (gitignored)"
+claim = "APK-owned ColorView.onDraw -> Canvas.drawColor cycling palette; not yet verified on panel"
+verified = "host build repeated twice with identical hash on 2026-07-11"
 bad_build_note = "331568b2 (foreign WSL, mixed 81cdec3c+bb5cdf0f clang) → native_get unbound → #43 FAIL"
 
 [artifacts.w001_oracle_checkpoint]

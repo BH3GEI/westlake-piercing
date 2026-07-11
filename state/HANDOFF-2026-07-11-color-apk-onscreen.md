@@ -33,7 +33,8 @@
   - `src/com/westlake/colorapk/ColorView.java` — `onDraw(){ canvas.drawColor(mColor); }` + `PALETTE`(红/绿/品红/黄)+ `nextColor()`/`setColor()`。**故意用 `drawColor`(VJII,解释器已有 arm @:855),不是 `drawRect`**(见 §5)。
   - `src/com/westlake/colorapk/MainActivity.java` — 真 Activity(结构完整;当前不驱动完整生命周期,直接 new ColorView)。
   - `build-color-apk.sh` — javac(android-35)+ d8(r8.jar)+ zip → `out/color-smoke.apk`。
-  - 产物:`out/color-smoke.apk` **sha256 `f01fd63952119433f111f6a9c107e1b422db22181e8c4abe61dd4b696d5351dd`**(1075 B,dex 容器)。
+  - 产物:`out/color-smoke.apk` **sha256 `082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4`**
+    (1075 B,dex 容器；本班次固定 ZIP mtime 后连续两次构建同 hash)。
 - **`evidence/W-001/2026-07-11-hwui49-rediagnosis-binding-not-dispatch.txt`** — #49 再诊断(绑定 ≠ 派发)。
 - 渲染桥(Agent-C 已交付,真机验过 pure-C 半边):
   `ports/dayu600/gfx-smoke/westlake_upscreen_renderer.cpp`、`scratchpad-shared/upscreen-render/WestlakeUpscreen.java`、

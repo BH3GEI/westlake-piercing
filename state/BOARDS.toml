@@ -2,7 +2,7 @@
 # 锁 = tasks/doing 里领了此板的卡 id;dispatcher 领卡时写,交卡时清。
 # 恢复命令 = oracle/board-recover.sh <serial>:bark 用户手动断电重插 + 守着等板回来重挂。
 
-updated = "2026-07-11 W-001 交卡:#43 PASS,5583 lock 释放(下一前沿 #49/#50/#51 待铸卡再锁)"
+updated = "2026-07-11 接班收口:W-002 blocked 并释放 5ce2dcee；W-003 待干净领取后锁 5583"
 
 # ---- 等级定义 ----
 # big-clean : 打墙/前沿验证主战场,最稳,一次一卡(5583f5be)
@@ -24,11 +24,11 @@ note     = "从 5ce2dcee 迁来;board-health OK (hdc 3.2.0b via ~/.local/bin/hdc
 serial   = "5ce2dcee00000000000000000923012c"
 alias    = "5ce2dcee"
 tier      = "big-any"
-role      = "退化板,~50% 早停 lottery(墙 #46);2026-07-11 B车道攻坚中"
+role      = "退化板；#46 原 ~50% lottery 口径已被 W-002 证伪为未测量传闻"
 online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
-lock     = "W-002"       # 2026-07-11 四号铸卡 W-002；原占位 wall-46 已替换
+lock     = ""            # W-002 blocked 后释放；当前不做诱发掉线实验
 forbidden = ["wipe", "flash", "runtime 修改", "framework jar 替换"]
-note     = "#46 攻坚中(B/四号 W-002);A车道(#43@5583)勿触本板"
+note     = "W-002 blocked：旧 probe/计数不存在且四板同 USB hub；禁止用重启/崩溃 trial 建基线"
 
 [[board]]
 serial   = "dd011a414436314130101220085cac00"

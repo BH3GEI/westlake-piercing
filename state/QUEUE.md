@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
 | **W-003** | #49 @CriticalNative 绑定发布修复 | **todo(已重写 07-11)** | big-clean | **codex 定案**:根因=`class_linker.cc:4042` 早 return 跳过 critical 发布块(:4055-4066)+ 两 resolver 漏查 `GetRegisteredNative()`(:504)。**修法=发布块前移 + 两 resolver 查表**,非接 hook(原卡打错层)。为 color 上屏/#51/#53 绑图形 native 铺路 |
-| **(color 上屏)** | APK 自绘变色上屏(手办 color-apk) | **doing(已交接)** | big-any 优先 | 交接 `state/HANDOFF-2026-07-11-color-apk-onscreen.md`。产物 `color-smoke.apk` 已就绪;路线 B(StripCriticalNative 更快未验证)/A(=W-003 正解)。**用户线**:APK 自己 `drawColor` 变色,拒 OH 直接填色 |
+| **(color 上屏)** | APK 自绘变色上屏(color-apk) | **blocked on W-003** | big-clean | 交接 `state/HANDOFF-2026-07-11-color-apk-onscreen.md`;APK 源已就绪。走 W-003 正修，不在持安全禁令的 5ce2dcee 替换 framework jar |
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
 
@@ -37,7 +37,7 @@
 
 - **F-001** ✅ 已推：`piercinginfra/main` = `509a1e12`（orphan 瘦身，无 scratchpad/.so，~11MB）。本地工作分支仍 `dayu600-hwui-gate1-2`。
 
-- lottery 实验(#46)：5ce2dcee 已恢复，实验仍暂停，等独立 probe bundle 后再 A/B。
+- lottery 实验(#46)：W-002 已证伪旧口径并 blocked；不执行会诱发四板共 hub 掉线的 trial。
 - Unity 线(D600-5bb5,另一 workstream)：独立坐标,暂不进本队列;需要时按 L{NN}.A{NN} 对齐。
 
 ## 铸卡纪律

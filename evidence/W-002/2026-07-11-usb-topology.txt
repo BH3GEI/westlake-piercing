@@ -1,0 +1,42 @@
+W-002 / 墙 #46 — USB 拓扑取证
+采集: 2026-07-11 · coding lane(四号) · 命令: system_profiler SPUSBDataType(只读)
+目的: 验证在 5ce2dcee 诱发 USB 崩溃是否会连带 W-001 独占的 5583(对抗复核 BLOCK-2 的前提)
+
+============================================================
+结论: 两块大板共享同一个 USB hub,相邻端口。不隔离。
+      在 5ce2dcee 上跑会诱发 USB-daemon 崩溃的实验 = 结构性威胁 W-001。
+============================================================
+
+Location ID 拆解(Apple 格式,每级 nibble = 一层 port):
+
+  USB 3.1 Bus  (Host Controller: AppleT8122USBXHCI)
+  └─ GenesysLogic USB2.1 Hub        0x02100000 / 5
+     └─ Bridgesil  USB2.1 Hub       0x02140000 / 9      ← 四块板全挂此 hub
+        ├─ "HDC Device" Unisoc      0x02144000 / 17   = 5583f5be…0323012c  (W-001, port 4)
+        ├─ "HDC Device" Unisoc      0x02143000 / 15   = 5ce2dcee…0923012c  (W-002/#46, port 3)
+        └─ USB2.0 Hub               0x02141000 / 12
+           ├─ "HDC Device" Rockchip 0x02141400 / 16   = dd011a41…085cac00 (小板)
+           └─ "HDC Device" Rockchip 0x02141300 / 14   = dd011a41…0404ac00 (小板)
+
+关键事实:
+  - 5583(0x0214_4_000) 与 5ce2dcee(0x0214_3_000) 前 4 级 Location 完全相同(0x0214),
+    仅末级 port 号差 1(4 vs 3) → 同一 Bridgesil hub 0x02140000 的相邻物理端口。
+  - 四块板的 Location 全部以 0x0214 开头 → 全部在这一个 Bridgesil hub 之下。
+    该 hub 一次复位 → 四板同掉。这与史料一致:
+    archive/whiteboard-era/AGENT-COORD.md 多处 "5583f5be❌ 5ce2dcee❌ (均断连)"。
+  - 两块大板均 Current Required 500mA / Current Available 500mA → 该 hub 供电已满载,
+    掉压/过流也会同时冲击相邻端口。
+
+对 #46 的影响(坐实 BLOCK-2):
+  BOARDS.toml:54 记载 5ce2dcee 的硬件病 = dalvikvm crash → USB daemon 崩 → gadget 掉枚举 → hdc 掉线。
+  #46 的实验本质是把这个崩溃**故意诱发 N=60 次**。主机侧 hdc server 是全局单例(yao pid 98442)。
+  两板同 hub 相邻端口 ⇒ 每次诱发的 hub 级总线复位/重枚举,极可能同时打断 5583 上 W-001 的实时会话
+  与未提交工作。这不再是"未验证的风险",是硬件拓扑证明的必然旁路。
+
+  连"冷启动未 settle"假说的验证(reboot 5ce2dcee 一次)也会重枚举同 hub,虽只一次、量级远低于 60 次,
+  但在 W-001 活跃期间仍非零风险。
+
+裁决(四号建议):
+  W-001 占用 5583 期间,任何在 5ce2dcee 上会触发 dalvikvm crash / USB 重枚举的动作一律 no-go。
+  #46 若要推进,前置条件之一 = 把 5ce2dcee 物理移到**独立 host controller**(不同物理 USB 口,
+  避开 Bridgesil hub 0x02140000),或等 W-001 交卡后 5583 空出再单独跑。

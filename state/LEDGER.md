@@ -60,10 +60,10 @@
 | 43 | AppCompatTheme 真 WAB oracle:验收板 5583 `atom-43.sh` PASS ×4(wabAttr=0x7f040691 uamHasWab=true) | L6 | ✅ | ✔ | B | W-001 · CD-mmap interposer + P2 + ART 库 3ea7b69d · 见 FRONTIER.md |
 | 44 | Canvas draw native 分类,show() crit 缩到 2 | L5 | 🔧 | - | C | COORD L2947 |
 | 45 | onClick mAttachInfo 墙 → attachForInput 内联(已编未上板) | L6 | ✅ | ✗ | D | COORD L2535 |
-| 46 | 5ce2dcee ~50% 早停 lottery(板 vs bug,悬案) | L1 | 🔧 | - | H | COORD L2768 · INCONCLUSIVE |
+| 46 | 5ce2dcee ~50% 早停 lottery 口径被证伪(未测量传闻) | L1 | ⚠️ | ✗ | H | W-002 blocked · 原 COORD L2768 为死指针 |
 | 47 | IME 文字输入(WestlakeTextPump) | L6 | 🔧 | - | D | COORD L2916 |
 | 48 | 硬外部墙:全板离线 → **四板已恢复 2026-07-10** | L1 | ✅ | ✔ | F | evidence/F-002 |
-| 49 | WestlakeGenericJni 接线 :769+:2262(现 0 调用点) | L2/L6 | ⏳ | - | B | COORD L1632 |
+| 49 | @CriticalNative 注册指针发布/解析(GetRegisteredNative) | L2/L6 | 🔧 | - | B | W-003 重写 · 旧 GenericJni hook 方案证伪 |
 | 50 | createSubDecor windowActionBar 解析出 → subDecor | L6 | ⏳ | - | B | COORD L2910 |
 | 51 | setContentView(app R.layout.main) → content FrameLayout | L6 | ⏳ | - | B | **app 布局至今从未 inflate** |
 | 52 | tap → WLTEST CLICK(input .so bd6d2a77) | L6 | ⏳ | - | D | COORD L2746 |

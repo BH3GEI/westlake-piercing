@@ -172,6 +172,18 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-10-cli-fleet-audit.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified;
+  color_apk_takeover_reconcile [
+    commit="self",
+    base_commit="68bc6d65c141a5555b987a6a65e58afb611e8e47",
+    actor="Yao/Codex",
+    title="reconcile the color-apk handoff and stale worker state",
+    user_input="Inspect the repository commits and on-disk state, read the 2026-07-11 color APK handoff carefully, and continue the previous developer's work.",
+    agent_action="Audited canonical and sibling worktrees, rejected a stale W-003 PASS after later artifact changes, accepted two host card oracles, blocked the unsourced wall-46 experiment, released its board lock, compressed the live frontier, and made the color APK build deterministic.",
+    code_delta="State/task reconciliation, W-003 corrected card context, deterministic color-smoke APK recipe and hash lock; no claim of panel rendering or wall-49 PASS.",
+    verify="handoff structure check; A-01 and R-52 host oracles PASS; color APK rebuilt twice with identical sha256; latest inherited inflate51 prototype observed SIGBUS before inflate",
+    note=".repo-skill/turns/2026-07-11-color-apk-takeover-reconcile.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified -> color_apk_takeover_reconcile;
   stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }
