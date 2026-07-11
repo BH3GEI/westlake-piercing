@@ -12,6 +12,7 @@
 | 2026-07-10 | W-001 #43 | oracle FAIL | 5583f5be | sha256 fa072043… | `oracle/verify/atom-43.sh <serial>` | `evidence/W-001/2026-07-10-ill-baseline.txt` |
 | 2026-07-10 | W-001 #43 | oracle audit | host/APK | - | javap + apktool + JADX + source diff | `evidence/W-001/2026-07-10-oracle-audit.txt` |
 | 2026-07-10 | W-001 #43 | hash-locked oracle FAIL | 5583f5be | sha256 623d7aac… | `W001_TIMEOUT_SECONDS=45 oracle/verify/atom-43.sh <serial>` | `evidence/W-001/2026-07-10-hashlocked-ill-baseline.txt` |
+| 2026-07-12 | W-004 color APK | WIP handoff | 5ce2dcee | ART dc1d5e82… | oracle not run | `evidence/W-004/2026-07-12-handoff-wip.txt` |
 
 ## 什么算证据(该留)
 

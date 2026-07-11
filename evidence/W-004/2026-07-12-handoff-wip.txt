@@ -1,0 +1,51 @@
+W-004 / 5ce isolated color APK lane — WIP handoff — 2026-07-12
+
+User direction:
+- Use 5ce2dcee00000000000000000923012c exclusively for this lane.
+- Do not depend on or touch 5583.
+
+Observed 5ce baseline before writes:
+- board online, aarch64, no probe/dalvik process found
+- substrate ART  = 3ea7b69d07fb9591a1ac1420e4444b658d2cb6c83794f41f07d0bd5a858f6d09
+- substrate dex  = 696dd3cb9f3d9c8739c06d01dc9065be2fd4cddf293e5539855731c7f3e61773
+- substrate sidecar = a311b0ad63f12f85cd6433acae8a008017c260d23dd2674ce600b80200e0e848
+
+Device isolation already created:
+- private root: /data/local/tmp/wl-color-codex
+- android/compat/expand/storage plus baseline apks/probes/art entries are read-only symlinks
+- 53 symlinks created
+- original /data/local/tmp/westlake-dayu600-substrate was not overwritten
+- no new ART/probe/color run was deployed or executed before handoff
+
+Independent host build:
+- worktree: /Users/yao/Desktop/code/westlake-piercing.worktrees/W-003-color
+- detached baseline: 2854df46 (W-003 clean-relink delivery)
+- output: local-build-adapters/art-latest/build-ohos-arm64/lib/libart.so
+- sha256: dc1d5e8239dc6fb4aeff6d70e21c12985fe7f85e6e02efcfa7f433cb3b257a83
+- size: 28462512 bytes
+- status: build/link PASS; artifact NOT deployed
+- local-only build fix still dirty: stubs/dlmalloc.c Linux absolute include changed to the Mac AOSP path
+
+Repo work added in canonical checkout:
+- tasks/doing/W-004.md
+- oracle/verify/color-smoke-5ce.sh
+
+Oracle contract (not yet run):
+WCOLOR_ART_SHA=<sha> WCOLOR_DEX_SHA=<sha> \
+  oracle/verify/color-smoke-5ce.sh 5ce2dcee00000000000000000923012c
+
+PASS requires all of:
+- locked ART/dex/color APK hashes under /data/local/tmp/wl-color-codex
+- color-smoke=ok and changed=yes
+- pixel0=ffff0000 and pixel1=ff00ff00
+
+Next executable work:
+1. Create/checkout worker/color-smoke-5ce in W-003-color and make the dlmalloc include portable.
+2. Add the colorSmoke probe stage that loads the APK-owned ColorView and re-records after nextColor().
+3. Wire g214bb_raw_read_pixel through the renderer/JNI and write two frame pixels.
+4. Build probe dex; deploy ART/dex/sidecar/color-smoke.apk only into the private root.
+5. Run the W-004 oracle. Do not claim panel rendering before it prints PASS.
+
+Claim boundary:
+- W-003/#49 has a separate clean-relink oracle PASS on 5583 in worker commit 2854df46.
+- This handoff does NOT claim R2, color recording, panel pixels, or W-004 PASS on 5ce.

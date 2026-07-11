@@ -63,7 +63,7 @@
 | 46 | 5ce2dcee ~50% 早停 lottery 口径被证伪(未测量传闻) | L1 | ⚠️ | ✗ | H | W-002 blocked · 原 COORD L2768 为死指针 |
 | 47 | IME 文字输入(WestlakeTextPump) | L6 | 🔧 | - | D | COORD L2916 |
 | 48 | 硬外部墙:全板离线 → **四板已恢复 2026-07-10** | L1 | ✅ | ✔ | F | evidence/F-002 |
-| 49 | @CriticalNative 注册指针发布/解析(GetRegisteredNative) | L2/L6 | 🔧 | - | B | W-003 重写 · 旧 GenericJni hook 方案证伪 |
+| 49 | @CriticalNative 注册指针发布/解析(GetRegisteredNative) | L2/L6 | ✅ | ✔ | B | W-003 clean relink atom-49 + atom-43 PASS · worker 2854df46 |
 | 50 | createSubDecor windowActionBar 解析出 → subDecor | L6 | ⏳ | - | B | COORD L2910 |
 | 51 | setContentView(app R.layout.main) → content FrameLayout | L6 | ⏳ | - | B | **app 布局至今从未 inflate** |
 | 52 | tap → WLTEST CLICK(input .so bd6d2a77) | L6 | ⏳ | - | D | COORD L2746 |
@@ -71,7 +71,7 @@
 
 ## 2. 计数 (honest)
 
-- **✅ 状态**: 44/53 = **已复核(V=✔)** 3(#22,#43,#48) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
+- **✅ 状态**: 45/53 = **已复核(V=✔)** 4(#22,#43,#48,#49) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
 - 38 个 claimed 未复核项不得当作当前板事实。**复核 = 工厂队列第一批(见 QUEUE.md)。**
 - 真·首帧(#53)仍未达；app 自己的 R.layout.main(#51)至今一次都没 inflate。
 
