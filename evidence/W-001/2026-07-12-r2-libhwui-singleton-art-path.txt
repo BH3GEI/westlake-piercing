@@ -1,0 +1,45 @@
+# R2 (same-libhwui pointer legality) for the ART color-apk path — UNPROVEN, hinges on one libhwui instance
+日期: 2026-07-12
+给出者: 主号(thinker),device-free 静态分析
+关联: scratchpad-shared/upscreen-render/INTEGRATION-README.md:33("R2 同源")、
+      state/HANDOFF-2026-07-11-color-apk-onscreen.md、ports/dayu600/gfx-smoke/westlake_upscreen_renderer.cpp
+
+## 结论(一句话)
+color-apk 上屏的 R2 合法性 = "libandroid_runtime(造 RenderNode 的 nCreate)和 renderer(cast+驱动 RenderNode)
+必须用**同一份 libhwui 实例**"。纯 C `color_smoke` **证不了这条**(它在 renderer 自己的 libhwui 里造 RenderNode);
+ART 路才第一次跨 libandroid_runtime→renderer。当前链接命名有**不匹配**,不处理会加载**两份 libhwui**→R2 破。
+
+## 机制(observed + inferred)
+- renderer 在 `nativeInit` 里 `RenderNode* n = reinterpret_cast<RenderNode*>(rootNodePtr); new RenderProxy(true, n, ...)`
+  (westlake_upscreen_renderer.cpp:91-92);`rootNodePtr` = Java `RenderNode.mNativeRenderNode`(nativeRenderNodePtr 读的),
+  由 **libandroid_runtime 的 nCreate**(startReg 注册的框架 graphics native)调 **它链接的 libhwui** 造出。
+- cast 要合法 ⇒ 造 RenderNode 的 libhwui == renderer 用的 libhwui(同一 soinfo,否则 vtable/globals/RenderThread 各一份)。
+
+## 链接事实(observed,host ELF 解析)
+- `libwestlake_upscreen_renderer_adapter.so`(部署改名成 renderer.so):**DT_NEEDED = `libhwui-adapter.so`**。
+- `libwestlake_upscreen_renderer.so`(非 adapter 变体):DT_NEEDED = `libhwui.so`。
+- `libhwui-adapter.so`(sha 12872849…)与 `libhwui.so`(sha 4ba8cf13…)是**不同文件、不同大小**,**两者都无 SONAME**。
+- INTEGRATION-README 部署:①把 libhwui-adapter.so **改名/覆盖到 android/lib64/libhwui.so**(给 libandroid_runtime 用);
+  ②把 renderer_adapter.so 改名成 renderer.so(给 System.loadLibrary)。**②的改名不改 DT_NEEDED**——部署后的 renderer
+  仍 NEEDED `libhwui-adapter.so`,而 libandroid_runtime 走 `libhwui.so`。
+
+## 风险(inferred,bionic 语义)
+- 无 SONAME 时,bionic 按 **DT_NEEDED 名 + 解析后 realpath** 去重。`libhwui.so` 与 `libhwui-adapter.so` 名不同;
+  若板上是**两个独立文件**(即便内容一致)→ 两条 realpath → **加载两份 libhwui soinfo** → ART 路 RenderNode 跨实例 → R2 破(崩或花屏)。
+- 仅当以下之一成立才 R2 同源(一份实例):
+  (a) 板上 `libhwui-adapter.so` 是指向 `libhwui.so` 的**符号链接**(同 realpath → bionic 去重);或
+  (b) `libandroid_runtime` 被 patchelf 改成 NEEDED `libhwui-adapter.so`(两边都用它);或
+  (c) renderer 的 DT_NEEDED 被 patchelf 改成 `libhwui.so`(两边都用被覆盖的 libhwui.so);或
+  (d) 给 libhwui-adapter.so 打 SONAME=libhwui.so 并让 libandroid_runtime 按 soname 命中同一 soinfo。
+- README:12 "VERIFIED: libhwui-adapter dlopen'd FIRST (mirroring ART registration)" 是**纯 C 镜像**,不是真 ART,不覆盖本条。
+
+## 行动(给 W-003 板期,和 native 绑定一起一枪验)
+1. 板上确保**只有一份 libhwui 被加载**:部署时 `ln -sfn libhwui.so <dir>/libhwui-adapter.so`(同 realpath),
+   或 patchelf renderer NEEDED→libhwui.so。二选一,别放两个独立同名内容文件。
+2. 运行期自证一份实例:libhwui 里放一个进程级 sentinel(如某静态计数器地址),从 libandroid_runtime 侧与 renderer 侧各读一次,
+   地址相同=同一实例;或用 `/proc/self/maps` 确认 libhwui 段只映射一次。
+3. 崩溃兜底:若 R2 破,现象是 nativeInit 后 syncAndDrawFrame 处 SIGSEGV/花屏,而非 ULE——与 #49 绑定失败可区分。
+
+## 与 #49 的关系
+- #49(W-003)解决"native 指针发布/派发";R2 解决"RenderNode 指针跨库合法"。**两条独立**:即使 W-003 全绑上、
+  drawColor 派发成功,R2 若破仍拿不到像素。color-apk 上屏 = #49 ∧ R2 ∧ (回读接线)。

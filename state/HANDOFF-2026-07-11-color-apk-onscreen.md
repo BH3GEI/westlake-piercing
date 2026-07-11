@@ -114,6 +114,11 @@
   用 d8 并进探针 dex,或作第二 dex 一起 load。要从源重编就单独用**纯 android.jar**(不带 shim)。
   证据:`evidence/W-001/2026-07-11-color-apk-landing-derisks.txt`。
 - 板上两种 String 会 ArrayStoreException:探针里禁 `Class.forName(String)` 拼接、禁 String `+`(用 `earlyWriteLiteral`/StringBuilder)。
+- **R2(RenderNode 指针跨库合法)是 ART 路独有的、未证的墙**:renderer(部署名 renderer.so,实为 renderer_adapter)
+  DT_NEEDED=`libhwui-adapter.so`,而 libandroid_runtime 走 `libhwui.so`;两文件不同、都无 SONAME → 不处理会加载**两份 libhwui**,
+  ART 造的 RenderNode 指针跨实例 → nativeInit 后 `syncAndDrawFrame` 崩/花屏(**与 #49 的 ULE 可区分**)。纯 C color_smoke 在
+  renderer 自己的 libhwui 里造 RenderNode,**证不了这条**。板期修:`ln -sfn libhwui.so …/libhwui-adapter.so`(同 realpath 去重)
+  或 patchelf renderer NEEDED→`libhwui.so`,并自证 libhwui 只映射一次。详见 `evidence/W-001/2026-07-12-r2-libhwui-singleton-art-path.txt`。
 
 ---
 
