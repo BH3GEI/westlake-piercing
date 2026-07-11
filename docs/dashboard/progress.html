@@ -52,28 +52,31 @@ code { font-family:var(--mono); }
 <body>
 <header>
   <h1>WestLake 穿刺进度</h1>
-  <div class="meta">生成于 2026-07-10 18:42 · 源: state/LEDGER.md + state/ATOM-MAP.md · 刷新: <code>oracle/refresh-dashboard.sh</code></div>
+  <div class="meta">生成于 2026-07-11 21:03 · 源: state/LEDGER.md + state/ATOM-MAP.md · 刷新: <code>oracle/refresh-dashboard.sh</code></div>
 </header>
 <div class="wrap">
   <div class="cards">
-    <div class="card pass"><b>2</b><span>复核 PASS</span></div>
+    <div class="card pass"><b>3</b><span>复核 PASS</span></div>
     <div class="card claimed"><b>38</b><span>claimed 待复核</span></div>
     <div class="card contradict"><b>3</b><span>矛盾</span></div>
-    <div class="card wip"><b>4</b><span>进行中</span></div>
+    <div class="card wip"><b>3</b><span>进行中</span></div>
     <div class="card pending"><b>6</b><span>未开始</span></div>
     <div class="card"><b>53</b><span>墙合计</span></div>
   </div>
-  <div class="boards"><span class='board on'>5583f5be <small>big-clean</small></span><span class='board on'>5ce2dcee <small>big-any</small></span><span class='board on'>0971ac00 <small>small</small></span><span class='board on'>0404ac00 <small>small</small></span></div>
+  <div class="boards"><span class='board on'>5583f5be <small>big-clean</small></span><span class='board on'>5ce2dcee <small>big-any</small></span><span class='board on'>085cac00 <small>small</small></span><span class='board on'>0404ac00 <small>small</small></span></div>
   <h2 style="font-size:14px;color:var(--muted);font-weight:600;margin:0 0 8px;">FRONTIER</h2>
-  <div class="frontier">**更新**：2026-07-10 oracle 纠错 · W-001 · thinker
-## 墙 #43 · 卡 W-001
-- **旧判据作废**：probe 把 `0x010100b0`（`android:autoLink`）当成 windowActionBar；真实 AppCompat attr 是 `0x7f040691`，且目标 APK 的 `AppThemeBar` 直接定义它为 false。旧 `uamHasWab=false` 不能证明双包 parent-chain 断链。
-- **仍有效的实测 FAIL（5583）**：`nativeW001Append(Object, byte[])-&gt;int` 两次因 static shorty `ILL` 未进入 native。另发现 native append 用了不存在的三参 `nativeSetApkAssets`，旧 `ck=2` 也不证明 AssetManager2 已挂包。
-- **证据**：`evidence/W-001/2026-07-10-oracle-audit.txt` + `2026-07-10-hashlocked-ill-baseline.txt`（launcher/DEX/SO 与板上全匹配后仍 FAIL）。
-## 下一步
-1. 领卡时只锁 5583；保留已修正的 attr/nativeSet(ZZ) 与 hash-locked oracle，做最小 `ILL → VLL` trampoline，不改 interpreter/class_linker。
-2. A/B 测 app-only 与 app+framework；运行 `oracle/verify/atom-43.sh &lt;serial&gt;`。
-3. 只有匹配本地 artifact、`nativeSet=ok`、`wabAttr=0x7f040691`、`uamHasWab=true` 才跃迁 #43；A/B 决定是否彻底撤销“双包”根因。</div>
+  <div class="frontier">**更新**：2026-07-11 · W-001 · **#43 达成 —— 验收板 5583 `atom-43.sh` PASS ×4(稳定)** · 主号
+&gt; 卡 W-001 完成:`atom-43.sh 5583f5be…` 连 4 次 PASS(run_rc=0 ∧ `nativeSet=ok ck=2` ∧
+&gt; `wabAttr=0x7f040691` ∧ `uamHasWab=true`)。副板 5ce2dcee 亦 PASS,已对齐同一 committed dex
+&gt; (696dd3cb)+ 同一 ART 库(3ea7b69d)。LEDGER #43 → ✅(V=✔)。卡片可 doing→done。
+## 墙 #43 · 卡 W-001（已达成,存档摘要）
+三段机制 + 一段环境墙,全部 observed:
+1. **Trace ULE 越过** = 用户授权 P2 field-poke(SetEntryPointFromJni, ArtMethod off16)绑 boot native
+   → `W001 P2 poked`→`P2 recall ok (no ULE)`。
+2. **CD-mmap 上游真墙修复** = sidecar 运行时 mmap interposer(抢占 libandroidfw 的 `U mmap`,只读文件
+   失败映射走 `MAP_PRIVATE|ANON`+pread 救回)。改 OUR loader 不改 apk/不改 stock → 不违反 #53。
+   实测 uptodown/framework-res 大 apk 的 `Create=&gt;OK`+`LoadedArsc=&gt;OK`+无 EINVAL。
+3. **5583 验收墙根因 = 板上 ART 库版本落后(非代码墙)** = 5583 曾装 331568b2(旧 WSL 混合工具链,</div>
   <table>
     <thead><tr><th>#</th><th>承重原子</th><th>层</th><th>状态</th><th>V</th><th>规格原子</th><th>映射</th></tr></thead>
     <tbody>
@@ -119,7 +122,7 @@ code { font-family:var(--mono); }
 <tr class='claimed' data-n='40'><td class='n'>40</td><td class='name'>Surface/RenderThread renderer 4 native 自注册</td><td>L5</td><td>✅</td><td>?</td><td class='atom'>L05.A05 / L11.A04</td><td class='conf conf-related'>related</td></tr>
 <tr class='claimed' data-n='41'><td class='n'>41</td><td class='name'>createSubDecor 要 Theme.AppCompat(Material.Light 无 windowActionBar)</td><td>L6</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
 <tr class='claimed' data-n='42'><td class='n'>42</td><td class='name'>setTheme 换 AppThemeBar 0x7f15000e</td><td>L6</td><td>✅</td><td>?</td><td class='atom'>—</td><td class='conf conf-none'>none</td></tr>
-<tr class='wip' data-n='43'><td class='n'>★43</td><td class='name'>★前沿:AppCompatTheme 真 WAB oracle(旧双包判据错用了 autoLink)</td><td>L6</td><td>🔧</td><td>-</td><td class='atom'>L10.A06 (+AppCompat 缺口)</td><td class='conf conf-related'>related</td></tr>
+<tr class='pass' data-n='43'><td class='n'>★43</td><td class='name'>AppCompatTheme 真 WAB oracle:验收板 5583 `atom-43.sh` PASS ×4(wabAttr=0x7f040691 uamHasWab=true)</td><td>L6</td><td>✅</td><td>✔</td><td class='atom'>L10.A06 (+AppCompat 缺口)</td><td class='conf conf-related'>related</td></tr>
 <tr class='wip' data-n='44'><td class='n'>44</td><td class='name'>Canvas draw native 分类,show() crit 缩到 2</td><td>L5</td><td>🔧</td><td>-</td><td class='atom'>L11.A08 / L05.A01</td><td class='conf conf-related'>related</td></tr>
 <tr class='contradict' data-n='45'><td class='n'>45</td><td class='name'>onClick mAttachInfo 墙 → attachForInput 内联(已编未上板)</td><td>L6</td><td>✅</td><td>✗</td><td class='atom'>L06.A01 INPUT-CLICK-DISPATCH</td><td class='conf conf-related'>related</td></tr>
 <tr class='wip' data-n='46'><td class='n'>46</td><td class='name'>5ce2dcee ~50% 早停 lottery(板 vs bug,悬案)</td><td>L1</td><td>🔧</td><td>-</td><td class='atom'>L13.A01 PROCESS-ALIVE</td><td class='conf conf-related'>related</td></tr>
