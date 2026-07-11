@@ -17,6 +17,7 @@
  * enforcement, so no reflection/@hide unblocking is needed on the Java side.
  */
 #include <jni.h>
+#include <dlfcn.h>
 
 #include "AnimationContext.h"
 #include "FrameInfo.h"
@@ -83,6 +84,19 @@ jint nativeInit(JNIEnv*, jclass, jlong rootNodePtr, jint w, jint h) {
     if (g_proxy) return 2;
     if (rootNodePtr == 0) { LOGI("init: null rootNode ptr"); return 0; }
     Properties::isolatedProcess = true;
+    // Seed DeviceInfo::maxTextureSize before first prepareTree — otherwise
+    // layer promotion LOG_ALWAYS_FATALs ("MaxTextureSize has not been initialized").
+    {
+        using SetFn = void (*)(int);
+        void* hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_NOLOAD);
+        if (!hwui) hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+        if (hwui) {
+            auto set = reinterpret_cast<SetFn>(dlsym(
+                    hwui, "_ZN7android10uirenderer10DeviceInfo17setMaxTextureSizeEi"));
+            if (set) set(8192);
+            else LOGI("init: setMaxTextureSize symbol missing");
+        }
+    }
     int ow = 0, oh = 0;
     void* raw = westlake_ohos_make_display_window(w, h, &ow, &oh);
     if (!raw) { LOGI("init: make_display_window failed"); return 0; }

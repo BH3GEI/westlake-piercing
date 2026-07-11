@@ -6,14 +6,11 @@
  * the `window` it passes is our AOSP-ABI wrapper (oh_anw_wrap). OHOS's real libEGL
  * only understands the real OHNativeWindow. So we interpose eglCreateWindowSurface:
  * unwrap the wrapper back to the real OHNativeWindow, then forward to the real
- * libEGL symbol (RTLD_NEXT).
+ * libEGL symbol.
  *
- * Placement: this TU is linked into the harness EXECUTABLE and the executable is
- * linked -Wl,--export-dynamic, so this strong eglCreateWindowSurface sits first in
- * the global symbol scope and wins the runtime resolution of libhwui's PLT slot
- * (libhwui's -Bsymbolic-functions only rebinds symbols libhwui itself defines;
- * eglCreateWindowSurface is external to libhwui, so global scope — executable
- * first — decides). RTLD_NEXT then finds the device libEGL definition after us.
+ * When this TU is folded INTO libhwui-adapter (Agent-C R1), RTLD_NEXT fails the
+ * same way as MakeGL: libEGL is a DT_NEEDED loaded *before* libhwui, so search
+ * after this .so never sees it. Resolve via explicit dlopen(libEGL) instead.
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -25,11 +22,37 @@
 // OHNativeWindow* or nullptr if `aosp` is not one of our wrappers).
 extern "C" void* oh_anw_get_oh(void* aosp);
 
+static void* egl_handle() {
+    static void* h = nullptr;
+    if (h) return h;
+    const char* paths[] = {
+        "libEGL.so",
+        "/system/lib64/libEGL.so",
+        "/system/lib64/platformsdk/libEGL.so",
+        "/system/lib64/chipset-sdk-sp/libEGL.so",
+    };
+    for (const char* p : paths) {
+        h = dlopen(p, RTLD_NOW | RTLD_NOLOAD);
+        if (!h) h = dlopen(p, RTLD_NOW | RTLD_GLOBAL);
+        if (h) return h;
+    }
+    return nullptr;
+}
+
+template <typename Fn>
+static Fn egl_sym(const char* name) {
+    void* h = egl_handle();
+    Fn fn = h ? reinterpret_cast<Fn>(dlsym(h, name)) : nullptr;
+    if (!fn) fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, name));
+    if (!fn) fn = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, name));
+    return fn;
+}
+
 extern "C" EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
                                              EGLNativeWindowType win,
                                              const EGLint* attrib_list) {
     using Fn = EGLSurface (*)(EGLDisplay, EGLConfig, EGLNativeWindowType, const EGLint*);
-    static Fn real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "eglCreateWindowSurface"));
+    static Fn real = egl_sym<Fn>("eglCreateWindowSurface");
 
     void* oh = oh_anw_get_oh(reinterpret_cast<void*>(win));
     EGLNativeWindowType real_win = oh ? reinterpret_cast<EGLNativeWindowType>(oh) : win;
@@ -37,7 +60,12 @@ extern "C" EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
             reinterpret_cast<void*>(win), oh, reinterpret_cast<void*>(real));
 
     if (!real) {
-        fprintf(stderr, "[egl-interposer] FATAL: real eglCreateWindowSurface not found via RTLD_NEXT\n");
+        fprintf(stderr, "[egl-interposer] FATAL: real eglCreateWindowSurface not found via libEGL\n");
+        return EGL_NO_SURFACE;
+    }
+    // If dlsym returned ourselves (same .so), skip — would recurse forever.
+    if (real == &eglCreateWindowSurface) {
+        fprintf(stderr, "[egl-interposer] FATAL: dlsym resolved to self; libEGL handle broken\n");
         return EGL_NO_SURFACE;
     }
     return real(dpy, config, real_win, attrib_list);
@@ -52,7 +80,7 @@ extern "C" EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
 extern "C" EGLBoolean eglSwapBuffersWithDamageKHR(EGLDisplay dpy, EGLSurface surface,
                                                   EGLint* rects, EGLint n_rects) {
     using SwapFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
-    static SwapFn realSwap = reinterpret_cast<SwapFn>(dlsym(RTLD_NEXT, "eglSwapBuffers"));
+    static SwapFn realSwap = egl_sym<SwapFn>("eglSwapBuffers");
     EGLBoolean ok = realSwap ? realSwap(dpy, surface) : EGL_FALSE;
     EGLint err = eglGetError();
     fprintf(stderr,
@@ -65,7 +93,8 @@ extern "C" EGLBoolean eglSwapBuffersWithDamageKHR(EGLDisplay dpy, EGLSurface sur
 // Diagnostic: log any direct plain-swap calls too (and forward to the real one).
 extern "C" EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     using SwapFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
-    static SwapFn realSwap = reinterpret_cast<SwapFn>(dlsym(RTLD_NEXT, "eglSwapBuffers"));
+    static SwapFn realSwap = egl_sym<SwapFn>("eglSwapBuffers");
+    if (realSwap == &eglSwapBuffers) realSwap = nullptr;
     EGLBoolean ok = realSwap ? realSwap(dpy, surface) : EGL_FALSE;
     EGLint err = eglGetError();
     fprintf(stderr, "[egl-interposer] eglSwapBuffers surf=%p ret=%d eglErr=0x%x\n",

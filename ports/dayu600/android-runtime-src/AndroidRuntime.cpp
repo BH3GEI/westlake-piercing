@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -651,6 +652,14 @@ void* dlopen_first_existing(const char* const* paths, size_t count) {
     return nullptr;
 }
 
+// Per-registrar crash fence: one SIGTRAP/SEGV in a graphics registrar must not
+// abort the whole startReg (sidecar catches the first fatal and skips the rest).
+static sigjmp_buf g_hwui_reg_jmp;
+static volatile sig_atomic_t g_hwui_reg_armed = 0;
+static void hwui_reg_crash_handler(int signo) {
+    if (g_hwui_reg_armed) siglongjmp(g_hwui_reg_jmp, signo ? signo : SIGTRAP);
+}
+
 void register_hwui_if_present(JNIEnv* env) {
     const char* paths[] = {
         "libhwui.so",
@@ -680,40 +689,48 @@ void register_hwui_if_present(JNIEnv* env) {
     // step over a fatal registrar to enumerate ALL remaining walls in one run).
     const char* skipEnv = getenv("WESTLAKE_HWUI_SKIP");
     int n = (int)(sizeof(g_hwui_reg_all) / sizeof(g_hwui_reg_all[0]));
+
+    struct sigaction sa_old[5];
+    struct sigaction sa_new = {};
+    sa_new.sa_handler = hwui_reg_crash_handler;
+    int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGABRT, SIGFPE };
+    for (int s = 0; s < 5; ++s) sigaction(sigs[s], &sa_new, &sa_old[s]);
+
+    int ok = 0;
+    int crashed = 0;
+    // OHOS has no libandroid AHardwareBuffer JNI; these registrars LOG_ALWAYS_FATAL
+    // inside HardwareBufferHelpers::init(). Skipping them avoids a SIGTRAP that
+    // our fence can catch but leaves the process half-poisoned for RenderThread.
+    const char* hardSkip = ",4,52,";
     for (int i = 0; i < n && i < stopAt; ++i) {
-        if (skipEnv) {
-            char needle[16];
-            snprintf(needle, sizeof(needle), ",%d,", i);
-            if (strstr(skipEnv, needle)) {
-                logf("W", "hwui reg[%d/%d] SKIP %s (WESTLAKE_HWUI_SKIP)", i, n, g_hwui_reg_all[i].name);
-                continue;
-            }
+        char needle[16];
+        snprintf(needle, sizeof(needle), ",%d,", i);
+        if (strstr(hardSkip, needle) ||
+            (skipEnv && strstr(skipEnv, needle))) {
+            logf("W", "hwui reg[%d/%d] SKIP %s (hard/env skip)", i, n, g_hwui_reg_all[i].name);
+            continue;
         }
         logf("I", "hwui reg[%d/%d] BEGIN %s", i, n, g_hwui_reg_all[i].name);
         HwuiRegFn fn = reinterpret_cast<HwuiRegFn>(dlsym(hwui, g_hwui_reg_all[i].sym));
         if (!fn) { logf("W", "hwui reg[%d] symbol missing %s", i, g_hwui_reg_all[i].name); continue; }
-        int rc = fn(env);
-        clear_exception(env, g_hwui_reg_all[i].name);
-        logf("I", "hwui reg[%d/%d] END %s rc=%d", i, n, g_hwui_reg_all[i].name, rc);
-    }
-    log_line("I", "hwui per-registrar registration loop done");
-    return;
-
-    int ok = 0;
-    for (const HwuiReg& item : g_hwui_reg_fns) {
-        HwuiRegFn fn = reinterpret_cast<HwuiRegFn>(dlsym(hwui, item.sym));
-        if (!fn) {
-            logf("I", "hwui registration symbol missing: %s", item.name);
-            continue;
-        }
-        int rc = fn(env);
-        clear_exception(env, item.name);
-        logf(rc == 0 ? "I" : "W", "hwui registration %s rc=%d", item.name, rc);
-        if (rc == 0) {
-            ++ok;
+        g_hwui_reg_armed = 1;
+        int crashed_sig = sigsetjmp(g_hwui_reg_jmp, 1);
+        if (crashed_sig == 0) {
+            int rc = fn(env);
+            g_hwui_reg_armed = 0;
+            clear_exception(env, g_hwui_reg_all[i].name);
+            logf("I", "hwui reg[%d/%d] END %s rc=%d", i, n, g_hwui_reg_all[i].name, rc);
+            if (rc == 0) ++ok;
+        } else {
+            g_hwui_reg_armed = 0;
+            ++crashed;
+            clear_exception(env, g_hwui_reg_all[i].name);
+            logf("W", "hwui reg[%d/%d] CRASH signal=%d %s — skipped",
+                 i, n, crashed_sig, g_hwui_reg_all[i].name);
         }
     }
-    logf("I", "hwui registration attempted, ok=%d", ok);
+    for (int s = 0; s < 5; ++s) sigaction(sigs[s], &sa_old[s], nullptr);
+    logf("I", "hwui per-registrar registration loop done ok=%d crashed=%d", ok, crashed);
 }
 
 }  // namespace
@@ -732,6 +749,11 @@ int AndroidRuntime::startReg(JNIEnv* env) {
         log_line("E", "startReg called with null JNIEnv");
         return -1;
     }
+
+    // Graphics first: #53 needs RenderNode/Canvas before anything else. Per-registrar
+    // crash fence lives inside register_hwui_if_present so one bad registrar cannot
+    // abort the rest (sidecar's outer setjmp would otherwise skip the whole table).
+    register_hwui_if_present(env);
 
     int hard_failures = 0;
     hard_failures += register_natives_if_present(
@@ -760,8 +782,6 @@ int AndroidRuntime::startReg(JNIEnv* env) {
     hard_failures += register_natives_if_present(
         env, "android/os/SystemProperties", g_system_properties_methods,
         sizeof(g_system_properties_methods) / sizeof(g_system_properties_methods[0])) != 0;
-
-    register_hwui_if_present(env);
 
     logf(hard_failures == 0 ? "I" : "W",
          "AndroidRuntime::startReg leave hardFailures=%d", hard_failures);

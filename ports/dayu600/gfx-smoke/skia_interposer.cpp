@@ -82,14 +82,45 @@ sk_sp<GrDirectContext> MakeGL(sk_sp<const GrGLInterface> iface, const GrContextO
     patched.fDisableTessellationPathRenderer = true;
 
     using Fn = sk_sp<GrDirectContext> (*)(sk_sp<const GrGLInterface>, const GrContextOptions&);
-    static Fn real = reinterpret_cast<Fn>(dlsym(
-            RTLD_NEXT, "_ZN16GrDirectContexts6MakeGLE5sk_spIK13GrGLInterfaceERK16GrContextOptions"));
+    static Fn real = nullptr;
+    if (!real) {
+        // RTLD_NEXT fails in the ART process: libskia is a DT_NEEDED of libhwui and is
+        // loaded *before* libhwui, so RTLD_NEXT (search after this .so) never sees it.
+        // Resolve the real MakeGL from libskia explicitly.
+        const char* skia_paths[] = {
+            "libskia_canvaskit.z.so",
+            "/system/lib64/libskia_canvaskit.z.so",
+            "/system/lib64/platformsdk/libskia_canvaskit.z.so",
+            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libskia_canvaskit.z.so",
+        };
+        void* skia = nullptr;
+        for (const char* p : skia_paths) {
+            skia = dlopen(p, RTLD_NOW | RTLD_NOLOAD);
+            if (!skia) skia = dlopen(p, RTLD_NOW | RTLD_GLOBAL);
+            if (skia) break;
+        }
+        if (skia) {
+            real = reinterpret_cast<Fn>(dlsym(
+                    skia,
+                    "_ZN16GrDirectContexts6MakeGLE5sk_spIK13GrGLInterfaceERK16GrContextOptions"));
+        }
+        if (!real) {
+            real = reinterpret_cast<Fn>(dlsym(
+                    RTLD_DEFAULT,
+                    "_ZN16GrDirectContexts6MakeGLE5sk_spIK13GrGLInterfaceERK16GrContextOptions"));
+        }
+        if (!real) {
+            real = reinterpret_cast<Fn>(dlsym(
+                    RTLD_NEXT,
+                    "_ZN16GrDirectContexts6MakeGLE5sk_spIK13GrGLInterfaceERK16GrContextOptions"));
+        }
+    }
     fprintf(stderr,
             "[skia-interposer] GrDirectContexts::MakeGL: fGpuPathRenderers=kNone "
             "(no AtlasPathRenderer -> empty onFlush list -> gate never armed) real=%p\n",
             reinterpret_cast<void*>(real));
     if (!real) {
-        fprintf(stderr, "[skia-interposer] FATAL: real MakeGL not found via RTLD_NEXT\n");
+        fprintf(stderr, "[skia-interposer] FATAL: real MakeGL not found via skia/RTLD_DEFAULT\n");
         return nullptr;
     }
     return real(std::move(iface), patched);
