@@ -2,7 +2,7 @@
 # 锁 = tasks/doing 里领了此板的卡 id;dispatcher 领卡时写,交卡时清。
 # 恢复命令 = oracle/board-recover.sh <serial>:bark 用户手动断电重插 + 守着等板回来重挂。
 
-updated = "2026-07-11 接班收口:W-002 blocked 并释放 5ce2dcee；W-003 待干净领取后锁 5583"
+updated = "2026-07-11 W-003 正修领取：5583 锁定；旧 prototype 已隔离到 codex/w003-prototype-snapshot"
 
 # ---- 等级定义 ----
 # big-clean : 打墙/前沿验证主战场,最稳,一次一卡(5583f5be)
@@ -16,7 +16,7 @@ alias    = "5583f5be"
 tier      = "big-clean"
 role      = "渲染/窗口/主线首帧主力板;#43 已达成(W-001 done),前沿推进到 #49/#50/#51"
 online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
-lock     = ""            # 2026-07-11 W-001 交卡释放;下一 B-lane 卡领时再锁
+lock     = "W-003"       # 2026-07-11 正式领取重写后的 @CriticalNative 发布修复卡
 forbidden = ["wipe", "flash"]
 note     = "从 5ce2dcee 迁来;board-health OK (hdc 3.2.0b via ~/.local/bin/hdc)。板上产物已锁 committed 集:dex 696dd3cb + ART 3ea7b69d(REPO_LOCK w001_oracle_pass)"
 

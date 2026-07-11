@@ -184,6 +184,18 @@ digraph westlake_repo_history {
     note=".repo-skill/turns/2026-07-11-color-apk-takeover-reconcile.md"
   ];
 
-  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified -> color_apk_takeover_reconcile;
+  w003_correct_claim [
+    commit="self",
+    base_commit="9194569399786dd01fb961974e22dfb93e61e853",
+    actor="Yao/Codex",
+    title="claim corrected W-003 on the clean board lane",
+    user_input="Continue the previous developer's color APK work after auditing repository and disk state.",
+    agent_action="Moved the rewritten wall-49 card to doing, locked 5583, and prepared a clean isolated worker branch after archiving the superseded prototype.",
+    code_delta="Task/board/queue claim state only; no runtime implementation yet.",
+    verify="handoff structure check before claim PASS; prototype branch b8937e1c cleanly archived",
+    note=".repo-skill/turns/2026-07-11-w003-correct-claim.md"
+  ];
+
+  repo_skill_v0 -> claude_code_adapter -> repo_skill_cleanup -> dayu600_port_target -> dayu600_2048_appspawn_child -> dayu600_hwui_gate1_2 -> agent_d3_input_verify_progress -> agent_audio_native_chain_verified -> stateless_thinker_state_layer -> wall43_frontier -> repo_handoff_hardening -> external_corpora_index -> cli_fleet_verified -> color_apk_takeover_reconcile -> w003_correct_claim;
   stateless_thinker_state_layer -> piercinginfra_slim [style="dashed", label="orphan delivery"];
 }

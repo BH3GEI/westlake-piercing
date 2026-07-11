@@ -15,7 +15,7 @@
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
-| **W-003** | #49 @CriticalNative 绑定发布修复 | **todo(已重写 07-11)** | big-clean | **codex 定案**:根因=`class_linker.cc:4042` 早 return 跳过 critical 发布块(:4055-4066)+ 两 resolver 漏查 `GetRegisteredNative()`(:504)。**修法=发布块前移 + 两 resolver 查表**,非接 hook(原卡打错层)。为 color 上屏/#51/#53 绑图形 native 铺路 |
+| **W-003** | #49 @CriticalNative 绑定发布修复 | **doing(干净重领)** | big-clean | 5583 已锁；根因=`class_linker.cc` early return 跳过 critical 发布 + 两 resolver 漏查 `GetRegisteredNative()`。旧 GenericJni prototype 已隔离，不作为 PASS |
 | **(color 上屏)** | APK 自绘变色上屏(color-apk) | **blocked on W-003** | big-clean | 交接 `state/HANDOFF-2026-07-11-color-apk-onscreen.md`;APK 源已就绪。走 W-003 正修，不在持安全禁令的 5ce2dcee 替换 framework jar |
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
