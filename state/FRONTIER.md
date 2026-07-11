@@ -23,13 +23,28 @@
 - 证据:`evidence/W-001/2026-07-11-5583-acceptance-pass-artlib-rootcause.txt`(验收 PASS + ART 库根因);
   `-cd-mmap-interposer-oracle-pass-5ce2dcee.txt`(机制证成)。
 
-## 下一前沿（#53 链,B lane）
+## 下一前沿（#53 链,B lane）—— 路线已探明+定案(2026-07-11)
 
-#43 已把「真 AppCompatTheme WAB 解析」打通。往 #53(unmodified APK 自渲染首帧,像素校验)推进,B lane 顺序:
-- **#49** WestlakeGenericJni 接线(现 0 调用点)、**#50** createSubDecor windowActionBar 解析出 → subDecor、
-  **#51** setContentView(app `R.layout.main`)→ content FrameLayout(**app 自己的布局至今从未 inflate** —— 关键缺口)。
-- W-001 遗留下游技术点(达成 #43 时确认仍需):attr-ordering(probe ~1205 升序)、
-  `TypedArray.mDataAddress` 需 `VMRuntime.newNonMovableArray/addressOf`、主题须先 `nativeThemeApplyStyle`。
+#43 已把「真 AppCompatTheme WAB 解析」打通。往 #53(unmodified APK 自渲染首帧,像素校验)的路已一次性探明并
+定案,详见 **`evidence/W-001/2026-07-11-road-to-first-frame-plan.md`**(APK 反查 + probe 地图 + gpt-5.6-sol 顾问)。要点:
+- **首帧目标已具体**:`MainActivity.setContentView(R.layout.main)`,而 `R.layout.main` 极简(蓝底 RelativeLayout +
+  矢量 logo ImageView[app:srcCompat] + 2 TextView,**零自定义 View**)⇒ app 真首帧 = 蓝底+logo+两行字。
+- **首帧引擎已存在但未接线**:`ports/dayu600/gfx-smoke/`(RenderProxy→OHOS RSSurfaceNode,即 #22 蓝像素 11 帧)。
+  现役 sidecar 一个渲染 native 都没绑。
+- **定案的 sequencing**:
+  1. **#49 先行(地基)**:WestlakeGenericJni 接进 interpreter 两 hook(:769/:2262),**必须区分 normal-JNI 与
+     @CriticalNative 两条 ABI** —— 大量 RenderNode/HWUI property native 是 @CriticalNative,普通 JNI trampoline 会在
+     entry_point_from_jni_ 非零时仍破坏参数。
+  2. **#51 inflate**:窄 `LayoutInflater.Factory2` 只把 ImageView→AppCompatImageView(处理矢量 srcCompat),
+     **不走 createSubDecor**(gpt-5.6 判:不需要,且 decor 面更大更险)。预绑 Paint/Typeface/Minikin/MeasuredText/
+     LineBreaker/VectorDrawable/Bitmap/XmlBlock 全套 native。
+  3. **#53 首帧**:**手动 measure/layout/draw 进 RenderNode**(不走 ViewRootImpl —— 缺 WMS/IWindowSession/vsync,
+     是死胡同),把 `sceneNode.mNativeRenderNode` 交货架 RenderProxy;单静态帧不需 Choreographer/vsync,不加 Java
+     HardwareRenderer。→ 面板像素 r==2(#53 判据)。
+- **头号风险闸(先打的探针)**:**Typeface/Minikin bootstrap + 文本测量**。无 boot image/无 zygote 字体初始化时,光
+  field-poke Typeface 方法不够(默认 family map/native handle 从未构造)—— 构造能过但会晚死在 MeasuredText/LineBreaker/
+  drawText。**可能要 fresh VM 或在 art-latest 装配里做最小字体初始化(不碰 stock jar)**。#43 遗留下游点(attr-ordering
+  升序、TypedArray.mDataAddress 需 VMRuntime.newNonMovableArray/addressOf、先 nativeThemeApplyStyle)并入上面 ①②。
 - 复核队列(工厂):LEDGER 38 个 V=? claimed 项仍不得当当前板事实,尤其 #4「onCreate 越过全部框架墙」有矛盾。
 
 ## 跨 lane 提醒（可复用,勿丢）
