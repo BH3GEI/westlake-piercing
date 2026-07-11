@@ -64,6 +64,12 @@
 4. 结论:**RegisterNatives 早已把那个 libhwui 内部符号指针交进来了**,fork 只是没发布/没查。
    所以 W-003 卡"接 WestlakeGenericJni 两 hook"**打错层**:ULE 在 hook 之前就抛;且 `nGetFlags`(IJ)本就有 critical arm @:837。
 
+**⚠️ 关键心智模型:color-apk 上屏 = 三道独立门全过,W-003 是必要非充分:**
+1. **#49 / W-003**(native 发布+派发):@CriticalNative 图形指针发布 + 解释器有对应 shorty arm。← 并发窗口在打。
+2. **R2**(RenderNode 指针跨库合法):libandroid_runtime 与 renderer 必须**同一份 libhwui 实例**(链接命名不匹配,见 §5 R2 trap)。ART 路未证。
+3. **回读接线**(变色验收):`g214bb_raw_read_pixel` 已有但**未接**任何 harness(见 §1 验收建议)。
+   三者独立:W-003 全绑上,R2 破仍崩、回读没接仍验不了"变色"。板期应把 2、3 与 W-003 **同一枪**验,别串行发现。
+
 ---
 
 ## 4. 路线(以 live state 为准:路线 A 唯一在办,路线 B 已禁用)
