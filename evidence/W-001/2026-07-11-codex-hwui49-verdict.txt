@@ -1,0 +1,138 @@
+Bottom line: W-003 is mis-targeted as written. In this ART fork, native resolution throws before either proposed interpreter fallthrough can run. The primary defect is that a critical-native registration is staged in `ClassLinker`, then neither published nor consulted.
+
+Two source corrections first:
+
+- The checked-in P2 field-poke table contains six `android.os.Trace` methods, not `Paint` methods ([probe](/Users/yao/Desktop/code/westlake-piercing/test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c:2239)). If the board binary poked Paint, it differs from this source.
+- The probe puts `framework.jar` on `-Xbootclasspath` as well as `-classpath`; it is image-less boot-classpath dex, not merely application-loader dex ([probe](/Users/yao/Desktop/code/westlake-piercing/test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c:724)).
+- Current AOSP declares `Paint.nGetFlags`, `nSetFlags`, and `nSetTextSize` as critical natives ([Paint.java](https://android.googlesource.com/platform/frameworks/base/+/master/graphics/java/android/graphics/Paint.java), [Paint.cpp](https://android.googlesource.com/platform/frameworks/base/+/master/libs/hwui/jni/Paint.cpp)). The actual loaded DEX flags are authoritative if your framework was rewritten. “Setter returned without exception” alone does not prove it was normal JNI or mutated native state.
+
+## Q1 — Root cause
+
+The `ArtMethod` is not immutable, and it is not re-verified or re-linked on every call. The failure is a class-initialization publication problem introduced by the local ART patches:
+
+1. During method loading, ART derives `kAccCriticalNative`/`kAccFastNative` from the DEX annotations. `kAccCompileDontBother` is applied on the non-native path, so it is irrelevant here.
+
+2. `LinkCode()` runs during class linking. For an unresolved native it installs the JNI dlsym lookup stub in `entry_point_from_jni_`; it also selects quick/OAT/interpreter code. `GetOatMethod()` affects executable quick code selection, not persistence of a later registered JNI pointer.
+
+3. `ClassLinker::RegisterNative()` treats normal/Fast and critical methods differently ([class_linker.cc](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/class_linker.cc:460)):
+
+   - Normal/Fast: writes `entry_point_from_jni_` immediately.
+   - Critical and already visibly initialized: also writes immediately.
+   - Critical but not yet visibly initialized: stores the pointer in `critical_native_code_with_clinit_check_` and deliberately leaves the unresolved/CIC entry in the method.
+
+   That is upstream ART behavior, intended to preserve the critical-native class-initialization barrier ([upstream ClassLinker](https://android.googlesource.com/platform/art/+/1e78696010ab61314b29802e1772c3bba8ad9b00/runtime/class_linker.cc#460)).
+
+4. Normally, once the class becomes visibly initialized, `FixupStaticTrampolines()` publishes that pending critical pointer into the `ArtMethod` and erases the map entry. This fork returns at the top of that function, before the pending-map flush ([class_linker.cc](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/class_linker.cc:4039)).
+
+5. Both custom resolution paths then inspect only `GetEntryPointFromJni()` and go to symbol lookup. They do not first call `ClassLinker::GetRegisteredNative()`, which is where the pending critical pointer remains.
+
+Thus the likely run-specific sequence is:
+
+```text
+startReg
+  → Paint not visibly initialized
+  → RegisterNative stores nGetFlags fn in pending map
+  → Paint initializes
+  → local FixupStaticTrampolines early-return prevents publication
+  → custom resolver ignores pending map
+  → hidden libhwui symbol lookup fails
+```
+
+The direct offset-16 write “works” because it bypasses this staging mechanism entirely. It also bypasses class-initialization ordering and ART runtime callbacks, which is why it is effective but unsafe.
+
+The blanket claim that normal boot natives cannot persist through `RegisterNatives` contradicts this `ClassLinker` implementation: normal/Fast registration writes immediately. If a genuinely normal method still fails, inspect the registrar’s return/exception, exact class mirror and class loader, and whether another explicit unregister/redefinition occurred. There is no normal per-call `LinkCode()` overwrite.
+
+## Q2 — Where the ULE is thrown
+
+For this build, the call reaches `InterpreterJni()`, but it does not reach its native fallthrough.
+
+The local `ArtMethod::Invoke()` forces calls—including native methods—through `EnterInterpreterFromInvoke()` ([art_method.cc](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/art_method.cc:415)); the VM also uses `-Xint`. Inside `InterpreterJni()`:
+
+```text
+read entry_point_from_jni_
+  → recognize null/dlsym stub
+  → JavaVMExt::FindCodeForNativeMethod()
+  → hidden Paint symbol not found
+  → ThrowNewExceptionF(UnsatisfiedLinkError)
+```
+
+That throw occurs at [interpreter.cc:687](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/interpreter/interpreter.cc:687), before the critical-vs-normal dispatch starting around line 713 and before any unhandled-shorty fallthrough. `JavaVMExt::FindCodeForNativeMethod()` constructs the “tried Java_...” diagnostic; its caller throws. `ClassLinker::RegisterNative()` is not the throw site.
+
+Moreover, `Paint.nGetFlags(long): int` has shorty `IJ`, and this interpreter already has an `IJ` critical handler at [interpreter.cc:837](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/interpreter/interpreter.cc:837). Once the correct pointer is available, `nGetFlags` does not need `WestlakeGenericJni` at all.
+
+On a normal quick path, the analogous failure occurs in the generic JNI trampoline’s native-resolution path before entering the implementation. Stock AOSP’s `artFindNativeMethodRunnable` first calls `GetRegisteredNative()`, then performs Java-symbol lookup and throws only if both fail ([jni_entrypoints.cc](https://android.googlesource.com/platform/art/+/7972f849b05927b3e48a6804846229f790056a1a/runtime/entrypoints/jni/jni_entrypoints.cc#98)). This fork’s custom quick resolver also omits that lookup ([quick_trampoline_entrypoints.cc](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/entrypoints/quick/quick_trampoline_entrypoints.cc:2110)).
+
+Therefore:
+
+- Interpreter entry reached: yes, in this forced-interpreter build.
+- Proposed critical “else” fallthrough reached: no.
+- On a quick execution path: resolution likewise occurs before any interpreter hook.
+- Wiring only the fallthrough hooks cannot fix this ULE.
+
+Also, the cited W-003 line numbers are stale, and the current function has three physical unhandled sites: critical, static normal, and instance normal—not two.
+
+## Q3 — Binding the pointer
+
+The most robust fix is to repair ART’s existing registration lifecycle, because `RegisterNatives` has already delivered the otherwise-undiscoverable libhwui pointer.
+
+Recommended order:
+
+1. Move only the pending-critical publication block in `FixupStaticTrampolines()` above the Westlake early return. Keep skipping unwanted quick-code fixups if that was the reason for the patch.
+
+2. In both custom native resolvers—`InterpreterJni` and the quick generic resolver—mirror upstream ART:
+
+```cpp
+native_code = class_linker->GetRegisteredNative(self, method);
+if (native_code == nullptr) {
+  native_code = vm->FindCodeForNativeMethod(method, &detail);
+}
+```
+
+Do this after the appropriate static class-initialization check; do not invoke a staged critical pointer before visible initialization.
+
+3. Verify `graphics_Paint END ... rc=0`. The local `startReg` wrapper clears exceptions after registrars, so “the registrar ran” does not establish that its `RegisterNatives` call succeeded.
+
+Intercepting `RegisterNatives` is sound as a diagnostic or fallback, with constraints:
+
+- Hook the ART `JNIEnv` function-table implementation or `jni_internal` registration function. ELF interposition on a symbol may not catch an indirect `env->RegisterNatives` call.
+- Prefer the resolved `ArtMethod*` as the key. Otherwise use class identity—including class loader—plus name and signature.
+- Capture the final `new_native_method` after ART runtime callbacks, not merely the raw table pointer.
+- Keep the owning DSO loaded.
+- Do not manually infer or set `kAccCriticalNative`/`kAccFastNative` from `JNINativeMethod`: the structure contains only `name`, `signature`, and `fnPtr`. The ABI classification comes from the Java/Dex declaration. Assert the flags rather than changing them late.
+
+An ABI mismatch is catastrophic:
+
+- Marking a normal JNI implementation critical removes `JNIEnv*` and class/receiver. The native interprets the first Java integer/pointer argument as `JNIEnv*`.
+- Calling a critical implementation as normal shifts integral/pointer arguments by two GP registers because x0/x1 contain env and class/receiver.
+- FP registers form an independent bank, so some floating arguments may appear accidentally correct, but the signature and ART transition semantics remain invalid.
+- FastNative has the normal JNI parameter ABI; its difference is thread-transition/suspension behavior, not removal of env/class.
+
+`LinkCode()` is too early to capture libhwui pointers—it only has the unresolved stub. A high-level registrar return is too late and exposes only status. The best capture point, if needed, is inside `RegisterNativeMethods`/`ClassLinker::RegisterNative`, where ART has both the exact `ArtMethod` and final function pointer.
+
+## Q4 — ARM64 ABI frame
+
+The intended register mapping is:
+
+| Path | GP registers | FP registers |
+|---|---|---|
+| Critical static | First integral/pointer Java arg in x0, then x1… | First float/double in v0, then v1… |
+| Normal/Fast static | x0=`JNIEnv*`, x1=`jclass`, first integral Java arg in x2 | First FP Java arg still starts in v0 |
+| Normal/Fast instance | x0=`JNIEnv*`, x1=`jobject` local reference, first integral Java arg in x2 | First FP Java arg still starts in v0 |
+
+`WestlakeGenericJni` implements that basic split and uses `AddLocalReference` for normal class/receiver/reference arguments ([interpreter.cc](/Users/yao/Desktop/code/westlake-piercing/local-build-adapters/art-latest/patches/runtime/interpreter/interpreter.cc:214)).
+
+Important details:
+
+- `jlong` is one 64-bit x-register on LP64, although it occupies two 32-bit Dalvik virtual registers.
+- x0–x7 and v0–v7 are independently allocated under AAPCS64.
+- Exhausted GP or FP arguments go to the stack in argument order, with suitable alignment; SP must remain 16-byte aligned.
+- The current implementation supports GP overflow but explicitly rejects more than eight FP arguments rather than spilling them to the stack. It is therefore not a complete AAPCS64 dispatcher.
+- HFA rules do not arise from legal JNI descriptors: CriticalNative permits only static primitive parameters/returns, and normal JNI exposes primitives and references, not by-value C structs. They matter only if somebody mistakenly binds an internal helper rather than the exact registered JNI function.
+- Returns are x0 for integral/reference values, s0 for `float`, and d0 for `double`; decoding into `JValue` is broadly correct, subject to normal narrow-type truncation.
+- More importantly, this function is not a complete normal-JNI trampoline. A normal native requires ART’s runnable→native transition, local-reference frame, suspension/exception handling, and return transition. Merely supplying `JNIEnv*` and local references while retaining the interpreter’s `ScopedObjectAccess` is insufficient for arbitrary normal JNI. Critical and many FastNative calls are closer to its current execution model.
+
+The authoritative register-allocation and stack rules are in [AAPCS64](https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst).
+
+## Verdict
+
+W-003’s “two interpreter fallthrough hooks” approach is not correct as-is. The `nGetFlags` ULE is raised during native resolution before those hooks, and `IJ` critical dispatch already exists. The primary fix should be registration-time publication/lookup: restore the critical pending-map flush and consult `GetRegisteredNative()` in both custom resolver paths. If forced to choose between the two proposed strategies, choose a `RegisterNatives` binding layer—but implement it inside ART and preserve class-initialization and access-flag semantics. Keep `WestlakeGenericJni` only for successfully resolved methods that genuinely reach an unhandled interpreter dispatch, after adding FP stack spill and proper normal-JNI transition machinery. No repository files were changed.

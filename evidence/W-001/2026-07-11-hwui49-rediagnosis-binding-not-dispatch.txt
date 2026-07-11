@@ -1,0 +1,115 @@
+#49 RE-DIAGNOSIS — 2026-07-11 — binding gap, NOT dispatch gap (corrects W-003 card)
+================================================================================
+Source-of-truth read (observed in-repo, no board run needed):
+  local-build-adapters/art-latest/patches/runtime/interpreter/interpreter.cc (Jul 8 build, 3840 lines)
+  test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c
+
+CONTEXT: fontsmoke (2026-07-11) showed Paint.nGetFlags(long)->int (@CriticalNative)
+throws UnsatisfiedLinkError "No implementation found ... tried Java_android_graphics_Paint_nGetFlags".
+The W-003 card frames #49 as "WestlakeGenericJni 有定义无调用点 → 接进 interpreter :769/:2262
+两 hook（双 ABI）". Reading the ACTUAL source shows that framing is STALE and mis-targeted.
+
+WHAT THE INTERPRETER ACTUALLY DOES (interpreter.cc):
+  - WestlakeGenericJni def @:214 — still ZERO call sites (card correct on that one point).
+  - BUT the interpreter already has a LARGE hand-written InterpreterJni dispatcher:
+      * @CriticalNative block :602–913 (re-resolution + XmlBlock/StringBlock/RenderNode
+        NORMAL-ABI special-cases + per-shorty "arms" from :836; unhandled-shorty warn :913).
+      * regular_jni: label :920 with ~25 hand-written normal-JNI per-shorty arms (:934–1155+),
+        each `reinterpret_cast<fntype*>(method->GetEntryPointFromJni())`.
+    => WestlakeGenericJni is a GENERIC replacement for those per-shorty arms (eliminates
+       "add an arm per new shorty"), NOT the thing blocking nGetFlags. The card's hook line
+       numbers (:769/:2262) do not correspond to the current structure.
+
+ROOT CAUSE OF nGetFlags ULE (interpreter.cc :625–710, exact path):
+  1. method->GetEntryPointFromJni() == dlsym stub (never bound).
+  2. vm->FindCodeForNativeMethod(method) -> MISS (impl not in boot classloader's
+     registered native-library list).
+  3. WlDlsymFrameworkNative(method) -> MISS: nGetFlags' impl is an INTERNAL libhwui C++
+     symbol (e.g. android::PaintGlue::getFlags), NOT exported as Java_android_graphics_Paint_nGetFlags,
+     so dlsym cannot find it.
+  4. native_code == nullptr -> ThrowNewException(UnsatisfiedLinkError) @:689.  <-- the ULE.
+
+=> The interpreter's ABI dispatch (hand-arms AND the unused WestlakeGenericJni) would call
+   nGetFlags CORRECTLY **if it had the pointer**. It fails because it cannot obtain the pointer.
+   #49's real wall for graphics criticals is POINTER BINDING, not ABI DISPATCH.
+
+WHY THE POINTER IS UNREACHABLE:
+  - env->RegisterNatives from register_android_graphics_Paint runs (startReg @sidecar :1597),
+    passing the real internal fnPtrs — but on imageless static ART it "does not stick"
+    (boot ArtMethod entry stays the dlsym stub; see comment :695).
+  - The sidecar has NO generic RegisterNatives-capture: only explicit System/Trace
+    RegisterNatives (:1746/:2206) + a FIXED P2 field-poke table (tb[i].fn @:2268). No path
+    captures the graphics-critical fnPtrs that startReg throws away.
+
+PROPOSED FIX (pending codex gpt-5.6-sol/max adjudication, dispatched 2026-07-11):
+  Add a RegisterNatives-interception / pointer-capture layer: hook the JNI RegisterNatives
+  call so every JNINativeMethod{name,sig,fnPtr} that startReg's register_android_graphics_*
+  passes is captured (keyed declaring-class+name+sig) and written into entry_point_from_jni_
+  (or a WL map that FindCodeForNativeMethod/WlDlsymFrameworkNative consults), with
+  kAccCriticalNative/kAccFastNative preserved so the interpreter frames the right ABI.
+  This would bind ALL boot graphics criticals in one shot — potentially MORE tractable than
+  the card's per-shorty/hook approach. WestlakeGenericJni stays as the generic ABI dispatch
+  for methods that genuinely reach the interpreter fallthrough.
+
+OPEN QUESTION FOR CODEX (Q2): is the interpreter native-fallthrough even REACHED for a
+@CriticalNative boot method, or does execution divert to a quick-generic-jni-trampoline and
+throw the ULE there before any interpreter code — which would move the whole fix to
+link/registration time.
+
+============================ CODEX gpt-5.6-sol/max VERDICT (2026-07-11) ============================
+Full text: evidence/W-001/2026-07-11-codex-hwui49-verdict.txt. Question: -question.txt.
+Codex read class_linker.cc + interpreter.cc + quick_trampoline_entrypoints.cc and RESOLVED it.
+The re-diagnosis above (binding, not dispatch) is CONFIRMED — and the exact mechanism is a
+registration-PUBLICATION bug the local ART patch introduced, NOT a symbol-unreachability problem:
+
+  ROOT CAUSE (all lines verified against source):
+  1. ClassLinker::RegisterNative (class_linker.cc:460): normal/@FastNative -> SetEntryPointFromJni
+     IMMEDIATELY (:485). @CriticalNative + class NOT visibly-initialized -> STAGES the fnPtr into
+     critical_native_code_with_clinit_check_ map (:481), leaving the CIC entry. (Upstream ART
+     behavior, preserves the clinit barrier.) => RegisterNatives ALREADY delivered the otherwise-
+     undiscoverable internal libhwui pointer; it is sitting in the pending map.
+  2. FixupStaticTrampolines (class_linker.cc:4039) normally publishes that staged pointer into the
+     ArtMethod once the class is visibly-initialized — the flush block is :4055-4066
+     (SetEntryPointFromJni(lb->second)). BUT THE PATCH PUT AN UNCONDITIONAL `return;` AT :4042
+     ("Skip trampoline fixup — interpreter handles all methods") -> the flush at :4055-4066 NEVER
+     RUNS -> staged critical pointers are never published.
+  3. Both custom resolvers only read GetEntryPointFromJni() + FindCodeForNativeMethod and DO NOT
+     consult ClassLinker::GetRegisteredNative() (which EXISTS at class_linker.cc:504 and reads the
+     pending map). InterpreterJni throws the ULE at interpreter.cc:687 — BEFORE the critical-vs-
+     normal dispatch (~:713) and BEFORE any unhandled-shorty fallthrough. The quick generic
+     resolver (quick_trampoline_entrypoints.cc:2110) has the same omission.
+
+  Q2 ANSWER: In this forced-interpreter (-Xint) build the call REACHES InterpreterJni but the ULE
+  is thrown at :687 during native resolution — the proposed critical/normal fallthrough hooks are
+  NEVER reached. nGetFlags (shorty IJ) also ALREADY has a critical arm at interpreter.cc:837.
+  => Wiring WestlakeGenericJni into the two hooks CANNOT fix this ULE. W-003 as written is
+  MIS-TARGETED (also its :769/:2262 line numbers are stale; there are THREE unhandled sites now).
+
+  CODEX-RECOMMENDED FIX (surgical, uses ART's own lifecycle; supersedes the card's hook approach):
+  (A) Move the pending-critical publish block (class_linker.cc:4055-4066) ABOVE the early `return;`
+      at :4042 (keep skipping the AOT/nterp/instrumentation fixups at :4067+ — that stale-address
+      skip was the legit reason for the patch).
+  (B) In BOTH custom resolvers (interpreter.cc:687 InterpreterJni; quick_trampoline_entrypoints.cc
+      :2110), consult class_linker->GetRegisteredNative(self, method) BEFORE FindCodeForNativeMethod
+      (mirror upstream jni_entrypoints.cc), AFTER the class-init check; never invoke a staged
+      critical pointer before visible-initialization.
+  (C) Do NOT infer/set kAccCriticalNative/kAccFastNative from JNINativeMethod (name/sig/fnPtr only);
+      the ABI class comes from the DEX declaration — ASSERT it, don't mutate late. An ABI mismatch
+      is catastrophic (critical-vs-normal shifts args by two GP regs; env/receiver misread).
+  WestlakeGenericJni is kept ONLY for methods that genuinely reach an unhandled interpreter dispatch,
+  and is NOT a complete normal-JNI trampoline (no FP-arg stack spill >8, no runnable->native
+  transition) — do not rely on it for arbitrary normal JNI.
+
+  CAVEAT codex flagged: the checked-in P2 field-poke table binds android.os.Trace (6 methods,
+  sidecar :2239), NOT Paint — so if the board binary appears to poke Paint it differs from source.
+  And "setter returned without exception" != "normal JNI / native state mutated" (WlCriticalNoop
+  silently no-ops void @CriticalNative setters), so any future "measureText works" MUST verify the
+  advance VALUE, not just absence of ULE.
+================================================================================================
+
+CONSEQUENCE FOR PLAN:
+  - W-003 card §1/§2 must be rewritten: the wall is a binding layer, not (only) the two hooks.
+  - This is the unblocker for the app's vector logo (Path/Bitmap @CriticalNative) and text
+    getters — i.e. on the critical path to "app 真上屏" (not a color block).
+  - Render bridge itself remains PROVEN (Jul 9 R2). Gap to app content = this binding layer
+    (#49) + inflate harness (#51) + font TTF bootstrap.

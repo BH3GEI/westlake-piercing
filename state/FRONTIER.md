@@ -1,4 +1,11 @@
-**更新**：2026-07-11 · W-001 · **#43 达成 —— 验收板 5583 `atom-43.sh` PASS ×4(稳定)** · 主号
+**更新**：2026-07-11(晚)· 前沿 = **color-apk 上屏**(交接 `state/HANDOFF-2026-07-11-color-apk-onscreen.md`)· 主号
+> 用户验收线收紧:**必须是安卓 APK 自己的 `Canvas.drawColor` 变色上屏,拒绝任何 OH 直接填色/静态色块**。
+> #49/W-003 经 codex gpt-5.6-sol/max 定案**重写**:根因不是 ABI/派发,是 `class_linker.cc:4042` 早 `return;` 跳过
+> @CriticalNative 发布块(:4055-4066)+ 两 resolver 漏查 `GetRegisteredNative()`(:504)。修法=发布块前移+查表。
+> 证据 `evidence/W-001/2026-07-11-codex-hwui49-verdict.txt` + `-hwui49-rediagnosis-binding-not-dispatch.txt`。
+> ——以下为 #43 达成存档(仍有效)——
+
+**#43 达成存档** —— 验收板 5583 `atom-43.sh` PASS ×4(稳定) · 主号
 > 卡 W-001 完成:`atom-43.sh 5583f5be…` 连 4 次 PASS(run_rc=0 ∧ `nativeSet=ok ck=2` ∧
 > `wabAttr=0x7f040691` ∧ `uamHasWab=true`)。副板 5ce2dcee 亦 PASS,已对齐同一 committed dex
 > (696dd3cb)+ 同一 ART 库(3ea7b69d)。LEDGER #43 → ✅(V=✔)。卡片可 doing→done。

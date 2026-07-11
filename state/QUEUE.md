@@ -3,7 +3,8 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-11 · W-001 交卡(#43 PASS,done);5583 lock 释放,下一前沿 #49/#50/#51 待铸卡
+**更新**：2026-07-11(晚)· 前沿转向 **color-apk 上屏**(用户线:APK 自绘变色,拒 OH 直接填色),已交接
+`state/HANDOFF-2026-07-11-color-apk-onscreen.md`。#49/W-003 经 codex 定案**重写**(根因=class_linker 发布 bug,非 ABI)。
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -14,7 +15,8 @@
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
-| **W-003** | #49 WestlakeGenericJni 接线(双 ABI) | **todo(已铸)** | big-clean | 地基:dispatcher 已存在(interpreter.cc:214),接 :769/:2262 两 hook + 重建 ART。为 #51/#53 绑 @CriticalNative 图形 native 铺路 |
+| **W-003** | #49 @CriticalNative 绑定发布修复 | **todo(已重写 07-11)** | big-clean | **codex 定案**:根因=`class_linker.cc:4042` 早 return 跳过 critical 发布块(:4055-4066)+ 两 resolver 漏查 `GetRegisteredNative()`(:504)。**修法=发布块前移 + 两 resolver 查表**,非接 hook(原卡打错层)。为 color 上屏/#51/#53 绑图形 native 铺路 |
+| **(color 上屏)** | APK 自绘变色上屏(手办 color-apk) | **doing(已交接)** | big-any 优先 | 交接 `state/HANDOFF-2026-07-11-color-apk-onscreen.md`。产物 `color-smoke.apk` 已就绪;路线 B(StripCriticalNative 更快未验证)/A(=W-003 正解)。**用户线**:APK 自己 `drawColor` 变色,拒 OH 直接填色 |
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
 

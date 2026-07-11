@@ -1,0 +1,28 @@
+You are a senior ART (Android Runtime) internals engineer. Answer as a bounded technical consult. You have read-only access to this repo — READ these files before answering:
+- local-build-adapters/art-latest/patches/runtime/interpreter/interpreter.cc  (contains WestlakeGenericJni ~line 214, and the interpreter native fallthrough hook sites)
+- test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c  (the sidecar: AndroidRuntime::startReg dlopen+call ~:1581, P2 field-poke of ArtMethod.entry_point_from_jni_ ~:2237)
+- evidence/W-001/2026-07-11-road-to-first-frame-plan.md  (sections C1/C3: why #49, and the double-ABI contract)
+- evidence/W-001/2026-07-11-fontsmoke-pristine-vm-result.txt  (the decisive observation below)
+
+SETUP (imageless embedded static ART):
+- AOSP-15 ART built static, NO boot image (.art), NO zygote, NO SurfaceFlinger. A sidecar .so is LD_PRELOADed into `toybox`, calls JNI_CreateJavaVM, loads framework.jar as an ordinary dex, and drives app code reflectively.
+- We bind boot-class native methods by MANUALLY writing ArtMethod.entry_point_from_jni_ (offset 16) — "P2 field-poke". This WORKS for normal-JNI boot natives (android.os.Trace, android.graphics.Paint.nSetFlags/nSetTextSize all bound and callable).
+- AndroidRuntime::startReg() IS called (register_android_graphics_* all run, each doing env->RegisterNatives with the real internal function pointers). But plain RegisterNatives "does not take effect" for boot classes on this imageless setup — that is the whole premise.
+
+DECISIVE OBSERVATION (pristine VM, board-verified, file above):
+- new Paint(); nSetFlags(antialias); nSetTextSize — all OK (bound via field-poke).
+- Paint.measureText -> Paint.getFlags -> **nGetFlags(long)** throws `java.lang.UnsatisfiedLinkError: No implementation found for int android.graphics.Paint.nGetFlags(long) (tried Java_android_graphics_Paint_nGetFlags and ...__J)`. nGetFlags is a **@CriticalNative** method. Its impl is an INTERNAL, non-exported libhwui symbol (there is no exported Java_* symbol, so dlsym fails), and it was never field-poked.
+
+Existing asset: `WestlakeGenericJni(...)` in interpreter.cc is a double-ABI dispatcher (frames args per shorty; picks critical vs normal by `soa==nullptr`; has aarch64 WlPushReg framing and an unregistered-stub bail). It is DEFINED but has ZERO call sites. The plan (card W-003 / #49) is to call it from two interpreter native "fallthrough" hooks (a @CriticalNative-else path and a normal/@FastNative-else path).
+
+QUESTIONS (answer each concretely, cite ART mechanics; where the repo source contradicts my framing, say so):
+
+Q1 — ROOT CAUSE. On imageless static ART with no boot image, WHY does env->RegisterNatives fail to persist boot-class native bindings, while a direct entry_point_from_jni_ write works? Is the boot ArtMethod in an immutable/CIC state, or is the registered pointer overwritten by a resolution/relink step, or is the class re-verified/re-linked each call? Give the exact mechanism (class_linker / LinkCode / kAccCompileDontBother / GetOatMethod / interpreter-bridge) so we know whether a RegisterNatives interception could persist.
+
+Q2 — WHERE IS THE ULE THROWN. The @CriticalNative nGetFlags throws UnsatisfiedLinkError. In AOSP-15 ART, precisely which code path throws that ULE for a native method with a null/unresolved entry — is it artFindNativeMethod / the generic JNI trampoline / class_linker RegisterNative, and does the INTERPRETER native fallthrough (where WestlakeGenericJni is to be hooked) actually get reached for a @CriticalNative boot method, or does execution divert to a compiled JNI stub / quick-generic-jni-trampoline and throw there BEFORE any interpreter fallthrough? i.e. is "wire WestlakeGenericJni into the interpreter's two native-else hooks" the correct injection layer for @CriticalNative, or must the fix be at ArtMethod link/registration time? This is the load-bearing question — if the interpreter fallthrough is never reached for critical natives, the whole W-003 approach as written is mis-targeted.
+
+Q3 — BINDING THE POINTER. The critical impls are internal libhwui symbols (no exported Java_*). What is the most robust way to obtain the correct native fn pointer for each boot @CriticalNative method and bind it? Specifically evaluate: intercept the RegisterNatives CALL itself (hook the JNI RegisterNatives, capture each JNINativeMethod{name,sig,fnPtr} that startReg passes, key by declaring-class+name+sig, then write entry_point_from_jni_ AND set the ArtMethod access flags kAccCriticalNative/kAccFastNative to match) — is that sound? What breaks if kAccCriticalNative is set but the invoke path still frames a JNIEnv*/jclass (or vice versa)? Is there a simpler place (LinkCode / the .registerNatives return) to capture pointers?
+
+Q4 — ARM64 ABI FRAME. For WestlakeGenericJni on aarch64/AAPCS64, confirm the exact frame for each path: critical = no JNIEnv*, no jclass/receiver, integral/pointer args from x0.. and float/double from v0.. per AAPCS with no leading env; normal = x0=JNIEnv*, x1=jclass|jobject(receiver via AddLocalReference), remaining args from x2.. / v0.. Flag any subtlety (long/jlong in a single x-reg on LP64, argument-register exhaustion → stack, HFA, the return JValue widening).
+
+Deliver: for each Q a direct answer; then a 1-paragraph VERDICT: is the W-003 "two interpreter hooks" approach correct as-is, or should the primary fix be a RegisterNatives-interception binding layer (with WestlakeGenericJni kept only as the dispatch for methods that genuinely reach the interpreter)? Be decisive.
