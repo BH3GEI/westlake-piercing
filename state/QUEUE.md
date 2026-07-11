@@ -3,7 +3,7 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-10 交接校准 · W-001 待领
+**更新**：2026-07-11 · W-001 交卡(#43 PASS,done);5583 lock 释放,下一前沿 #49/#50/#51 待铸卡
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -13,7 +13,8 @@
 
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
-| W-001 | #43 AppCompatTheme 真 WAB oracle | todo | big-clean | hash-locked oracle FAIL;当前无锁;新 thinker 只锁 5583 |
+| W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
+| (待铸) | #49/#50/#51 createSubDecor→subDecor→setContentView(app R.layout.main inflate) | todo | big-clean | #43 已通真 WAB 解析;app 自身布局至今从未 inflate,是 #53 前的关键缺口 |
 
 ## 工厂队列 (factory) — 弱模型舰队
 
