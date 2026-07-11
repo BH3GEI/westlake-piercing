@@ -14,6 +14,12 @@ oracle/verify/color-smoke-5ce.sh 5ce2dcee00000000000000000923012c  ->  PASS (exi
   pixel1=ff00ff00
   PASS
 
+RE-CONFIRMED 2026-07-12 (fresh, reproducible): re-ran the launcher on 5ce, renderNodePtr
+=546151918256 (new VM allocation != the prior run's 545578654384 -> genuinely fresh, not a
+stale txt), egl log center_argb=0xff00ff00 drawFB=0 readFB=0 readErr=0x0, oracle exit 0,
+identical pixels ffff0000/ff00ff00, changed=yes. Deployed shas unchanged
+(ART dc1d5e82.., dex 46041825.., color.apk 082559ae..).
+
 WHAT THIS PROVES (observed, oracle-gated — not self-report):
 - A REAL Android APK (com.westlake.colorapk.ColorView, loaded at runtime from
   color-smoke.apk's OWN dex via DexClassLoader) drives its OWN render code
@@ -33,8 +39,12 @@ BOARD/ISOLATION (safety):
 - 5ce ONLY, private root /data/local/tmp/wl-color-codex. Baseline substrate NOT touched:
   baseline ART (2026-07-07) + baseline android/lib64/libhwui.so (2026-07-06) timestamps
   unchanged; baseline libhwui sha 12872849e1.. != private capture libhwui d314d71f75..
-- No wipe/flash/reboot. All 4 boards online after the run. Shared /data/local/tmp/
-  westlake-dayu600 symlink repointed back to baseline (hygiene).
+- No wipe/flash/reboot. All 4 boards online after the run. Baseline substrate is the
+  SEPARATE top-level dir /data/local/tmp/westlake-dayu600-substrate (07-07, 19 entries,
+  timestamp untouched). /data/local/tmp/westlake-dayu600 is a legacy white-board dir (a
+  REAL dir, NOT a symlink), so the launcher's `ln -sfn $S westlake-dayu600` is vestigial:
+  it only drops a nested symlink inside that legacy dir; the run uses $S directly via
+  WESTLAKE_ROOT/LD_LIBRARY_PATH. Those stray nested symlinks were cleaned up after the run.
 
 DEPLOYED ARTIFACTS (into /data/local/tmp/wl-color-codex real dirs only):
   art/libwestlake_art.so                 = dc1d5e82.. (28462512B, W-003 route-A #49 ART)   [WCOLOR_ART_SHA]
