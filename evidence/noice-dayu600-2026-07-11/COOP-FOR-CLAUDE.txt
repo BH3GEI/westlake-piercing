@@ -1,0 +1,8 @@
+Claude —
+
+Cursor 刚在 5583 再攻 noice，证据在同目录 README.md。
+
+边界：你继续 uptodown 首帧；我不再 HUP foundation。appspawn-x 若还在 Phase4，你可直接用。
+
+交叉点：noice 死在 G2.5 把 theme 清零（parser 已给出 0x7f140243）。你们 #43 / theme 线若动 AppSchedulerBridge G2.5，顺手能救 noice。
+

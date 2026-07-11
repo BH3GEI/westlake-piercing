@@ -1,0 +1,164 @@
+stamp=20260711-233420
+=== asx alive ===
+srw-rw-rw- 1 root root u:object_r:appspawn_socket:s0  0 1970-01-01 10:21 /dev/unix/socket/AppSpawnX
+=== bm dump head ===
+com.github.ashutoshgngwr.noice:
+{
+    "appId": "",
+    "appIdentifier": "",
+    "appIndex": 0,
+    "applicationInfo": {
+        "GWPAsanEnabled": false,
+        "accessTokenId": 537299014,
+        "accessTokenIdEx": 537299014,
+        "accessible": false,
+        "allowAppRunWhenDeviceFirstLocked": false,
+        "allowArkTsLargeHeap": false,
+        "allowCommonEvent": [],
+        "allowEnableNotification": false,
+        "allowMultiProcess": false,
+        "apiCompatibleVersion": 0,
+        "apiReleaseType": "",
+        "apiTargetVersion": 0,
+        "appDetailAbilityLibraryPath": "",
+        "appDistributionType": "none",
+        "appEnvironments": [],
+        "appIndex": 0,
+        "appPreloadPhase": 0,
+        "appPrivilegeLevel": "normal",
+        "appProvisionType": "release",
+        "appQuickFix": {
+            "bundleName": "",
+            "deployedAppqfInfo": {
+                "cpuAbi": "",
+                "hqfInfos": [],
+                "nativeLibraryPath": "",
+                "type": 0,
+                "versionCode": 0,
+                "versionName": ""
+            },
+            "deployingAppqfInfo": {
+                "cpuAbi": "",
+                "hqfInfos": [],
+                "nativeLibraryPath": "",
+                "type": 0,
+=== aa start attempts ===
+WakeupDevice is called
+startX:600, startY:1600, endX:600, endY:400
+fingerCount:1
+keepTimeMs:0
+smoothTimeMs:1000
+If the command does not work as expected, check whether the specified coordinates exceed the screen boundary
+error: failed to start ability.
+Error Code:10104001  Error Message:The specified ability does not exist
+Error cause: The specified Ability is not installed
+  Try the following:
+  > Check if the parameter abilityName of aa -a and the parameter bundleName of -b are correct
+  > Check if the application corresponding to the specified bundleName is installed
+  > For multi-HAP applications, it is necessary to confirm whether the HAP to which the ability belongs has been installed
+
+rc1=0
+error: failed to start ability.
+Error Code:10104001  Error Message:The specified ability does not exist
+Error cause: The specified Ability is not installed
+  Try the following:
+  > Check if the parameter abilityName of aa -a and the parameter bundleName of -b are correct
+  > Check if the application corresponding to the specified bundleName is installed
+  > For multi-HAP applications, it is necessary to confirm whether the HAP to which the ability belongs has been installed
+
+rc2=0
+start ability successfully.
+rc3=0
+=== procs after start ===
+root          3693     1 6 10:20:58 ?     00:00:01 appspawn-x --socket-name AppSpawnX
+=== asx err recent ===
+[RDFL_CP] J_oat_file=0
+[RDFL_CP] K_initialize_oat_file_data=0
+[RDFL_CP] L_after_dex_caches_loop initialize=0
+[RDFL_CP] Q_before_InitializeDexFileDomain
+[RDFL_CP] R_after_InitializeDexFileDomain
+[RDFL_CP] S_before_GetJniEnv
+[RDFL_CP] T_after_GetJniEnv env=0x7faea46610
+[RDFL_CP] U_after_GetVm vm=0x7fb4f1cdf0
+[RDFL_CP] V_after_AddWeakGlobalRef weak=0x30b
+[RDFL_CP] W_after_ClassTableForClassLoader table=0x7fbcab7a40
+[DBG_IFACE] AddNativeDebugInfoForDex no-op self=0x7fbcb091f0 dex=0x7faf1efe60
+[RDFL_CP] X_after_AddNativeDebugInfoForDex
+[RDFL_CP] Y_after_InsertStrongRoot
+[RDFL_CP] AA_after_SetClassLoader
+[RDFL_CP] BB_after_emplace inserted=1
+[RDFL_CP] Z_func_exit
+[AppSpawnX] AppSpawnXInit loaded via PathClassLoader
+[AppSpawnX] Cached PathClassLoader + loadClass for child reuse
+[AppSpawnX] Java references cached successfully
+[AppSpawnX] ART VM initialization complete
+[AppSpawnX] Calling AppSpawnXInit.preload()...
+[OH_SkiaCodecRegister] entering RegisterAllSkiaCodecs
+[OH_SkiaCodecRegister] direct IsPng(89 50 4E 47 ...) = 1 (expected 1)
+[OH_SkiaCodecRegister] SkPngDecoder::Decoder() returned: id.size=3 data=0x7fb45eb3d4 isFormat=0x7fb145009c decode=0x7fb1450f90
+[OH_SkiaCodecRegister]   1/7 png registered
+[OH_SkiaCodecRegister] all 7 Skia codecs registered
+[SkiaSmokeTest] OH_SKIA_SMOKETEST=0 — skipping self-test battery
+java.lang.NoSuchMethodError: no static or non-static method "Ladapter/activity/ActivityManagerAdapter;.nativeStartAbility(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)I"
+	at java.lang.Runtime.nativeLoad(Native Method)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1091)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1003)
+	at java.lang.System.loadLibrary(System.java:1661)
+	at adapter.core.OHEnvironment.<clinit>(OHEnvironment.java:22)
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:536)
+	at java.lang.Class.forName(Class.java:467)
+	at com.android.internal.os.AppSpawnXInit.preloadAdapterBridge(AppSpawnXInit.java:938)
+	at com.android.internal.os.AppSpawnXInit.preload(AppSpawnXInit.java:236)
+java.lang.NoSuchMethodError: no static or non-static method "Ladapter/activity/ActivityTaskManagerAdapter;.nativeStartAbility(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JI)I"
+	at java.lang.Runtime.nativeLoad(Native Method)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1091)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1003)
+	at java.lang.System.loadLibrary(System.java:1661)
+	at adapter.core.OHEnvironment.<clinit>(OHEnvironment.java:22)
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:536)
+	at java.lang.Class.forName(Class.java:467)
+	at com.android.internal.os.AppSpawnXInit.preloadAdapterBridge(AppSpawnXInit.java:938)
+	at com.android.internal.os.AppSpawnXInit.preload(AppSpawnXInit.java:236)
+[AppSpawnX] Preload completed successfully
+[AppSpawnX] [B35.A] RegisterNatives(AppSpawnXInit.nativeHiLog) OK via dlopen handle
+[AppSpawnX] [Direction2] adapter_bridge_set_class_loader injected via dlsym OK
+[AppSpawnX] [B48] RegisterNatives(ActivityThread.nInitZygoteChildHeapProfiling) OK
+[TF-HOOK] appended wrappedPrime (nMethods=3)
+[AppSpawnX] [P2-Bv2] RegisterNatives(AppSchedulerBridge, 3) OK
+[AppSpawnX] ART VM started + framework preloaded on worker pthread
+[AppSpawnX] Phase 4: Ready to accept spawn requests
+[AppSpawnX] Listening on /dev/unix/socket/AppSpawnX
+[AppSpawnX] Entering event loop on /dev/unix/socket/AppSpawnX
+[AppSpawnX][D] Accepted connection, clientFd=17
+[AppSpawnX] OH binary msg received: type=0 len=1060 id=1 tlvCount=8 proc=com.github.ashutoshgngwr.noice
+[AppSpawnX][D] parseOhBinary: TLV type=6 len=16 skipped (not on hot path)
+[AppSpawnX][D] parseOhBinary: TLV type=7 len=8 skipped (not on hot path)
+[AppSpawnX][D] parseOhBinary: TLV type=9 len=56 skipped (not on hot path)
+[AppSpawnX] Parsed spawn request: code=0 proc=com.github.ashutoshgngwr.noice bundle=com.github.ashutoshgngwr.noice uid=20013737 isOhBinary=1
+[AppSpawnX] Spawn request: proc=com.github.ashutoshgngwr.noice bundle=com.github.ashutoshgngwr.noice uid=20013737 flags=0x0
+[AppSpawnX] [ZYG] ZygoteHooks resolved (class + 3 methods)
+[AppSpawnX] [ZYG] >>> ZygoteHooks.preFork() (parent)
+[AppSpawnX] [ZYG] <<< ZygoteHooks.preFork() OK
+[AppSpawnX] [ZYG] >>> ZygoteHooks.postForkCommon()
+[AppSpawnX] Child process started, pid=3889 uid=20013737 bundle=com.github.ashutoshgngwr.noice
+[AppSpawnX] [CHILD] entering stderr redirect probe
+[DBG] Thread::Init this=0x7fbcafb1d0
+[DBG] Thread::Init this=0x7fbcafd1c0
+[AppSpawnX] [ZYG] <<< ZygoteHooks.postForkCommon() OK
+[AppSpawnX] Spawned child pid=3889 for com.github.ashutoshgngwr.noice (uid=20013737)
+[AppSpawnX][D] OH binary response sent: pid=3889 result=0 msgId=1
+[DBG] Thread::Init this=0x7fbca941e0
+[DBG] Thread::Init this=0x7fbca961e0
+[AppSpawnX] [CHILD] opened /data/service/el1/public/appspawnx/adapter_child_3889.stderr fd=5
+=== snapshot ===
+fileType: 
+process: display 0, file type: jpeg, width: 1200, height: 1920
+fileType: jpeg
+snapshot: pixel format is: 3
+snapshot: convert rgba8888 to rgb888 successfully.
+
+success: snapshot display 0 , write to /data/local/tmp/noice-attempt-20260711-233420.jpeg as jpeg, width: 1200, height: 1920
+[Fail]ExecuteCommand need connect-key? please confirm a device by help info
+ls: /tmp/noice-attempt-20260711-233420.jpeg: No such file or directory

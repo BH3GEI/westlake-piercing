@@ -1,0 +1,177 @@
+[AppSpawnX] [CHILD] native stderr redirected to /data/service/el1/public/appspawnx/adapter_child_3889.stderr
+[TF-HOOK] mark_child hooked=1 skia_patched=0
+[AppSpawnX] [CHILD] oh_typeface_mark_child() invoked
+[AppSpawnX] applyAccessToken: id=0x20068846 apl=normal
+[AppSpawnX] applyAccessToken: SetSelfTokenID(0x20068846) OK
+[AppSpawnX] Applying DAC: uid=20013737 gid=20013737 gids_count=1
+[AppSpawnX][D] Set 1 supplementary groups
+[AppSpawnX][D] Set GID to 20013737
+[AppSpawnX][D] Set UID to 20013737
+[AppSpawnX] DAC applied: running as uid=20013737 gid=20013737
+[AppSpawnX] Setting up sandbox for com.github.ashutoshgngwr.noice
+[AppSpawnX][D] Sandbox setup: TODO – filesystem isolation not yet implemented
+[AppSpawnX][D]   APK path: 
+[AppSpawnX][D]   Native libs: 
+[AppSpawnX][D]   Bundle data: /data/data/com.github.ashutoshgngwr.noice/
+[AppSpawnX] applySELinux: apl=normal pkg=com.github.ashutoshgngwr.noice hapFlags=0 uid=20013737
+[AppSpawnX] applySELinux: child secon transitioned successfully (apl=normal)
+[AppSpawnX] [ZYG] >>> ZygoteHooks.postForkChild() (child)
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbcaf01f0
+[DBG] calling self->Init(), self=0x7fbcaf01f0
+[DBG] Thread::Init this=0x7fbcaf01f0
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbcaf21f0
+[DBG] calling self->Init(), self=0x7fbcaf21f0
+[DBG] Thread::Init this=0x7fbcaf21f0
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbca94220
+[DBG] calling self->Init(), self=0x7fbca94220
+[DBG] Thread::Init this=0x7fbca94220
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbca96220
+[DBG] calling self->Init(), self=0x7fbca96220
+[DBG] Thread::Init this=0x7fbca96220
+[DBG] Init returned 1
+[AppSpawnX] [ZYG] <<< ZygoteHooks.postForkChild() OK
+[AppSpawnX] [ZYG] >>> ZygoteHooks.postForkCommon()
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbc7ad250
+[DBG] calling self->Init(), self=0x7fbc7ad250
+[DBG] Thread::Init this=0x7fbc7ad250
+[DBG] Init returned 1
+[DBG] Thread::Init this=0x7fbc7ab260
+[DBG] Thread::Init this=0x7fbc68f280
+[DBG] Thread::Init this=0x7fbc691280
+[AppSpawnX] [ZYG] <<< ZygoteHooks.postForkCommon() OK
+[AppSpawnX] Child post-fork initialization starting
+[AppSpawnX][D] Thread already attached to VM in child process
+[DBG] Thread::Init this=0x7fbc6612b0
+[AppSpawnX] Child post-fork initialization complete (OH IPC mode)
+[AppSpawnX] Initializing adapter layer (OHEnvironment)
+[AppSpawnX] Adapter layer initialized successfully
+[AppSpawnX] Launching ActivityThread for com.github.ashutoshgngwr.noice
+[AppSpawnX] Launching target class: android.app.ActivityThread (proc=com.github.ashutoshgngwr.noice, sdkVersion=0)
+[AppSpawnX] Calling AppSpawnXInit.initChild("com.github.ashutoshgngwr.noice", "android.app.ActivityThread", 0)
+[AppSpawnX] [CHILD_CK] CK_BEFORE_initChild_call (about to enter Java)
+[TF-NATIVE] MinikinFontSkia built: GetFontData=0x7f2092a000 GetFontSize=515100 (raw sfnt bytes, fontPtr=0x7f2092a000 fontSize=515100)
+[TF-NATIVE] Font style set weight=400 slant=UPRIGHT localeId=5
+[TF-NATIVE] coverage.length=127340 (0 => EMPTY cmap = bug; >0 => coverage OK)
+[TF-NATIVE] SystemFonts::registerFallback("", coll) done coll=0x7fbca91510
+[TF-NATIVE] gDefaultTypeface PRIMED (realfont) handle=0x7fbcbcfd20 font=/system/fonts/HarmonyOS_Sans.ttf
+[TF-HOOK] skia rx 0x7fb0f8f000-0x7fb1c6f000
+[TF-HOOK] patch raw-stream 0x7fb0fa18b8 ldr=f9400288 -> b 0x7fb0fa1a00
+[TF-HOOK] patch raw-stream 0x7fb10a7e70 ldr=f9400288 -> b 0x7fb10a7eac
+[TF-HOOK] patch raw-stream 0x7fb10b7874 ldr=f9400268 -> b 0x7fb10b78f4
+[TF-HOOK] patch raw-stream 0x7fb10c7608 ldr=f94002c8 -> b 0x7fb10c761c
+[TF-HOOK] patch raw-stream 0x7fb10ec86c ldr=f94002a8 -> b 0x7fb10ec990
+[TF-HOOK] patch raw-stream 0x7fb1164608 ldr=f9400288 -> b 0x7fb11645f8
+[TF-HOOK] patch raw-stream 0x7fb1164650 ldr=f9400288 -> b 0x7fb1164640
+[TF-HOOK] patch raw-stream 0x7fb1164798 ldr=f9400288 -> b 0x7fb116478c
+[TF-HOOK] patch raw-stream 0x7fb1164a38 ldr=f9400288 -> b 0x7fb1164a28
+[TF-HOOK] patch raw-stream 0x7fb1164a80 ldr=f9400288 -> b 0x7fb1164a70
+[TF-HOOK] patch raw-stream 0x7fb11a3cd0 ldr=f9400268 -> b 0x7fb11a3cfc
+[TF-HOOK] patch raw-stream 0x7fb11c979c ldr=f9400288 -> b 0x7fb11c97d8
+[TF-HOOK] patch raw-stream 0x7fb11eafe4 ldr=f94002a8 -> b 0x7fb11eb020
+[TF-HOOK] patch raw-stream 0x7fb123e8f4 ldr=f9400288 -> b 0x7fb123e61c
+[TF-HOOK] patch raw-stream 0x7fb1242348 ldr=f9400268 -> b 0x7fb12423cc
+[TF-HOOK] patch raw-stream 0x7fb124347c ldr=f9400268 -> b 0x7fb12434c4
+[TF-HOOK] patch raw-stream 0x7fb1244668 ldr=f94002a8 -> b 0x7fb1244728
+[TF-HOOK] patch raw-stream 0x7fb1244700 ldr=f94002a8 -> b 0x7fb1244734
+[TF-HOOK] patch raw-stream 0x7fb126a224 ldr=f9400288 -> b 0x7fb126a260
+[TF-HOOK] patch raw-stream 0x7fb126b4a0 ldr=f9400288 -> b 0x7fb126b4dc
+[TF-HOOK] patch raw-stream 0x7fb126c8bc ldr=f9400288 -> b 0x7fb126c8f0
+[TF-HOOK] patch raw-stream 0x7fb12b18bc ldr=f9400288 -> b 0x7fb12b1948
+[TF-HOOK] patch raw-stream 0x7fb12c1058 ldr=f94002a8 -> b 0x7fb12c11c4
+[TF-HOOK] patch raw-stream 0x7fb12c1a6c ldr=f9400288 -> b 0x7fb12c1aa8
+[TF-HOOK] patch raw-stream 0x7fb12dc8ec ldr=f9400268 -> b 0x7fb12dcdbc
+[TF-HOOK] patch raw-stream 0x7fb12dcb34 ldr=f9400268 -> b 0x7fb12dca98
+[TF-HOOK] patch raw-stream 0x7fb12dda24 ldr=f9400268 -> b 0x7fb12dcc3c
+[TF-HOOK] patch raw-stream 0x7fb12ff634 ldr=f9400268 -> b 0x7fb12ffcf8
+[TF-HOOK] patch raw-stream 0x7fb130da14 ldr=f9400288 -> b 0x7fb130dec8
+[TF-HOOK] patch raw-stream 0x7fb132a498 ldr=f9400288 -> b 0x7fb132a4fc
+[TF-HOOK] patch raw-stream 0x7fb141054c ldr=f9400288 -> b 0x7fb1410588
+[TF-HOOK] patch raw-stream 0x7fb1410908 ldr=f94002a8 -> b 0x7fb1410944
+[TF-HOOK] patch raw-stream 0x7fb144f390 ldr=f9400268 -> b 0x7fb144f3c8
+[TF-HOOK] patch raw-stream 0x7fb144f3fc ldr=f9400268 -> b 0x7fb144f42c
+[TF-HOOK] patch raw-stream 0x7fb144f4cc ldr=f9400268 -> b 0x7fb144f548
+[TF-HOOK] patch raw-stream 0x7fb144f500 ldr=f9400268 -> b 0x7fb144f548
+[TF-HOOK] patch raw-stream 0x7fb1456e14 ldr=f9400268 -> b 0x7fb14569bc
+[TF-HOOK] patch raw-stream 0x7fb1468e48 ldr=f94002c8 -> b 0x7fb1469008
+[TF-HOOK] patch raw-stream 0x7fb1481afc ldr=f94002c8 -> b 0x7fb1481b38
+[TF-HOOK] patch raw-stream 0x7fb1503b7c ldr=f9400268 -> b 0x7fb1503b98
+[TF-HOOK] patch raw-stream 0x7fb154156c ldr=f94002c8 -> b 0x7fb1541544
+[TF-HOOK] patch raw-stream 0x7fb1541688 ldr=f94002a8 -> b 0x7fb1541660
+[TF-HOOK] patch raw-stream 0x7fb15417a4 ldr=f94002c8 -> b 0x7fb154177c
+[TF-HOOK] patch raw-stream 0x7fb15418c8 ldr=f94002c8 -> b 0x7fb15418a0
+[TF-HOOK] patch raw-stream 0x7fb1544770 ldr=f9400288 -> b 0x7fb154478c
+[TF-HOOK] patch raw-stream 0x7fb1544d8c ldr=f9400288 -> b 0x7fb1544da4
+[TF-HOOK] patch raw-stream 0x7fb154539c ldr=f9400288 -> b 0x7fb15453b0
+[TF-HOOK] patch raw-stream 0x7fb1545470 ldr=f9400288 -> b 0x7fb1545498
+[TF-HOOK] patch raw-stream 0x7fb1545554 ldr=f9400288 -> b 0x7fb1545568
+[TF-HOOK] patch raw-stream 0x7fb15469c0 ldr=f9400268 -> b 0x7fb1546a50
+[TF-HOOK] patch raw-stream 0x7fb15472cc ldr=f94002c8 -> b 0x7fb154732c
+[TF-HOOK] patch raw-stream 0x7fb1547e20 ldr=f9400288 -> b 0x7fb1547e34
+[TF-HOOK] patch raw-stream 0x7fb1547f1c ldr=f9400288 -> b 0x7fb15480d8
+[TF-HOOK] patch raw-stream 0x7fb1548054 ldr=f9400288 -> b 0x7fb154806c
+[TF-HOOK] patch raw-stream 0x7fb155484c ldr=f94002c8 -> b 0x7fb155486c
+[TF-HOOK] patch raw-stream 0x7fb155cccc ldr=f94002c8 -> b 0x7fb155cdb4
+[TF-HOOK] patch raw-stream 0x7fb15618ac ldr=f9400288 -> b 0x7fb15618c4
+[TF-HOOK] patch raw-stream 0x7fb1561fb8 ldr=f9400288 -> b 0x7fb1561f24
+[TF-HOOK] patch raw-stream 0x7fb1562248 ldr=f94002a8 -> b 0x7fb1562278
+[TF-HOOK] patch raw-stream 0x7fb1562260 ldr=f94002a8 -> b 0x7fb1562288
+[TF-HOOK] patch raw-stream 0x7fb1563b54 ldr=f9400268 -> b 0x7fb1563ba8
+[TF-HOOK] patch raw-stream 0x7fb1565b94 ldr=f94002c8 -> b 0x7fb1565bb8
+[TF-HOOK] patch raw-stream 0x7fb15677e4 ldr=f94002c8 -> b 0x7fb15677f4
+[TF-HOOK] patch raw-stream 0x7fb156ab94 ldr=f9400288 -> b 0x7fb156ac04
+[TF-HOOK] patch raw-stream 0x7fb156ae64 ldr=f9400288 -> b 0x7fb156aebc
+[TF-HOOK] patch raw-stream 0x7fb157bc24 ldr=f9400288 -> b 0x7fb157bc98
+[TF-HOOK] patch raw-stream 0x7fb1583560 ldr=f9400288 -> b 0x7fb15832c8
+[TF-HOOK] patch raw-stream 0x7fb158df54 ldr=f9400268 -> b 0x7fb158df68
+[TF-HOOK] patch raw-stream 0x7fb15a154c ldr=f9400288 -> b 0x7fb15a1564
+[TF-HOOK] patch raw-stream 0x7fb15a1678 ldr=f9400288 -> b 0x7fb15a168c
+[TF-HOOK] patch raw-stream 0x7fb15a8814 ldr=f94002c8 -> b 0x7fb15a892c
+[TF-HOOK] patch raw-stream 0x7fb15aca7c ldr=f94002c8 -> b 0x7fb15acaa0
+[TF-HOOK] patch raw-stream 0x7fb15afd2c ldr=f9400268 -> b 0x7fb15afdac
+[TF-HOOK] patch raw-stream 0x7fb16ce450 ldr=f94002c8 -> b 0x7fb16ce578
+[TF-HOOK] patch raw-stream 0x7fb17cebe4 ldr=f9400268 -> b 0x7fb17cec70
+[TF-HOOK] patch raw-stream 0x7fb181ecec ldr=f94002a8 -> b 0x7fb181ed0c
+[TF-HOOK] patch raw-stream 0x7fb181f6e0 ldr=f94002a8 -> b 0x7fb181f730
+[TF-HOOK] patch raw-stream 0x7fb1821450 ldr=f94002c8 -> b 0x7fb182149c
+[TF-HOOK] patch raw-stream 0x7fb1868968 ldr=f9400288 -> b 0x7fb1868990
+[TF-HOOK] patch raw-stream 0x7fb189d398 ldr=f94002c8 -> b 0x7fb189d4f4
+[TF-HOOK] patch raw-stream 0x7fb18f44e8 ldr=f9400268 -> b 0x7fb18f4500
+[TF-HOOK] patch raw-stream 0x7fb18f45c8 ldr=f9400268 -> b 0x7fb18f45f0
+[TF-HOOK] patch raw-stream 0x7fb1acb1e0 ldr=f94002a8 -> b 0x7fb1acb1f0
+[TF-HOOK] patch raw-stream 0x7fb1acb620 ldr=f94002a8 -> b 0x7fb1acb630
+[TF-HOOK] patch raw-stream 0x7fb1acb924 ldr=f94002a8 -> b 0x7fb1acb934
+[TF-HOOK] patch raw-stream 0x7fb1acbcb4 ldr=f94002a8 -> b 0x7fb1acbcc4
+[TF-HOOK] patch raw-stream 0x7fb1acc074 ldr=f94002a8 -> b 0x7fb1acc084
+[TF-HOOK] patch raw-stream 0x7fb1b66f78 ldr=f94002c8 -> b 0x7fb1b66f90
+[TF-HOOK] patch raw-stream 0x7fb1bcf940 ldr=f94002a8 -> b 0x7fb1bcf954
+[TF-HOOK] patch raw-stream 0x7fb1bf5db8 ldr=f9400288 -> b 0x7fb1bf5e68
+[TF-HOOK] patch raw-stream 0x7fb1c269f8 ldr=f94002c8 -> b 0x7fb1c26a04
+[TF-HOOK] skia raw-stream sites patched=91
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbc6631f0
+[DBG] calling self->Init(), self=0x7fbc6631f0
+[DBG] Thread::Init this=0x7fbc6631f0
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbc663200
+[DBG] calling self->Init(), self=0x7fbc663200
+[DBG] Thread::Init this=0x7fbc663200
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbc663210
+[DBG] calling self->Init(), self=0x7fbc663210
+[DBG] Thread::Init this=0x7fbc663210
+[DBG] Init returned 1
+[DBG] before new Thread()
+[DBG] new Thread() returned self=0x7fbc665260
+[DBG] calling self->Init(), self=0x7fbc665260
+[DBG] Thread::Init this=0x7fbc665260
+[DBG] Init returned 1

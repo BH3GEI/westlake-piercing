@@ -1,0 +1,13 @@
+01-01 10:22:38.440  4222  4222 I C00f00/AppSpawnXJava: [stderr] [CHILD_CK] J_invokeStaticMain_entry className=android.app.ActivityThread
+01-01 10:22:38.440  4222  4222 I C00f00/AppSpawnXJava: [stderr] [CHILD_CK] J_invokeStaticMain_classForName_OK
+01-01 10:22:38.440  4222  4222 I C00f00/AppSpawnXJava: [stderr] [CHILD_CK] J_invokeStaticMain_getMethod_OK
+01-01 10:22:38.442  4222  4222 I C00f00/AppSpawnXJava: [stderr] [CHILD_CK] J_invokeStaticMain_BEFORE_main_invoke
+01-01 10:22:38.450  4222  4222 I C00f00/AppSpawnXJava: [stderr] [G2.5-PIB] ApplicationInfo com.github.ashutoshgngwr.noice icon/iconRes/labelRes/theme zeroed
+01-01 10:22:38.462  4222  4222 I C01151/OH_ApkManifestJni: nativeParseApkManifestJson: pkg=com.github.ashutoshgngwr.noice providers=1 className=com.github.ashutoshgngwr.noice.NoiceApplication theme=0x7f140243 largeHeap=0
+01-01 10:22:38.462  4222  4237 I C01151/OH_ApkManifestJni: nativeParseApkManifestJson: pkg=com.github.ashutoshgngwr.noice providers=1 className=com.github.ashutoshgngwr.noice.NoiceApplication theme=0x7f140243 largeHeap=0
+01-01 10:22:38.463  4222  4222 I C00f00/AppSpawnXJava: [stderr] [B43-BIND] appInfo enriched: className=com.github.ashutoshgngwr.noice.NoiceApplication theme=0x7f140243 factory=androidx.core.app.CoreComponentFactory targetSdk=34 flags=0x20802044
+01-01 10:22:38.464  4222  4237 I C00f00/AppSpawnXJava: [stderr] [WL-THEME-SYNC] parsed appTheme=0x7f140243 synchronously at SLA (bind race avoided)
+01-01 10:22:38.466  4222  4237 I C00f00/AppSpawnXJava: [stderr] [G2.5-PIB] ApplicationInfo com.github.ashutoshgngwr.noice icon/iconRes/labelRes/theme zeroed
+01-01 10:22:38.468  4222  4237 I C00f00/AppSpawnXJava: [stderr] [B47-SLA] intent.component=ComponentInfo{com.github.ashutoshgngwr.noice/com.github.ashutoshgngwr.noice.activity.MainActivity} action=null categories=null data=null extrasKeys=13 activityInfo.theme=0x0 launchMode=0 orientation=-1 flags=0x240 (HW_ACCEL=true)
+01-01 10:22:38.468  4222  4237 I C00f00/AppSpawnXJava: [stderr] [G2.5-SLA-PRE] activityInfo  icon=0x0 iconResource=0x0 labelRes=0x0 theme=0x0 | appInfo icon=0x0 iconRes=0x0 logo=0x0 banner=0x0 theme=0x0
+01-01 10:22:41.176   912  1083 I C02d13/HDC_LOG: [async_cmd.cpp:291] ExecuteCommand cmd:hilog -x 2>/dev/null | grep -iE 'AppCompat|IllegalState|theme=|main_threw|J_invoke|G2.5|W20|bad_alloc|FATAL|AndroidRuntime|Uncaught|setContentView|onCreate' | tail -80 fd:35 pid:4241

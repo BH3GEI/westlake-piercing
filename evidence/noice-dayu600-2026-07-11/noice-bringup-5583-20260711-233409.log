@@ -1,0 +1,59 @@
+=== bringup start 2026-07-11T23:34:09+09:00 ===
+force stop process successfully.
+force stop process successfully.
+spawned
+READY at 3s
+=== asx ps ===
+=== err tail ===
+[RDFL_CP] W_after_ClassTableForClassLoader table=0x7fbcab7a40
+[DBG_IFACE] AddNativeDebugInfoForDex no-op self=0x7fbcb091f0 dex=0x7faf1efe60
+[RDFL_CP] X_after_AddNativeDebugInfoForDex
+[RDFL_CP] Y_after_InsertStrongRoot
+[RDFL_CP] AA_after_SetClassLoader
+[RDFL_CP] BB_after_emplace inserted=1
+[RDFL_CP] Z_func_exit
+[AppSpawnX] AppSpawnXInit loaded via PathClassLoader
+[AppSpawnX] Cached PathClassLoader + loadClass for child reuse
+[AppSpawnX] Java references cached successfully
+[AppSpawnX] ART VM initialization complete
+[AppSpawnX] Calling AppSpawnXInit.preload()...
+[OH_SkiaCodecRegister] entering RegisterAllSkiaCodecs
+[OH_SkiaCodecRegister] direct IsPng(89 50 4E 47 ...) = 1 (expected 1)
+[OH_SkiaCodecRegister] SkPngDecoder::Decoder() returned: id.size=3 data=0x7fb45eb3d4 isFormat=0x7fb145009c decode=0x7fb1450f90
+[OH_SkiaCodecRegister]   1/7 png registered
+[OH_SkiaCodecRegister] all 7 Skia codecs registered
+[SkiaSmokeTest] OH_SKIA_SMOKETEST=0 — skipping self-test battery
+java.lang.NoSuchMethodError: no static or non-static method "Ladapter/activity/ActivityManagerAdapter;.nativeStartAbility(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)I"
+	at java.lang.Runtime.nativeLoad(Native Method)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1091)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1003)
+	at java.lang.System.loadLibrary(System.java:1661)
+	at adapter.core.OHEnvironment.<clinit>(OHEnvironment.java:22)
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:536)
+	at java.lang.Class.forName(Class.java:467)
+	at com.android.internal.os.AppSpawnXInit.preloadAdapterBridge(AppSpawnXInit.java:938)
+	at com.android.internal.os.AppSpawnXInit.preload(AppSpawnXInit.java:236)
+java.lang.NoSuchMethodError: no static or non-static method "Ladapter/activity/ActivityTaskManagerAdapter;.nativeStartAbility(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JI)I"
+	at java.lang.Runtime.nativeLoad(Native Method)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1091)
+	at java.lang.Runtime.loadLibrary0(Runtime.java:1003)
+	at java.lang.System.loadLibrary(System.java:1661)
+	at adapter.core.OHEnvironment.<clinit>(OHEnvironment.java:22)
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:536)
+	at java.lang.Class.forName(Class.java:467)
+	at com.android.internal.os.AppSpawnXInit.preloadAdapterBridge(AppSpawnXInit.java:938)
+	at com.android.internal.os.AppSpawnXInit.preload(AppSpawnXInit.java:236)
+[AppSpawnX] Preload completed successfully
+[AppSpawnX] [B35.A] RegisterNatives(AppSpawnXInit.nativeHiLog) OK via dlopen handle
+[AppSpawnX] [Direction2] adapter_bridge_set_class_loader injected via dlsym OK
+[AppSpawnX] [B48] RegisterNatives(ActivityThread.nInitZygoteChildHeapProfiling) OK
+[TF-HOOK] appended wrappedPrime (nMethods=3)
+[AppSpawnX] [P2-Bv2] RegisterNatives(AppSchedulerBridge, 3) OK
+[AppSpawnX] ART VM started + framework preloaded on worker pthread
+[AppSpawnX] Phase 4: Ready to accept spawn requests
+[AppSpawnX] Listening on /dev/unix/socket/AppSpawnX
+[AppSpawnX] Entering event loop on /dev/unix/socket/AppSpawnX
+srw-rw-rw- 1 root root u:object_r:appspawn_socket:s0  0 1970-01-01 10:21 /dev/unix/socket/AppSpawnX
+=== bringup rc=0 ===

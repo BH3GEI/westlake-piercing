@@ -30,3 +30,5 @@
 F-001 的 `push.log`(SSL/Timeout)已按此纪律删除;PASS 只记远程 SHA `509a1e12`。
 
 <!-- 收编纪律:验收班次把 scratchpad 里被引用的证据逐步搬进 evidence/<卡>/,更新本表。不搞一次性大搬家。 -->
+
+| 2026-07-11 | noice@5583 appspawn-x Phase4 + aa start → scheduler died (G2.5 theme zero) | evidence/noice-dayu600-2026-07-11/ | Cursor coop w/ Claude uptodown lane |
