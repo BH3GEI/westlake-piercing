@@ -660,7 +660,13 @@ static void hwui_reg_crash_handler(int signo) {
     if (g_hwui_reg_armed) siglongjmp(g_hwui_reg_jmp, signo ? signo : SIGTRAP);
 }
 
-void register_hwui_if_present(JNIEnv* env) {
+// Returns the number of ESSENTIAL graphics registrars (Canvas/RenderNode/
+// DisplayListCanvas/ThreadedRenderer) that did NOT reach END rc=0. When libhwui is
+// absent the graphics path is not wanted yet, so this returns 0 (deferred) and
+// non-graphics stages (#43 acceptance, fontsmoke) boot unaffected. When libhwui IS
+// present but an essential registrar is skipped/missing/crashed/rc!=0, the nonzero
+// return lets startReg fail the boot loudly instead of yielding a silent black panel.
+int register_hwui_if_present(JNIEnv* env) {
     const char* paths[] = {
         "libhwui.so",
         "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libhwui.so",
@@ -670,7 +676,7 @@ void register_hwui_if_present(JNIEnv* env) {
     void* hwui = dlopen_first_existing(paths, sizeof(paths) / sizeof(paths[0]));
     if (!hwui) {
         log_line("I", "libhwui.so not present yet; graphics native registration deferred");
-        return;
+        return 0;  // deferred: non-graphics stages boot fine; not a failure
     }
 
     // Diagnostic mode: call the 54 registrars ONE BY ONE in gRegJNI order with a
@@ -698,6 +704,15 @@ void register_hwui_if_present(JNIEnv* env) {
 
     int ok = 0;
     int crashed = 0;
+    // Essential registrars for the #53 color/panel path: Canvas(0) carries nDrawColor,
+    // view_RenderNode(50), view_DisplayListCanvas(51), view_ThreadedRenderer(53) carry
+    // the RenderNode/RenderProxy natives nativeDrawFrame's syncAndDrawFrame needs. If
+    // libhwui is present (graphics IS wanted) but any of these does not reach END rc=0
+    // — a truncating STOP_AT/SKIP, a missing symbol, a caught crash, or a nonzero rc —
+    // the six color natives never bind and the panel goes black. Track each so startReg
+    // can turn that into a boot failure instead of a silent black screen.
+    const int kEssential[] = { 0, 50, 51, 53 };
+    bool essentialOk[4] = { false, false, false, false };
     // OHOS has no libandroid AHardwareBuffer JNI; these registrars LOG_ALWAYS_FATAL
     // inside HardwareBufferHelpers::init(). Skipping them avoids a SIGTRAP that
     // our fence can catch but leaves the process half-poisoned for RenderThread.
@@ -720,7 +735,10 @@ void register_hwui_if_present(JNIEnv* env) {
             g_hwui_reg_armed = 0;
             clear_exception(env, g_hwui_reg_all[i].name);
             logf("I", "hwui reg[%d/%d] END %s rc=%d", i, n, g_hwui_reg_all[i].name, rc);
-            if (rc == 0) ++ok;
+            if (rc == 0) {
+                ++ok;
+                for (int e = 0; e < 4; ++e) if (kEssential[e] == i) essentialOk[e] = true;
+            }
         } else {
             g_hwui_reg_armed = 0;
             ++crashed;
@@ -731,6 +749,21 @@ void register_hwui_if_present(JNIEnv* env) {
     }
     for (int s = 0; s < 5; ++s) sigaction(sigs[s], &sa_old[s], nullptr);
     logf("I", "hwui per-registrar registration loop done ok=%d crashed=%d", ok, crashed);
+
+    int essentialMissing = 0;
+    for (int e = 0; e < 4; ++e) {
+        if (!essentialOk[e]) {
+            ++essentialMissing;
+            const int idx = kEssential[e];
+            const char* nm = (idx < n) ? g_hwui_reg_all[idx].name : "(out-of-range)";
+            logf("E", "hwui ESSENTIAL registrar idx %d (%s) did NOT reach END rc=0 — "
+                 "color/panel path cannot bind", idx, nm);
+        }
+    }
+    if (essentialMissing)
+        logf("E", "hwui essential registrars missing=%d (of 4) — silent black-panel guard tripped",
+             essentialMissing);
+    return essentialMissing;
 }
 
 }  // namespace
@@ -753,9 +786,11 @@ int AndroidRuntime::startReg(JNIEnv* env) {
     // Graphics first: #53 needs RenderNode/Canvas before anything else. Per-registrar
     // crash fence lives inside register_hwui_if_present so one bad registrar cannot
     // abort the rest (sidecar's outer setjmp would otherwise skip the whole table).
-    register_hwui_if_present(env);
-
-    int hard_failures = 0;
+    // Essential graphics registrars feed the boot gate: libhwui present but any of
+    // Canvas/RenderNode/DisplayListCanvas/ThreadedRenderer failing to register means
+    // the color natives can't bind -> fail startReg loudly instead of a silent black
+    // panel. libhwui absent (deferred) returns 0, so non-graphics stages are unaffected.
+    int hard_failures = register_hwui_if_present(env);
     hard_failures += register_natives_if_present(
         env, "android/util/Log", g_log_methods,
         sizeof(g_log_methods) / sizeof(g_log_methods[0])) != 0;
