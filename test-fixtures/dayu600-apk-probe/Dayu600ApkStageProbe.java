@@ -2237,7 +2237,14 @@ public final class Dayu600ApkStageProbe {
                 Object irc = nInit.invoke(null, Long.valueOf(ptr), Integer.valueOf(w), Integer.valueOf(h));
                 int ir = (irc instanceof Integer) ? ((Integer) irc).intValue() : -1;
                 res.append("02 nativeInit=").append(String.valueOf(ir)).append(" ptr=").append(String.valueOf(ptr)).append('\n');
-                if (ir == 0 || ir == 2 || ir == 1) {
+                // nativeInit returns 2 on success, 0 on failure (null ptr /
+                // make_display_window / oh_anw_wrap), and never 1. Only ir==2 may
+                // draw. Any other value is a REAL failure — do not force r=2. The old
+                // `ir==0||ir==2||ir==1` guard let a failed nativeInit (ir==0) call
+                // nativeDrawFrame (a no-op on the null g_proxy) and still report
+                // firstframe=ok r=2 — a guaranteed false positive. NOTE: r==2 is still
+                // NOT pixel evidence (no readback); it only means the JNI triple did not throw.
+                if (ir == 2) {
                     java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
                     nDraw.setAccessible(true);
                     nDraw.invoke(null);
