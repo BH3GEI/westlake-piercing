@@ -29,6 +29,10 @@
 - **断言:比整个回读值(0xAABBGGRR),别只比 R**——PALETTE 红/绿/品红/黄的 R=FF/00/FF/FF,R 单通道只分得出绿;
   整值可分全 4 档。判据 = 回读值随 `nextColor()` 循环、四档两两不同(**caveat**:OH 色管线会压值——#53 `r==2` 即证——
   整值精确匹配或过严,稳妥做法是先测四档实际回读值再写死期望)。
+- **⚠️ 与 W-004 oracle 的字节序对齐(踩坑预警)**:`oracle/verify/color-smoke-5ce.sh` 判据用 **ARGB**
+  (`pixel0=ffff0000` 红、`pixel1=ff00ff00` 绿),而 `g214bb_raw_read_pixel` 返回 **0xAABBGGRR**。
+  wire g214bb 时**必须把返回值转成 ARGB** 再写 `color-smoke-pixels.txt`——否则红帧写成 `ff0000ff`≠`ffff0000` 判据挂,
+  而绿帧 `ff00ff00` 两序恰同**不会暴露**(先绿后红调试会误判"对了")。W-004 next work #3 直接踩这个。
 - 细节见 `evidence/W-001/2026-07-11-color-apk-landing-derisks.txt` §6。
 
 ---
