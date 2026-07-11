@@ -31,6 +31,7 @@
 
 #include <SkBlendMode.h>
 #include <SkColor.h>
+#include <cstdint>
 #include <memory>
 #include <unistd.h>
 #include <utils/StrongPointer.h>
@@ -45,6 +46,11 @@ using namespace android::uirenderer::renderthread;
 extern "C" void* westlake_ohos_make_display_window(int width, int height, int* out_w, int* out_h);
 extern "C" void westlake_ohos_teardown();
 extern "C" void* oh_anw_wrap(void* oh);
+
+// Published by egl_interposer.cpp (same .so): center pixel of the most recent swap,
+// captured pre-swap on the RenderThread where the EGL context is current.
+extern "C" volatile uint32_t g_wl_last_swap_argb;
+extern "C" volatile int g_wl_swap_count;
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "wl-upscreen", __VA_ARGS__)
 
@@ -123,6 +129,20 @@ void nativeDrawFrame(JNIEnv*, jclass) {
                       UiFrameInfoBuilder::UNKNOWN_FRAME_INTERVAL);
     g_proxy->forceDrawNextFrame();
     g_proxy->syncAndDrawFrame();
+    // Block until the RenderThread finishes this frame (incl. eglSwapBuffers, where
+    // egl_interposer captures the center pixel). Makes the swap-pixel readable
+    // synchronously by the Java color driver right after this returns; without the
+    // fence the caller races the RenderThread and reads a stale/blank g_wl_last_swap_argb.
+    g_proxy->fence();
+}
+
+// Center pixel (ARGB) captured by egl_interposer at the most recent swap, or -1 if no
+// swap has happened yet. The Java color-smoke driver calls this AFTER nativeDrawFrame
+// (which fences) to record the on-panel color for the provenance oracle. -1 is
+// distinguishable from any real opaque ARGB (alpha 0xff => value >= 0 as a 32-bit uint).
+jlong nativeLastSwapArgb(JNIEnv*, jclass) {
+    if (g_wl_swap_count <= 0) return -1;
+    return static_cast<jlong>(static_cast<uint32_t>(g_wl_last_swap_argb));
 }
 
 void nativeTeardown(JNIEnv*, jclass) {
@@ -136,6 +156,7 @@ const JNINativeMethod kMethods[] = {
     {"nativeInit", "(JII)I", reinterpret_cast<void*>(nativeInit)},
     {"nativeDrawFrame", "()V", reinterpret_cast<void*>(nativeDrawFrame)},
     {"nativeTeardown", "()V", reinterpret_cast<void*>(nativeTeardown)},
+    {"nativeLastSwapArgb", "()J", reinterpret_cast<void*>(nativeLastSwapArgb)},
 };
 }  // namespace
 
@@ -179,10 +200,11 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
         LOGI("JNI_OnLoad: FindClass adapter/window/WestlakeUpscreen failed (defer to explicit register)");
         return JNI_VERSION_1_6;  // allow Java-side registerNatives fallback
     }
-    if (env->RegisterNatives(cls, kMethods, 4) != JNI_OK) {
+    const jint nMethods = sizeof(kMethods) / sizeof(kMethods[0]);
+    if (env->RegisterNatives(cls, kMethods, nMethods) != JNI_OK) {
         LOGI("JNI_OnLoad: RegisterNatives failed");
         return -1;
     }
-    LOGI("JNI_OnLoad: 4 upscreen natives registered on WestlakeUpscreen");
+    LOGI("JNI_OnLoad: %d upscreen natives registered on WestlakeUpscreen", nMethods);
     return JNI_VERSION_1_6;
 }

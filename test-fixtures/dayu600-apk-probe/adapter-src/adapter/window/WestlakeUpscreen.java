@@ -37,6 +37,7 @@ public final class WestlakeUpscreen {
     static native int  nativeInit(long rootNodePtr, int w, int h);
     static native void nativeDrawFrame();
     static native void nativeTeardown();
+    static native long nativeLastSwapArgb(); // egl_interposer's pre-swap center pixel (ARGB); -1 if no swap yet
 
     private static RenderNode sRoot;
     private static int sW, sH;
