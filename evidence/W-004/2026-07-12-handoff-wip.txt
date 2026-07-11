@@ -83,24 +83,39 @@ Progress against the "Next executable work" list above:
   both sha256 = 082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4 = the oracle's
   pinned hash. The oracle's hard APK-hash gate is de-risked; the on-device APK will match.
 
-BLOCKER (honest) — .so cannot be built in THIS canonical env:
-- egl_interposer.o compiles standalone (only EGL/system headers): exact reproduction of
-  build-hwui-2048.sh:198-200 -> exit 0, 19416 bytes, llvm-nm shows g_wl_last_swap_argb +
-  g_wl_swap_count in BSS. This is the substantive native change and it is verified.
-- The renderer TU (westlake_upscreen_renderer.cpp) + full libwestlake_upscreen_renderer.so
-  link CANNOT be built here: the AOSP hwui source tree is absent — /Users/yao/a2oh-source-audit
-  contains only ohos-sdk (no aosp-frameworks-base-15-r9, no aosp-15-headers, no skia,
-  no graphic_graphic_2d), so AnimationContext.h etc. are nowhere. Same class of gap as
-  ohos_display_surface's transaction/rs_interfaces.h. The renderer edits (fence(); extern
-  globals matching egl's defs; jlong nativeLastSwapArgb; kMethods entry) are CODE-REVIEWED
-  only. The .so must be produced on the build machine that has the source (the W-003-color
-  worktree used for the ART build, or wherever build-upscreen-renderer.sh actually links).
+RESOLVED — .so builds device-free (earlier "blocker" was a wrong A2OH path, not missing source):
+- The gfx-smoke build scripts default A2OH to /Users/yao/a2oh-source-audit, but THAT dir
+  (created Jul 11) holds only ohos-sdk — a stale/partial copy. The COMPLETE AOSP+OHOS source
+  tree is at /Users/yao/Desktop/code/a2oh-source-audit (all 10 referenced subtrees present:
+  aosp-frameworks-base-15-r9/libs/hwui, aosp-15-headers, openharmony-third-party-skia,
+  graphic_graphic_2d, graphic_graphic_surface, device-libs, ohos-6.0-headers, aosp-android-11,
+  ohos-sdk, commonlibrary_c_utils). >>> Build with A2OH=/Users/yao/Desktop/code/a2oh-source-audit. <<<
+- With that A2OH, build-upscreen-renderer.sh (after refreshing egl_interposer.o) VERIFIED:
+    * ohos_display_surface.pic.o + rs_abi_shims.pic.o recompile clean (the transaction/
+      rs_interfaces.h gap was the same wrong-A2OH artifact — gone with full source).
+    * westlake_upscreen_renderer.cpp COMPILES against real hwui headers — the renderer B2
+      edits (g_proxy->fence(); extern volatile g_wl_last_swap_argb/g_wl_swap_count;
+      jlong nativeLastSwapArgb(); kMethods entry; sizeof count) are now COMPILE-verified,
+      not merely code-reviewed.
+    * libwestlake_upscreen_renderer.so LINKS: 2940176 bytes,
+      sha256 a194f9e652070b22fa7e2f025583d244dac5792f266e4c5c716eeb83ffa679aa.
+- .so symbol self-consistency (llvm-nm):
+    * JNI_OnLoad = T (exported registrar); nativeLastSwapArgb defined (t, anon-namespace,
+      registered by function pointer in kMethods).
+    * g_wl_last_swap_argb + g_wl_swap_count = B (BSS, defined by egl_interposer.o, linked in);
+      ZERO undefined g_wl_ symbols -> the renderer's extern refs resolve INSIDE the .so.
+    * Remaining undefined = only RenderProxy/RenderNode methods incl. RenderProxy::fence()
+      (my new call) — correct: they resolve from libhwui.so at runtime.
+- Artifact is a gitignored build output (ports/dayu600/out/), rebuilt on the deploy host;
+  provenance recorded here (WIP, device-未验). NOTE: still needs the #49 pointer-publish
+  (W-003 2854df46) + R2 same-source libhwui folded into the SAME substrate before deploy.
 
 Remaining path to W-004 PASS (unchanged gates, now with the wiring in place):
-1. On a build host WITH the AOSP hwui + OHOS graphic_2d source, run
-   build-upscreen-renderer.sh to produce libwestlake_upscreen_renderer.so (carries the new
-   egl_interposer capture + nativeLastSwapArgb). Also needs the #49 pointer-publish (W-003
-   2854df46) and R2 same-source libhwui in the same substrate.
+1. [.so BUILT this session — a194f9e6, 2940176B] libwestlake_upscreen_renderer.so already
+   carries the egl_interposer capture + nativeLastSwapArgb. Rebuild on the deploy host with
+   A2OH=/Users/yao/Desktop/code/a2oh-source-audit if needed. STILL REQUIRED before deploy:
+   fold in the #49 pointer-publish (W-003 2854df46) + R2 same-source libhwui into the SAME
+   substrate the .so links/loads against (the R2 "libhwui mapped once" gate is not yet proven).
 2. Rebuild dayu600-apk-probe.dex (already reproducible here) and re-pin WCOLOR_DEX_SHA.
 3. Deploy ART/dex/sidecar/.so/color-smoke.apk ONLY into /data/local/tmp/wl-color-codex on 5ce
    (WESTLAKE_ROOT=/data/local/tmp/wl-color-codex so apkPath() resolves color-smoke.apk there).
