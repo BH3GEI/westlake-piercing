@@ -1,0 +1,56 @@
+# W-003 / #49 — 2026-07-12 — critical-native publication PASS
+
+## Scope
+
+Board: `5583f5be00000000000000000323012c`.
+Route: A only; no framework replacement or CriticalNative stripping.
+Oracle: `oracle/verify/atom-49.sh`, followed by its #43 regression.
+
+## Inputs
+
+- ART sidecar deployed to `$S/art/libwestlake_art.so`:
+  `5791731ca1c6dfac175dc44a9f9e1fdfc37e93d16ffe5a4ba5f729f33dc90134`
+- Probe dex (host and board matched):
+  `31b991ac2d64ab971d4e6f9335a95a649a821717312ed8ad3444effcde6dc44a`
+- Embedded probe sidecar (host and both board locations matched):
+  `20206332f23a8793e872509dca508487324b75e0487be3180795bc3cb5c8b8f5`
+
+Command:
+
+```sh
+W049_ART_SHA=5791731ca1c6dfac175dc44a9f9e1fdfc37e93d16ffe5a4ba5f729f33dc90134 \
+  W049_LOG=/tmp/w003-paint-reg.log \
+  oracle/verify/atom-49.sh 5583f5be00000000000000000323012c
+```
+
+## Observed board output
+
+```text
+crit-bind stage
+crit-bind nGetFlags=5 expected=5 ok normal=ok
+PASS
+PASS
+```
+
+The first `PASS` is #49; the second is the #43 regression invoked by the oracle.
+
+With temporary diagnostic logging enabled in this build, the decisive path was:
+
+```text
+[W003-REG] RegisterNative int android.graphics.Paint.nGetFlags(long) critical=1 visible=0 fn=0x... entry_before=0x...
+[W003-REG] RegisterNative void android.graphics.Paint.nSetFlags(long, int) critical=1 visible=0 fn=0x... entry_before=0x...
+[W003-REG] GetRegisteredNative pending void android.graphics.Paint.nSetFlags(long, int) fn=0x...
+crit-bind nGetFlags=5 expected=5 ok normal=ok
+```
+
+This confirms the repaired path: `RegisterNative` stages the real critical pointer while
+the class is not visibly initialized; `InterpreterJni` retrieves that pending pointer
+before dlsym lookup; the critical call mutates and reads the real `Paint` flags. It is
+not a static stub or a no-op marker.
+
+## Claim boundary
+
+Observed: #49 and #43 pass on 5583 with the hashes above.
+Not yet observed: ColorView pixels on the panel. This PASS only removes the
+Paint critical-native binding wall; APK-owned `Canvas.drawColor` still needs its
+separate first-frame/color oracle.
