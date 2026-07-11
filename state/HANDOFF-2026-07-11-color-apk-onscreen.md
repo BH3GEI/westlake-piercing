@@ -114,8 +114,14 @@
 ## 6. 落地步骤(给接手窗口的最短路径)
 
 1. **探针 stage**:在 `Dayu600ApkStageProbe.java` 加 `colorapk` stage(仿 fontsmoke 的 substage 路由):
-   load `color-smoke.apk` 的 dex → `new ColorView(ctx)` → `WestlakeUpscreen.show(view, w, h)`(需 ctx,用 §已有的
-   assetProbe/WlProxyContext 机器)→ 在 Looper 上循环 `view.nextColor(); WestlakeUpscreen.pushFrame();` 每 ~800ms。
+   load `color-smoke.apk` 的 dex → **`new ColorView(ctx)`(APK 自己的 View,`onDraw` 里 `drawColor`)**
+   → `adapter.window.WestlakeUpscreen.show(view, w, h)`(**FQN 是 `adapter.window.WestlakeUpscreen`**;需 ctx,
+   用 §已有 assetProbe/WlProxyContext 机器)→ 在 Looper 上循环 `view.nextColor();`
+   **`adapter.window.WestlakeUpscreen.drawFrame(view);`** 每 ~800ms。
+   - ⚠️ **必须用 `drawFrame(view)`,不是 `pushFrame()`**:`pushFrame()` 只重推**旧** display list(`nativeDrawFrame`),
+     颜色不会变 → **违反用户"变色"硬要求**;`drawFrame(view)` 会 `record(v,…)` 重录 → 重跑 `ColorView.onDraw→drawColor(新色)`。
+   - ⚠️ **别用 `WestlakeUpscreen.pureColorView(ctx,color)`**:那是 adapter 自己造的纯色 View,像素不来自 APK 的
+     `Canvas.drawColor` → 不满足"APK 自绘"验收线。只喂 APK 的 `ColorView`。
 2. **构建**:build-probe-mac.sh + **并入现成 `upscreen-render.dex.jar`(dex 035)**(勿 shim 重编,见 §5)+ build-color-apk.sh。
 3. **先做路线 A**:W-003 修 ART(class_linker 发布块前移 + 两 resolver 查表)→ compiler 重建 `libwestlake_art.so`
    → hdc 部署到 **5583**(`$S/art/libwestlake_art.so`)+ 同步 atom-43 hash-lock,先自证不回退 #43。

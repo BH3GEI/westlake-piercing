@@ -48,6 +48,39 @@
   且换 framework.jar 会破 #43 的 atom-43 hash-lock。
 
 ================================================================
+[3] WestlakeUpscreen 现成 API 与 handoff 调用点核对(javap 实测)
+================================================================
+FQN(observed): **adapter.window.WestlakeUpscreen**(不是裸 WestlakeUpscreen)。
+探针/handoff 引用要用全限定名。
+公开方法(与 handoff §6 调用点比对):
+- `public static int show(View, int, int)`          ✓ 匹配 handoff `show(view,w,h)`
+- `public static void drawFrame(View)`               ← **变色循环要用这个**
+- `public static void pushFrame()`                   ← 只重推旧帧,**不能用来变色**
+- `public static View pureColorView(Context, int)`   ← **陷阱,别用**(见下)
+
+================================================================
+[4] 变色循环必须用 drawFrame(view),不是 pushFrame() —— 否则违反"变色"验收线
+================================================================
+现象(observed,读 WestlakeUpscreen.java:88-124):
+- `show(v,w,h)`:`record(v,w,h)` 把传入 View 录成 display list(sRoot)→ nativeInit → nativeDrawFrame。
+- `pushFrame()`:只 `if(sRoot!=null) nativeDrawFrame();` —— **不重录**,重推的是**旧** display list。
+- `drawFrame(v)`:`record(v,sW,sH); nativeDrawFrame();` —— **重录**,重跑 ColorView.onDraw→drawColor(新 mColor)。
+影响:
+- handoff §6 原写 `view.nextColor(); pushFrame();`:nextColor 改了 mColor+invalidate,但 pushFrame 推旧帧
+  → **屏上颜色不变** → 违反用户"变色是硬要求"。
+- 已修 handoff §6 step 1 为 `view.nextColor(); adapter.window.WestlakeUpscreen.drawFrame(view);`。
+
+陷阱: **别用 WestlakeUpscreen.pureColorView(ctx,color)** —— 那是 adapter 自造纯色 View,
+像素不来自 APK 的 Canvas.drawColor,不满足"APK 自绘"验收线。只喂 APK 的 ColorView 实例。
+
+================================================================
+[5] color-smoke.apk 构建可复现(hash-lock 复核)
+================================================================
+observed: 重跑 test-fixtures/dayu600-color-apk/build-color-apk.sh →
+sha256 = 082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4(1075 B),
+与 handoff §2 记录一致 → 固定 ZIP mtime 后确定性构建成立。
+
+================================================================
 结论
 ================================================================
 - 落地走**路线 A**(W-003 正修: class_linker 发布块前移 + 两 resolver 查
