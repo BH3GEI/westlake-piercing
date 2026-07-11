@@ -64,7 +64,7 @@ if [ "$LOCAL_RUN_SHA" != "$REMOTE_RUN_SHA" ] \
   exit 1
 fi
 
-if ! "$HDC" -t "$SERIAL" shell "rm -f '$REMOTE_NATIVE' '$REMOTE_EARLY' '$REMOTE_PROBE' /data/local/tmp/w001-ckApp.txt /data/local/tmp/w001-ckFw.txt /data/local/tmp/w001-abA.txt /data/local/tmp/w001-abB.txt /data/local/tmp/w001-abAex.txt /data/local/tmp/w001-failex.txt /data/local/tmp/w001-failmsg.txt /data/local/tmp/w001-trace.txt /data/local/tmp/w001-syslib.txt" >"$OUT" 2>&1; then
+if ! "$HDC" -t "$SERIAL" shell "rm -f '$REMOTE_NATIVE' '$REMOTE_EARLY' '$REMOTE_PROBE' /data/local/tmp/w001-ckApp.txt /data/local/tmp/w001-ckFw.txt /data/local/tmp/w001-abA.txt /data/local/tmp/w001-abB.txt /data/local/tmp/w001-abAex.txt /data/local/tmp/w001-failex.txt /data/local/tmp/w001-failmsg.txt /data/local/tmp/w001-failstack.txt /data/local/tmp/w001-abAstack.txt /data/local/tmp/w001-trace.txt /data/local/tmp/w001-syslib.txt /data/local/tmp/w001-p2.txt" >"$OUT" 2>&1; then
   echo "log=$OUT"
   echo "failed to clear W-001-owned logs"
   echo "FAIL"
@@ -82,7 +82,7 @@ RUN_RC=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if ! "$HDC" -t "$SERIAL" shell "echo __W001_NATIVE__; cat '$REMOTE_NATIVE' 2>/dev/null; echo __W001_EARLY__; cat '$REMOTE_EARLY' 2>/dev/null; echo __W001_PROBE__; cat '$REMOTE_PROBE' 2>/dev/null; echo __W001_TRACE__; cat /data/local/tmp/w001-trace.txt 2>/dev/null; echo __W001_SYSLIB__; cat /data/local/tmp/w001-syslib.txt 2>/dev/null; echo __W001_CK__; cat /data/local/tmp/w001-ckApp.txt /data/local/tmp/w001-ckFw.txt 2>/dev/null; echo __W001_AB__; cat /data/local/tmp/w001-abA.txt /data/local/tmp/w001-abB.txt 2>/dev/null; echo __W001_EX__; cat /data/local/tmp/w001-abAex.txt /data/local/tmp/w001-failex.txt /data/local/tmp/w001-failmsg.txt 2>/dev/null" >>"$OUT" 2>&1; then
+if ! "$HDC" -t "$SERIAL" shell "echo __W001_NATIVE__; cat '$REMOTE_NATIVE' 2>/dev/null; echo __W001_EARLY__; cat '$REMOTE_EARLY' 2>/dev/null; echo __W001_PROBE__; cat '$REMOTE_PROBE' 2>/dev/null; echo __W001_TRACE__; cat /data/local/tmp/w001-trace.txt 2>/dev/null; echo __W001_SYSLIB__; cat /data/local/tmp/w001-syslib.txt 2>/dev/null; echo __W001_P2__; cat /data/local/tmp/w001-p2.txt 2>/dev/null; echo __W001_CK__; cat /data/local/tmp/w001-ckApp.txt /data/local/tmp/w001-ckFw.txt 2>/dev/null; echo __W001_AB__; cat /data/local/tmp/w001-abA.txt /data/local/tmp/w001-abB.txt 2>/dev/null; echo __W001_EX__; cat /data/local/tmp/w001-abAex.txt /data/local/tmp/w001-failex.txt /data/local/tmp/w001-failmsg.txt 2>/dev/null; echo __W001_STACK__; cat /data/local/tmp/w001-failstack.txt 2>/dev/null; echo __W001_ASTACK__; cat /data/local/tmp/w001-abAstack.txt 2>/dev/null" >>"$OUT" 2>&1; then
   echo "log=$OUT run_rc=$RUN_RC"
   echo "failed to collect W-001 result logs"
   echo "FAIL"

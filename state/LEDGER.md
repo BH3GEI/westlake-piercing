@@ -57,7 +57,7 @@
 | 40 | Surface/RenderThread renderer 4 native 自注册 | L5 | ✅ | ? | C | COORD L2864 |
 | 41 | createSubDecor 要 Theme.AppCompat(Material.Light 无 windowActionBar) | L6 | ✅ | ? | B | COORD L2801 |
 | 42 | setTheme 换 AppThemeBar 0x7f15000e | L6 | ✅ | ? | A·E | COORD L2817 |
-| 43 | ★前沿:AppCompatTheme 真 WAB oracle(旧双包判据错用了 autoLink) | L6 | 🔧 | - | B | W-001 oracle audit · 见 FRONTIER.md |
+| 43 | ★前沿:AppCompatTheme 真 WAB oracle(机制在副板 5ce2dcee PASS;验收板 5583 卡 getSystem NPE) | L6 | 🔧 | - | B | W-001 · CD-mmap interposer + P2 · 见 FRONTIER.md |
 | 44 | Canvas draw native 分类,show() crit 缩到 2 | L5 | 🔧 | - | C | COORD L2947 |
 | 45 | onClick mAttachInfo 墙 → attachForInput 内联(已编未上板) | L6 | ✅ | ✗ | D | COORD L2535 |
 | 46 | 5ce2dcee ~50% 早停 lottery(板 vs bug,悬案) | L1 | 🔧 | - | H | COORD L2768 · INCONCLUSIVE |

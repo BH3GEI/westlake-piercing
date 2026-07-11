@@ -774,6 +774,91 @@ public final class Dayu600ApkStageProbe {
         } catch (Throwable ig) {}
     }
 
+    private static boolean sArscNativesBound = false;
+
+    /**
+     * Bind the REAL libandroidfw resolution natives (nativeSetApkAssets,
+     * nativeApplyStyle, nativeThemeCreate/ApplyStyle, nativeGetResourceName,
+     * nativeResolveAttrs...) into the early oracle path. Without this the
+     * early oracle only ever had the OHOS stub natives, so the sidecar's
+     * nativeW001Append -> nativeSetApkAssets delegation never built a real
+     * DynamicRefTable and never assigned app package id 0x7f -> every
+     * obtainStyledAttributes value came back empty (uamHasWab=false) and
+     * getResourceName threw UnsatisfiedLinkError.
+     *
+     * Route E (proven in assetProbe stage :1753, ledger #23-25): force
+     * XmlBlock/StringBlock <clinit> first so the OHBridge stubs register, then
+     * System.load(libandroidfw.so) so its JNI_OnLoad re-registers the real
+     * impls on top and wins. MUST run before the first nativeW001Append so the
+     * ref table is built by the real setApkAssets. Idempotent. Writes
+     * w001-arsc.txt.
+     */
+    /** libandroidfw absolute path — single literal (no concat: dual-String hazard). */
+    private static final String FW_LIB_PATH =
+            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so";
+
+    /**
+     * Nested helper whose <clinit> System.load's libandroidfw. When this class is
+     * loaded through a PathClassLoader that carries a valid librarySearchPath, the
+     * System.load caller resolves to a loader with a non-null ldLibraryPath, so ART's
+     * nativeLoad does not NPE on the null search path (the early-oracle probe class is
+     * boot-loaded => getClassLoader()==null => System.load NPEs "String.length() on null").
+     */
+    static final class FwLibLoader {
+        static {
+            System.load(FW_LIB_PATH);
+        }
+        static void touch() {}
+    }
+
+    private static void ensureArscNatives() {
+        if (sArscNativesBound) return;
+        try {
+            ClassLoader cl = android.content.res.AssetManager.class.getClassLoader();
+            // Force <clinit> of every class whose OHBridge stub natives must register
+            // BEFORE libandroidfw loads, so libandroidfw's JNI_OnLoad re-registers on top
+            // and WINS. ApkAssets is critical: its nativeLoad (the arsc parser) is triggered
+            // lazily by the sidecar's loadFromPath during append; if its <clinit> runs THEN,
+            // OHBridge re-registers the stub AFTER libandroidfw and clobbers the real parser,
+            // giving cookies with no arsc (getResourceName=notfound even for framework ids).
+            try { Class.forName("android.content.res.ApkAssets", true, cl); } catch (Throwable ig) {}
+            try { Class.forName("android.content.res.AssetManager", true, cl); } catch (Throwable ig) {}
+            try { Class.forName("android.content.res.XmlBlock", true, cl); } catch (Throwable ig) {}
+            try { Class.forName("android.content.res.StringBlock", true, cl); } catch (Throwable ig) {}
+            try { Class.forName("android.content.res.TypedArray", true, cl); } catch (Throwable ig) {}
+        } catch (Throwable ig) {}
+        // Path A: direct load (works when our classloader is a real dex loader).
+        try {
+            System.load(FW_LIB_PATH);
+            sArscNativesBound = true;
+            earlyWriteLiteral("/data/local/tmp/w001-arsc.txt", "loaded-direct");
+            return;
+        } catch (Throwable t) {
+            earlyWriteLiteral("/data/local/tmp/w001-arsc.txt", "direct-fail");
+            try { earlyWriteLiteral("/data/local/tmp/w001-arsc-msg.txt",
+                    t.getMessage() == null ? "<null-msg>" : t.getMessage()); } catch (Throwable ig) {}
+        }
+        // Path B: load via a fresh PathClassLoader with an explicit librarySearchPath, so
+        // the System.load in FwLibLoader.<clinit> has a caller loader with a valid path.
+        try {
+            String dexPath = "/data/local/tmp/westlake-dayu600-substrate/apks/dayu600-apk-probe.dex";
+            String libDir = "/data/local/tmp/westlake-dayu600-substrate/android/lib64";
+            Class<?> pclCls = Class.forName("dalvik.system.PathClassLoader");
+            java.lang.reflect.Constructor<?> pclC =
+                    pclCls.getDeclaredConstructor(String.class, String.class, ClassLoader.class);
+            pclC.setAccessible(true);
+            ClassLoader newLoader = (ClassLoader) pclC.newInstance(dexPath, libDir, null);
+            // Loading the helper through newLoader triggers its <clinit> System.load.
+            Class.forName("Dayu600ApkStageProbe$FwLibLoader", true, newLoader);
+            sArscNativesBound = true;
+            earlyWriteLiteral("/data/local/tmp/w001-arsc.txt", "loaded-viaLoader");
+        } catch (Throwable t) {
+            earlyWriteLiteral("/data/local/tmp/w001-arsc.txt", t.getClass().getName());
+            try { earlyWriteLiteral("/data/local/tmp/w001-arsc-msg.txt",
+                    t.getMessage() == null ? "<null-msg>" : t.getMessage()); } catch (Throwable ig) {}
+        }
+    }
+
     /** Dual-package AM via addAssetPath only (lighter stack than ApkAssets.loadFromPath). */
     private static android.content.res.AssetManager makeDualPackageAmLite(String appPath, String fwPath)
             throws Exception {
@@ -812,6 +897,164 @@ public final class Dayu600ApkStageProbe {
         } catch (Throwable ig) {}
     }
 
+    /**
+     * Capture a full stack trace using the proven-safe StringBuilder.append idiom
+     * (see emitDetail) — never `+` concatenation, which ArrayStores on this dual-String
+     * board. Pinpoints the exact framework frame that NPEs (e.g. ArrayList.size() on null).
+     */
+    private static void earlyWriteStack(String path, Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        try { sb.append(t.getClass().getName()).append('\n'); } catch (Throwable ig) {}
+        try {
+            String em = t.getMessage();
+            sb.append(em == null ? "<null>" : em).append('\n');
+        } catch (Throwable ig) {}
+        appendFrames(sb, t);
+        try {
+            Throwable cause = t.getCause();
+            int guard = 0;
+            while (cause != null && guard < 4) {
+                try { sb.append("cause=").append(cause.getClass().getName()).append('\n'); } catch (Throwable ig) {}
+                appendFrames(sb, cause);
+                cause = cause.getCause();
+                guard++;
+            }
+        } catch (Throwable ig) {}
+        try { writeText(path, sb.toString()); } catch (Throwable ig) {}
+    }
+
+    /**
+     * Append stack frames field-by-field (getClassName/getMethodName/getLineNumber) — never
+     * StackTraceElement.toString(), whose internal String concat ArrayStores on this board.
+     * Per-frame guarded, and emits frames=N so an empty trace (unpopulated on minimal ART)
+     * is itself a signal.
+     */
+    private static void appendFrames(StringBuilder sb, Throwable t) {
+        try {
+            StackTraceElement[] stack = t.getStackTrace();
+            sb.append("frames=").append(stack == null ? -1 : stack.length).append('\n');
+            if (stack == null) return;
+            for (int i = 0; i < stack.length && i < 30; i++) {
+                try {
+                    StackTraceElement e = stack[i];
+                    sb.append(e.getClassName()).append('#').append(e.getMethodName())
+                      .append(':').append(e.getLineNumber()).append('\n');
+                } catch (Throwable ig) {
+                    sb.append("<frame-err>\n");
+                }
+            }
+        } catch (Throwable ig) {
+            sb.append("<stack-err>\n");
+        }
+    }
+
+    /** Env-gated (WESTLAKE_W001_BISECT=1). Localizes the ArrayList.size() NPE inside
+     *  new Resources()'s getSystem()/OverlayConfig/PackagePartitions cascade by calling
+     *  each suspect directly and recording message-or-class (single literal → no concat). */
+    private static boolean isBisectEnabled() {
+        try {
+            return "1".equals(System.getenv("WESTLAKE_W001_BISECT"));
+        } catch (Throwable ig) {
+            return false;
+        }
+    }
+
+    /** message-or-class as a single literal (no concat). */
+    private static void bisectRecord(String path, Throwable t) {
+        Throwable r = t;
+        if (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null) {
+            r = t.getCause();
+        }
+        String out;
+        try {
+            out = r.getMessage();
+            if (out == null) {
+                out = r.getClass().getName();
+            }
+        } catch (Throwable ig) {
+            out = "ex-unknown";
+        }
+        earlyWriteLiteral(path, out);
+    }
+
+    private static void runResBisect() {
+        // Reflection getMethod/getDeclaredMethod both NPE on this ART; call directly through
+        // compile-only shims (resolved to the board's framework.jar at runtime).
+        try {
+            android.os.Environment.getRootDirectory();
+            earlyWriteLiteral("/data/local/tmp/w001-bis-env.txt", "ok");
+        } catch (Throwable t) {
+            bisectRecord("/data/local/tmp/w001-bis-env.txt", t);
+        }
+        // getOrderedPartitions -> SYSTEM_PARTITIONS.size(): is the static partition list null?
+        try {
+            android.content.pm.PackagePartitions.getOrderedPartitions(java.util.function.Function.identity());
+            earlyWriteLiteral("/data/local/tmp/w001-bis-partitions.txt", "ok");
+        } catch (Throwable t) {
+            bisectRecord("/data/local/tmp/w001-bis-partitions.txt", t);
+        }
+        // getZygoteInstance -> new OverlayConfig(...) full ctor path.
+        try {
+            com.android.internal.content.om.OverlayConfig.getZygoteInstance();
+            earlyWriteLiteral("/data/local/tmp/w001-bis-overlay.txt", "ok");
+        } catch (Throwable t) {
+            bisectRecord("/data/local/tmp/w001-bis-overlay.txt", t);
+        }
+    }
+
+    /** Does an id resolve in these Resources? Writes the resource name or the exception class
+     *  (single literal → no concat). Reveals whether the app package (0x7f) is linked at all. */
+    private static void earlyResName(String path, android.content.res.Resources res, int id) {
+        try {
+            String nm = res.getResourceName(id);
+            earlyWriteLiteral(path, nm == null ? "<null-name>" : nm);
+        } catch (Throwable t) {
+            earlyWriteLiteral(path, t.getClass().getName());
+        }
+    }
+
+    /**
+     * Seed AssetManager.sSystem with a minimal sentinel AssetManager so that
+     * AssetManager.getSystem() -> createSystemAssetsInZygoteLocked hits the
+     * `if (sSystem != null && !reinitialize) return;` guard and early-returns,
+     * NEVER touching OverlayConfig.getZygoteInstance() ->
+     * PackagePartitions.getOrderedPartitions() -> SYSTEM_PARTITIONS.size().
+     *
+     * Root cause (bisect + jadx, 2026-07-11): on 5583 PackagePartitions.<clinit>
+     * aborts inside getFingerprint()->SystemProperties.native_get (unbound boot
+     * native) so SYSTEM_PARTITIONS reads null. The seed sidesteps the whole
+     * subtree. Harmless where SYSTEM_PARTITIONS is already non-null (5ce2dcee):
+     * the guard just early-returns. Field reflection works on this ART even
+     * though getMethod/getDeclaredMethod NPE. Writes w001-seed.txt.
+     */
+    private static void seedSystemAssetManager() {
+        try {
+            Class<?> amCls = android.content.res.AssetManager.class;
+            java.lang.reflect.Field fSys = amCls.getDeclaredField("sSystem");
+            fSys.setAccessible(true);
+            if (fSys.get(null) != null) {
+                earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "already-set");
+                return;
+            }
+            java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
+            amC.setAccessible(true);
+            Object seedAm = amC.newInstance(Boolean.TRUE);
+            fSys.set(null, seedAm);
+            // sSystemApkAssetsSet defaults to null; seed a non-null ArraySet so any
+            // later setApkAssets(...,system=true) contains()-check does not NPE.
+            try {
+                java.lang.reflect.Field fSet = amCls.getDeclaredField("sSystemApkAssetsSet");
+                fSet.setAccessible(true);
+                if (fSet.get(null) == null) {
+                    fSet.set(null, new android.util.ArraySet<Object>());
+                }
+            } catch (Throwable ig) {}
+            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "seeded");
+        } catch (Throwable t) {
+            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", t.getClass().getName());
+        }
+    }
+
     private static int runEarlyThemeOracle() {
         int stepCode = 0;
         try {
@@ -819,6 +1062,13 @@ public final class Dayu600ApkStageProbe {
             // Resources ctor hits Trace.nativeIsTagEnabled → UnsatisfiedLinkError unless
             // the sidecar's trace natives are registered first (proven 2026-07-10).
             ensureTraceNatives();
+            // Bind the REAL libandroidfw resolution natives BEFORE any nativeW001Append,
+            // so the sidecar's setApkAssets delegation builds a real DynamicRefTable and
+            // assigns app package 0x7f (fixes uamHasWab=false / getResourceName ULE).
+            ensureArscNatives();
+            // Seed AssetManager.sSystem so getSystem() early-returns and never touches
+            // OverlayConfig/PackagePartitions (fixes the SYSTEM_PARTITIONS==null NPE on 5583).
+            seedSystemAssetManager();
             Class<?> amCls = android.content.res.AssetManager.class;
             java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
             amC.setAccessible(true);
@@ -830,6 +1080,12 @@ public final class Dayu600ApkStageProbe {
             // the Resources ctor resolves the am-loader's Trace (dual-class hazard). Void arg →
             // shorty 'VL' (dispatchable). Native writes w001-trace.txt = "trace boot=? amldr=?".
             nativeW001BindTrace(am);
+            // Diagnostic: localize the framework-bootstrap NPE without contaminating the A/B legs.
+            if (isBisectEnabled()) {
+                runResBisect();
+                earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY bisect-done");
+                return 43;
+            }
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addApp");
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY preNative");
             // VLL trampoline: no int return. Per-call rc lands in w001-ck{App,Fw}.txt
@@ -881,6 +1137,7 @@ public final class Dayu600ApkStageProbe {
                 try {
                     earlyWriteLiteral("/data/local/tmp/w001-abAex.txt", at.getClass().getName());
                 } catch (Throwable ig2) {}
+                earlyWriteStack("/data/local/tmp/w001-abAstack.txt", at);
             }
             stepCode = 2;
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=addFw");
@@ -894,6 +1151,22 @@ public final class Dayu600ApkStageProbe {
             }
             android.content.res.Resources res =
                     new android.content.res.Resources(am, dm, new android.content.res.Configuration());
+            // Diagnostic: does anything resolve in this Resources? If the app package (0x7f)
+            // is not linked, the AppThemeBar style (0x7f15000e) won't resolve and applyStyle
+            // is a no-op — which is exactly the wab=0/wco=0/cp=0 symptom.
+            earlyResName("/data/local/tmp/w001-rn-style.txt", res, 0x7f15000e);
+            earlyResName("/data/local/tmp/w001-rn-wab.txt", res, 0x7f040691);
+            earlyResName("/data/local/tmp/w001-rn-fw.txt", res, 0x01010059);
+            // ---- ISOLATED EXPERIMENT REMOVED (2026-07-11, mmap CD-rescue landed) ----
+            // It built a separate am2 via the board's real AssetManager.addAssetPath and called
+            // getResourceName on it. With the mmap CD-rescue interposer in place the MAIN am now
+            // resolves every id — w001-rn-{style,wab,fw}.txt = com.uptodown:style/AppThemeBar /
+            // com.uptodown:attr/windowActionBar / android:attr/windowContentOverlay — and the
+            // experiment had already proved addAssetPath returns cookie 0 (w001-cap-ck.txt=0),
+            // i.e. the hand-rolled nativeW001Append path is the load-bearing one. Its
+            // earlyResName(res2,...) on the empty am2 SIGBUS'd (native signal — uncatchable by the
+            // Java try/catch) and aborted the run BEFORE the real oracle at step=obtain. Removed so
+            // the B leg (app+framework) obtainStyledAttributes can run. Finding kept in evidence.
             stepCode = 4;
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=applyStyle");
             android.content.res.Resources.Theme th = res.newTheme();
@@ -956,6 +1229,7 @@ public final class Dayu600ApkStageProbe {
                     earlyWriteLiteral("/data/local/tmp/w001-failmsg.txt", em);
                 }
             } catch (Throwable ig2) {}
+            earlyWriteStack("/data/local/tmp/w001-failstack.txt", et);
             if (stepCode == 0) {
                 earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY_THEME_FAIL:step=pre");
             } else if (stepCode == 1) {

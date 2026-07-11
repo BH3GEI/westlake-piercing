@@ -24,6 +24,93 @@ extern long long strtoll(const char *nptr, char **endptr, int base);
 extern unsigned long long strtoull(const char *nptr, char **endptr, int base);
 extern long double strtold(const char *nptr, char **endptr);
 
+/* ---------------------------------------------------------------------------
+ * [W-001 / wall #43] mmap CD-rescue interposer.
+ *
+ * Board libandroidfw's statically-linked libziparchive maps a large real apk's
+ * central directory via android::base::MappedFile::FromFd -> mmap(fd, PROT_READ,
+ * MAP_SHARED, <large byte offset>). On this OHOS/musl board that mmap returns
+ * EINVAL for the CD of big signed apks (uptodown CD@15050189, framework-res
+ * CD@34946341) while succeeding for the small prepared apk (2048-2-9 CD@2051829),
+ * so ZipAssetsProvider::Create => NULL, the AssetManager2 stays empty, and the
+ * first real resource access (nativeGetResourceName) SIGBUSes on null+8.
+ * Evidence: evidence/W-001/2026-07-11-real-wall-zip-cd-mmap-einval.txt.
+ *
+ * We are already the LD_PRELOAD sidecar, so libandroidfw's undefined `mmap`
+ * (nm -D: `U mmap`) resolves to the definition below. Every call is forwarded
+ * verbatim to the raw mmap syscall; ONLY when a read-only, file-backed,
+ * kernel-chosen-address map FAILS do we rescue it by preading the same window
+ * into an anonymous private map. All success paths (all of ART's own mmaps) are
+ * byte-for-byte unchanged, so this cannot destabilise the runtime. It fixes OUR
+ * loader at runtime without rebuilding libandroidfw and without touching the apk
+ * (preserves #53's unmodified-apk invariant). Reversible: delete this block.
+ *
+ * Freestanding (-nostdlib): the real syscalls are issued via inline `svc #0`, so
+ * there is no libc dependency and no recursion back into this interposer. arm64
+ * syscall numbers: mmap=222, munmap=215, pread64=67.
+ * ------------------------------------------------------------------------- */
+#define WL_SYS_mmap    222
+#define WL_SYS_munmap  215
+#define WL_SYS_pread64 67
+#define WL_PROT_READ   0x1
+#define WL_PROT_WRITE  0x2
+#define WL_MAP_PRIVATE 0x2
+#define WL_MAP_ANON    0x20
+
+volatile long westlake_cd_mmap_rescues = 0;  /* observability: # of rescued maps */
+
+static long wl_syscall6(long n, long a0, long a1, long a2, long a3, long a4, long a5)
+{
+    register long x8 __asm__("x8") = n;
+    register long x0 __asm__("x0") = a0;
+    register long x1 __asm__("x1") = a1;
+    register long x2 __asm__("x2") = a2;
+    register long x3 __asm__("x3") = a3;
+    register long x4 __asm__("x4") = a4;
+    register long x5 __asm__("x5") = a5;
+    __asm__ __volatile__("svc #0"
+        : "+r"(x0)
+        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+        : "memory", "cc");
+    return x0;
+}
+
+/* kernel returns the mapping address on success, or a value in [-4095,-1]
+ * (== -errno) on failure. */
+static int wl_syscall_failed(long r) { return (unsigned long)r > (unsigned long)(-4096L); }
+
+void *mmap(void *addr, unsigned long length, int prot, int flags, int fd, long offset)
+{
+    long r = wl_syscall6(WL_SYS_mmap, (long)addr, (long)length, prot, flags, fd, offset);
+    if (!wl_syscall_failed(r)) {
+        return (void *)r;                      /* success: verbatim pass-through */
+    }
+    /* Rescue only a read-only, file-backed, kernel-addressed map (the CD case).
+     * Such a mapping is always safely replaceable by an anonymous private copy;
+     * writable/shared or fixed-address maps are left to fail as normal. */
+    if (fd >= 0 && addr == 0 && (prot & WL_PROT_READ) && !(prot & WL_PROT_WRITE) &&
+        length != 0) {
+        long m = wl_syscall6(WL_SYS_mmap, 0, (long)length, WL_PROT_READ | WL_PROT_WRITE,
+                             WL_MAP_PRIVATE | WL_MAP_ANON, -1, 0);
+        if (wl_syscall_failed(m)) {
+            return (void *)-1;                 /* anon backing alloc failed */
+        }
+        unsigned long done = 0;
+        while (done < length) {
+            long n = wl_syscall6(WL_SYS_pread64, fd, m + (long)done,
+                                 (long)(length - done), offset + (long)done, 0, 0);
+            if (n <= 0) {                      /* short / failed read -> give up cleanly */
+                wl_syscall6(WL_SYS_munmap, m, (long)length, 0, 0, 0, 0);
+                return (void *)-1;
+            }
+            done += (unsigned long)n;
+        }
+        westlake_cd_mmap_rescues++;
+        return (void *)m;                      /* caller munmaps `length` later (anon-safe) */
+    }
+    return (void *)-1;                          /* other failures: normal MAP_FAILED */
+}
+
 static long syscall3(long n, long a, long b, long c);
 static void log_text(const char *s);
 static void log_int(const char *prefix, int value);
@@ -2129,6 +2216,117 @@ static int register_trace_natives_on(JNIEnv *env, jclass trace_class, const char
     return 0;
 }
 
+/* P2 (user-authorized 2026-07-11, revised after crash): bind the boot Trace natives by
+ * writing ptr_sized_fields_.data_ (== entry_point_from_jni_) directly on each ArtMethod.
+ * This is exactly what ArtMethod::SetEntryPointFromJni does — the proven load-bearing
+ * primitive in this tree (dalvikvm.cc:3361 "Route ThreadLocal.nextHashCode -> native"
+ * does m.SetEntryPointFromJni(fn) under ScopedObjectAccess and it works).
+ * We do NOT use the exported art::ClassLinker::RegisterNative: it routes through
+ * Runtime::Current()->GetRuntimeCallbacks()->RegisterNativeMethod, which needs
+ * mutator-lock / kRunnable thread state we do not hold in a raw JNI native -> it
+ * segfaulted (probe died right after post-init RegisterNatives, before the heartbeat).
+ * A plain field write needs no thread state or locks. jmethodID == ArtMethod*
+ * (dalvikvm.cc:1548 reinterpret_cast, :3308 DecodeArtMethod); on 64-bit ART the JNI
+ * code slot is data_ at offset 16 (declaring_class_ 4 + access_flags_ 4 +
+ * dex_method_index_ 4 + method_index_ 2 + hotness/imt 2 = 16). The framework's Resources
+ * ctor reads exactly this slot via GetEntryPointFromJni() in the interpreter ZJ branch
+ * (interpreter.cc:2314). Writes a hex proof to /data/local/tmp/w001-p2.txt.
+ * Returns: 0 re-call returned (no ULE); 1 re-call still ULE (quick path may differ from
+ * the interpreter path — trust the oracle); 2 other exception; m4 no id; m9 n/a. */
+#define WESTLAKE_ARTMETHOD_JNI_OFFSET 16
+static int westlake_p2_direct_bind_trace(JNIEnv *env, jclass trace_class)
+{
+    struct trace_native { const char *name; const char *sig; const void *fn; };
+    struct trace_native tb[] = {
+        {"nativeIsTagEnabled", "(J)Z", (const void *)Java_android_os_Trace_nativeIsTagEnabled},
+        {"nativeSetAppTracingAllowed", "(Z)V", (const void *)Java_android_os_Trace_nativeSetAppTracingAllowed},
+        {"nativeSetTracingEnabled", "(Z)V", (const void *)Java_android_os_Trace_nativeSetTracingEnabled},
+        {"nativeTraceBegin", "(JLjava/lang/String;)V", (const void *)Java_android_os_Trace_nativeTraceBegin},
+        {"nativeTraceEnd", "(J)V", (const void *)Java_android_os_Trace_nativeTraceEnd},
+        {"nativeTraceCounter", "(JLjava/lang/String;J)V", (const void *)Java_android_os_Trace_nativeTraceCounter},
+    };
+    unsigned int i;
+    int poked = 0;
+    jmethodID mid0;
+    void *before0 = 0;
+    void *after0 = 0;
+    if (trace_class == 0) {
+        return -9;
+    }
+    log_text("W001 P2 enter (field-poke SetEntryPointFromJni)");
+    for (i = 0; i < sizeof(tb) / sizeof(tb[0]); i++) {
+        jmethodID mid = (*env)->GetStaticMethodID(env, trace_class, tb[i].name, tb[i].sig);
+        void **slot;
+        if (mid == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            continue;
+        }
+        slot = (void **)((unsigned char *)mid + WESTLAKE_ARTMETHOD_JNI_OFFSET);
+        if (i == 0) {
+            before0 = *slot;
+        }
+        *slot = (void *)tb[i].fn;   /* == ArtMethod::SetEntryPointFromJni(fn) */
+        poked++;
+    }
+    log_text("W001 P2 poked");
+    mid0 = (*env)->GetStaticMethodID(env, trace_class, "nativeIsTagEnabled", "(J)Z");
+    if (mid0 == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        return -4;
+    }
+    after0 = *(void **)((unsigned char *)mid0 + WESTLAKE_ARTMETHOD_JNI_OFFSET);
+    /* proof the write took + offset is sane: mid, before/after @16, our fn, poked count */
+    {
+        static const char *HX = "0123456789abcdef";
+        const void *vals[4];
+        const char *labels[4];
+        char dbg[192];
+        unsigned int dp = 0;
+        unsigned int vi;
+        vals[0] = (const void *)mid0;                                       labels[0] = "mid=";
+        vals[1] = before0;                                                  labels[1] = " b4@16=";
+        vals[2] = after0;                                                   labels[2] = " now@16=";
+        vals[3] = (const void *)Java_android_os_Trace_nativeIsTagEnabled;   labels[3] = " ourfn=";
+        for (vi = 0; vi < 4; vi++) {
+            const char *lp = labels[vi];
+            unsigned long uv = (unsigned long)vals[vi];
+            int sh;
+            while (*lp != 0 && dp + 1 < sizeof(dbg)) {
+                dbg[dp++] = *lp++;
+            }
+            for (sh = 60; sh >= 0 && dp + 1 < sizeof(dbg); sh -= 4) {
+                dbg[dp++] = HX[(uv >> sh) & 0xf];
+            }
+        }
+        if (dp + 5 < sizeof(dbg)) {
+            dbg[dp++] = ' '; dbg[dp++] = 'p'; dbg[dp++] = 'k'; dbg[dp++] = '=';
+            dbg[dp++] = (char)('0' + (poked & 0xf));
+        }
+        if (dp + 1 < sizeof(dbg)) {
+            dbg[dp++] = '\n';
+        }
+        dbg[dp] = 0;
+        c_write_heartbeat("/data/local/tmp/w001-p2.txt", dbg);
+    }
+    log_text("W001 P2 recall begin");
+    (*env)->CallStaticBooleanMethod(env, trace_class, mid0, (jlong)0);
+    if ((*env)->ExceptionCheck(env)) {
+        jthrowable ex = (*env)->ExceptionOccurred(env);
+        int rc = 2;
+        jclass ule;
+        (*env)->ExceptionClear(env);
+        ule = (*env)->FindClass(env, "java/lang/UnsatisfiedLinkError");
+        if (ule != 0 && ex != 0 && (*env)->IsInstanceOf(env, ex, ule)) {
+            rc = 1;
+        }
+        (*env)->ExceptionClear(env);
+        log_text("W001 P2 recall ULE/other");
+        return rc;
+    }
+    log_text("W001 P2 recall ok (no ULE)");
+    return 0;
+}
+
 /* Dual Trace classes: FindClass may bind the wrong one. Re-bind using AssetManager's loader. */
 static void reregister_trace_via_assetmanager_loader(JNIEnv *env)
 {
@@ -2363,6 +2561,7 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
     int rc_bcall = -9; /* call-test on boot_trace: 0 callable, 1 ULE, 2 other, -9 n/a */
     int rc_init = -9;  /* force-init Trace: 0 ok, 1 threw, -9 n/a */
     int rc_bcall2 = -9;/* call-test after force-init + re-register */
+    int rc_crn = -9;   /* P2 direct ClassLinker::RegisterNative bind: 0 ULE cleared, 1 still ULE */
     /* LOAD-BEARING: register the sidecar as a null-loader system JNI library so ART
      * auto-links Java_android_os_Trace_* for the ResolveType-reached boot Trace that
      * no handle can name. The RegisterNatives-by-handle attempts below are kept as a
@@ -2428,6 +2627,10 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
         } else {
             (*env)->ExceptionClear(env);
         }
+        /* P2 (user-authorized): bypass the no-op JNIEnv->RegisterNatives by setting
+         * entry_point_from_jni_ directly on the boot Trace's ArtMethods via the exported
+         * art::ClassLinker::RegisterNative. This is the load-bearing fix for the ULE. */
+        rc_crn = westlake_p2_direct_bind_trace(env, boot_trace);
     } else {
         (*env)->ExceptionClear(env);
     }
@@ -2469,7 +2672,7 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
     /* Belt: the existing FindClass-AssetManager rebind. */
     reregister_trace_via_assetmanager_loader(env);
     {
-        char buf[96];
+        char buf[128];
         unsigned int pos = 0;
         unsigned int i;
         const char *p;
@@ -2487,6 +2690,7 @@ static void westlake_native_w001_bind_trace(JNIEnv *env, jclass clazz, jobject a
         W001_EMIT_RC(" bcall=", rc_bcall);
         W001_EMIT_RC(" init=", rc_init);
         W001_EMIT_RC(" bcall2=", rc_bcall2);
+        W001_EMIT_RC(" crn=", rc_crn);
         #undef W001_EMIT_RC
         buf[pos++] = '\n';
         buf[pos] = 0;
@@ -2611,6 +2815,33 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     call_optional_onload(handle, "JNI_OnLoad_openjdk", vm);
     call_optional_onload(handle, "JNI_OnLoad_framework", vm);
     call_optional_onload(handle, "JNI_OnLoad_ohbridge", vm);
+    /* W-001 arsc rebind: libandroidfw.so carries a real (WestLake-instrumented)
+     * JNI_OnLoad @0x2ae46c that RegisterNatives the android.content.res.* stack
+     * (ApkAssets/AssetManager/StringBlock/XmlBlock/Theme) onto the boot classes.
+     * It is NOT one of `handle`'s variants above, and ART's Java System.load
+     * dedups libandroidfw (already mmap'd as a transitive dep) so its JNI_OnLoad
+     * never fired in the early-oracle path -> the res natives stayed on the
+     * OHBridge no-op stubs (getResourceName=notfound, addAssetPath cookie 0,
+     * uamHasWab=false). Grab the already-mapped handle via RTLD_NOLOAD and call
+     * its JNI_OnLoad DIRECTLY, LAST (after ohbridge), so its RegisterNatives wins.
+     * Evidence its parser works when reached: probe-logs/nativeload.txt shows
+     * "[WL] LoadedArsc::Load => OK" for the assetProbe apk. */
+    {
+        const char *fw_path =
+            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so";
+        void *fw_handle = dlopen(fw_path, RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+        if (fw_handle == 0) {
+            fw_handle = dlopen(fw_path, RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (fw_handle != 0) {
+            call_optional_onload(fw_handle, "JNI_OnLoad", vm);
+            log_text("libandroidfw JNI_OnLoad invoked (res natives rebind, last)");
+        } else {
+            log_text("libandroidfw dlopen for JNI_OnLoad failed");
+            char *fe = dlerror();
+            if (fe != 0) log_text(fe);
+        }
+    }
     log_int("register_system_natives rc=", register_system_natives(env));
     log_int("seed_system_properties rc=", seed_system_properties(env));
     // Run android runtime startReg with signal-based crash recovery (sigsetjmp/siglongjmp).

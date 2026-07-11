@@ -1,0 +1,66 @@
+W-001 / 墙 #43 — CD-mmap 墙已修(运行时 interposer,非重建 libandroidfw);5ce2dcee oracle PASS
+================================================================================================
+日期 2026-07-11 · observed · 主号(thinker 主攻)
+副板 5ce2dcee(atom-43 复现 PASS);验收板 5583 另有正交环境墙(见文末)
+
+## TL;DR
+1. 上一份证据(2026-07-11-real-wall-zip-cd-mmap-einval.txt)定的真墙成立:板 libandroidfw 的
+   libziparchive 用 mmap(MappedFile::FromFd)映大真实 apk 的中央目录(CD)返 EINVAL。
+2. **但修法改了**:不再走「改 zip_archive.cc pread + compiler 重建 libandroidfw」那条(obj 树已失、
+   成本高)。改为 **sidecar 里运行时 mmap interposer**:preload 定义的 `mmap` 抢占 libandroidfw
+   的 `U mmap`(PLT import,可被 interpose),把「只读 + 文件背 + 内核选址」的失败映射用
+   `MAP_PRIVATE|MAP_ANON` + pread 循环救回。改 OUR loader 行为、不改 apk、不改 stock 二进制 —— 不违反 #53。
+3. **实测生效**:5ce2dcee 上 `Create=>OK`、`LoadedArsc=>OK`、无 EINVAL;`atom-43.sh 5ce2dcee` 稳定
+   PASS(复跑两次:RUN_RC=0)。四判据全中,并附带 hasColorPrimary=true。
+
+## 交付物(hash 锁在 oracle/verify/atom-43.sh)
+- sidecar：test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c
+  - 新增 mmap interposer 块(wl_syscall6 inline `svc #0`;WL_SYS mmap=222/munmap=215/pread64=67;
+    仅救 PROT_READ 且非 PROT_WRITE、fd>=0、addr==0 的失败映射;计数 westlake_cd_mmap_rescues)。
+  - 既有(本卡前序):P2 field-poke `westlake_p2_direct_bind_trace`(ArtMethod off16 SetEntryPointFromJni,
+    绕 Trace boot-native RegisterNatives 不生效);"W-001 arsc rebind"(RTLD_NOLOAD 抓板 libandroidfw
+    handle,末尾调其 JNI_OnLoad)。
+  - 产物 .so sha256 = a311b0ad63f12f85cd6433acae8a008017c260d23dd2674ce600b80200e0e848(93040 B)。
+- probe dex：test-fixtures/dayu600-apk-probe/Dayu600ApkStageProbe.java → out/dayu600-apk-probe.dex
+  - 删掉制造 SIGBUS 的孤立实验(旧 am2/nativeCallAddAssetPath cookie=0 → earlyResName 空 AM 段错误)。
+    该实验才是旧「getResourceName SIGBUS」的真凶,非 CD 失败;删后主路径到达真 oracle。
+  - dex sha256 = 813726bca6bbc2400429d790a20d4aae5e1fe07f5008cf1da53322d8b21a466b(208608 B)。
+
+## 观测(5ce2dcee,oracle/verify/atom-43.sh 5ce2dcee…,复跑稳定)
+- run_rc = 0
+- w001-native-append：`nativeSet=ok ck=2`(app + framework-res 两包真入 AssetManager)
+- EARLY main：`wabAttr=0x7f040691 uamHasWab=true wcoHas=false hasColorPrimary=true`
+- 四判据(atom-43 判官):RUN_RC==0 ∧ `nativeSet=ok ck=2` ∧ `wabAttr=0x7f040691` ∧ `uamHasWab=true` → PASS
+
+## A/B 结论(observed,5ce2dcee)
+- A(app-only,只 uptodown 一包):`A wab=0`(windowActionBar 未解出)。
+- B(app+framework,追加 framework-res 第二包):`uamHasWab=true wab=0x7f040691`。
+- ⇒ **windowActionBar 的解析需要 framework 第二包**;app-only 不足。旧「双包断链」猜想在此得到方向性证据
+  (但语义是「需要第二包」,不是「parent-chain 断」)。
+
+## 墙 #43 机制评估
+CD-mmap + P2(Trace)+ 双包资源装载 + obtainStyledAttributes 全链在 5ce2dcee 打通,拿到真 themed 值
+(0x7f040691)。**wall #43 的机制被证成**。但卡片验收板是 5583(big-clean),见下。
+
+## 5583(验收板)正交阻塞 — 未过,#43 维持 🔧
+- 现象:`atom-43.sh 5583` FAIL;`EARLY_THEME_FAIL:step=res`,`new Resources(am,dm,cfg)` 抛
+  `NullPointerException: ArrayList.size() on null`;A-leg 亦 "A caught"。CD 修复本身在 5583 也生效
+  (`nativeSet=ok ck=2`),故此墙与 CD 无关。
+- 真实栈(w001-stdout,class_linker.cc:6255 语境):
+  `Resources.<init>(am,dm,cfg) :330` → `ResourcesImpl.<init> :221` → `AssetManager.getSystem() :312`
+  → `createSystemAssetsInZygoteLocked :288` → 踩 `PackagePartitions`/`Environment`/
+  `ClassLoader$SystemClassLoader`/`Configuration.setToDefaults:1575(LocaleList)` 的 clinit
+  级联(全因 `SystemProperties.native_get` 未绑 → `String.length() on null`)→ 终以 `ArrayList.size()
+  on null` 抛出并被 probe 捕获。
+- 关键判断:`createSystemAssetsInZygoteLocked` 的 `if(sSystem!=null&&!reinitialize) return` 守卫在其
+  **内部**;栈显示越过该 early-return 去 load partitions,说明 `seedSystemAssetManager` 写的 sSystem
+  **没被 getSystem 读到**。最可能是 **dual-AssetManager mirror::Class**(与当年 dual-Trace 同源):
+  reflection 的 AssetManager.class ≠ ResourcesImpl:221 dex-resolved 的那个 → seed 写错了 sSystem 副本。
+  且 5583 该 seed 有非确定性(atom-43 跑时 seed 抛 NPE,手跑又 "seeded")。
+- 与 5ce2dcee 差异:5ce2dcee 上此路径不 NPE(A-leg 出 `A wab=0` 而非 caught)—— imageless-ART 的
+  boot-class clinit 碎裂程度两板不同(5583 的 stdout 满是 "Tolerating clinit failure")。
+- 候选修法(下一步,均在 sidecar/probe 内,不碰 stock):
+  (a) 让 seed 命中「正确」的 AssetManager.sSystem(取 ResourcesImpl 引用同一 mirror::Class,或用 P2 式
+      直接改字段);对照 LEDGER #31「sSystem 根修 reinitialize=true, 76a92b8f」。
+  (b) 用现成 P2 field-poke 绑 `SystemProperties.native_get`(返回空串/合理默认),消除 PackagePartitions/
+      Configuration/LocaleList 的 clinit 级联,让 getSystem 正常早返或走完。
