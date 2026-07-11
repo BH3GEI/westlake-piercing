@@ -41,6 +41,20 @@ public class View {
     public void setVisibility(int visibility) {
     }
 
+    public void measure(int widthMeasureSpec, int heightMeasureSpec) {
+    }
+
+    public void layout(int l, int t, int r, int b) {
+    }
+
+    public int getMeasuredWidth() {
+        return 0;
+    }
+
+    public int getMeasuredHeight() {
+        return 0;
+    }
+
     public void setTag(Object tag) {
     }
 
@@ -66,6 +80,8 @@ public class View {
     }
 
     public static class MeasureSpec {
+        public static final int EXACTLY = 0x40000000;
+
         public static int getSize(int measureSpec) {
             return measureSpec;
         }

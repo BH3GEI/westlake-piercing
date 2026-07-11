@@ -16,6 +16,10 @@ public class ViewGroup extends View {
     public void addView(View child) {
     }
 
+    public int getChildCount() {
+        return 0;
+    }
+
     public boolean onInterceptTouchEvent(android.view.MotionEvent event) {
         return false;
     }

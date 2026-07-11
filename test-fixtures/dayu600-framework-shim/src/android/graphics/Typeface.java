@@ -21,4 +21,17 @@ public class Typeface {
     public static Typeface create(String familyName, int style) {
         return DEFAULT;
     }
+
+    public static Typeface createFromFile(String path) {
+        return DEFAULT;
+    }
+
+    public static class Builder {
+        public Builder(String path) {
+        }
+
+        public Typeface build() {
+            return DEFAULT;
+        }
+    }
 }
