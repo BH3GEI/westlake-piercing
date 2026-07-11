@@ -60,9 +60,13 @@
 
 ---
 
-## 4. 两条路线(二选一,拿到像素)
+## 4. 路线(以 live state 为准:路线 A 唯一在办,路线 B 已禁用)
 
-### 路线 A —— codex 推荐,稳,但需 compiler 重建 ART
+> **2026-07-11 夜更新(reconcile live state)**:`state/FRONTIER.md`/`QUEUE.md` 已定
+> "走 W-003 正修,**不在持安全禁令的 5ce2dcee 替换 framework jar**"。故**路线 B(换
+> crit-stripped framework.jar)已禁用**,下面保留只作对照/历史。**接手就走路线 A。**
+
+### 路线 A —— codex 推荐,稳,但需 compiler 重建 ART 【唯一在办】
 在 ART fork 内改两处(**这也是 #49/W-003 的正确修法**):
 1. 把 `FixupStaticTrampolines()` 里"发布暂存 critical 指针"那块**移到 Westlake early-return 之前**。
 2. 在**两个**自定义解析器里,`FindCodeForNativeMethod` **之前**先调
@@ -72,7 +76,7 @@
 `local-build-adapters/art-latest/Makefile.ohos-arm64`)→ 新 hash → **同步 `oracle/verify/atom-43.sh` 的 `KNOWN_ART_SHA`
 与 `REPO_LOCK` 的 `w001_substrate_art`,并先自证不回退 #43**(这是刻意的回退闸)。
 
-### 路线 B —— StripCriticalNative,不重建 ART,Mac-dex + 部署,更快但设备未验证
+### 路线 B —— StripCriticalNative 【已禁用 · 仅存档对照,勿执行】
 - **crit-stripped framework.jar 已存在**:`scratchpad-shared/upscreen-render/framework-patchers/verified-builds/framework.crit-stripped-20260708.jar`(16 MB,Jul-8)。它把 graphics native 的 @CriticalNative 剥掉 →
   变 normal-JNI → `RegisterNative` **立即写 entry**(fontsmoke 已证 Paint.nInit normal 能绑)→ drawColor 实现绑上 →
   解释器 normal 路径调它 → **出像素**。
@@ -83,7 +87,9 @@
   且换 framework.jar 会变 hash → **破 #43 atom-43 hash-lock**:所以**在副板 5ce2dcee 跑**,或在 5583 先备份后恢复,
   **别把 crit-stripped jar 当 #43 基线 commit**。
 
-**建议**:先打路线 B(最快一枪:副板部署 → 看 drawColor 出不出;dex 041 被拒就退路线 A)。路线 A 是正解 + 全 app 帧的地基。
+**决定(live state)**:**走路线 A**——#49 正修 + 全 app 帧的地基,在 5583 验收。
+路线 B 已禁用(安全:不在 5ce2dcee 换 framework jar;且其 dex-041 收不收未验证,证据
+`evidence/W-001/2026-07-11-color-apk-landing-derisks.txt`)。
 
 ---
 
@@ -95,8 +101,12 @@
   `nSetLeftTopRightBottom` ZJIIII @:793)**都有 arm**,但同样受"指针没绑"影响——路线 A/B 一并解决。
 - **`libandroid-fake.so` 必须在 LD_LIBRARY_PATH 最前**:adapter libhwui 的 RenderThread ctor 会 dlopen `libandroid.so`
   并 dlsym 9 个符号(ASurfaceControl_*/AHardwareBuffer_*/ANativeWindow_fromSurface),任一为 null 即 `LOG_ALWAYS_FATAL`。
-- `WestlakeUpscreen.java` 要并进探针 dex:改 `test-fixtures/dayu600-apk-probe/build-probe-mac.sh`,把
-  `scratchpad-shared/upscreen-render/WestlakeUpscreen.java` 加进 javac 源集。
+- **`WestlakeUpscreen` 并进探针 dex —— 别走 shim classpath 重编**(会 compile-fail):探针 build 的 javac
+  classpath 是 `framework-shim:android.jar`,shim 里有 `android/view/View`+`View$MeasureSpec` 的**部分桩**,
+  shadow 掉真 View → WestlakeUpscreen 用的 `measure/layout/draw/MeasureSpec.EXACTLY` 全 `cannot find symbol`。
+  **改用现成 dex**:`scratchpad-shared/upscreen-render/upscreen-render.dex.jar`(classes.dex **dex 035**,板可收)
+  用 d8 并进探针 dex,或作第二 dex 一起 load。要从源重编就单独用**纯 android.jar**(不带 shim)。
+  证据:`evidence/W-001/2026-07-11-color-apk-landing-derisks.txt`。
 - 板上两种 String 会 ArrayStoreException:探针里禁 `Class.forName(String)` 拼接、禁 String `+`(用 `earlyWriteLiteral`/StringBuilder)。
 
 ---
@@ -106,16 +116,20 @@
 1. **探针 stage**:在 `Dayu600ApkStageProbe.java` 加 `colorapk` stage(仿 fontsmoke 的 substage 路由):
    load `color-smoke.apk` 的 dex → `new ColorView(ctx)` → `WestlakeUpscreen.show(view, w, h)`(需 ctx,用 §已有的
    assetProbe/WlProxyContext 机器)→ 在 Looper 上循环 `view.nextColor(); WestlakeUpscreen.pushFrame();` 每 ~800ms。
-2. **构建**:build-probe-mac.sh(并入 WestlakeUpscreen)+ build-color-apk.sh。
-3. **部署(路线 B)**:副板 5ce2dcee 推 crit-stripped framework.jar + libandroid-fake.so + 探针 dex + color-smoke.apk。
+2. **构建**:build-probe-mac.sh + **并入现成 `upscreen-render.dex.jar`(dex 035)**(勿 shim 重编,见 §5)+ build-color-apk.sh。
+3. **先做路线 A**:W-003 修 ART(class_linker 发布块前移 + 两 resolver 查表)→ compiler 重建 `libwestlake_art.so`
+   → hdc 部署到 **5583**(`$S/art/libwestlake_art.so`)+ 同步 atom-43 hash-lock,先自证不回退 #43。
+   (**不换 framework.jar、不上 5ce2dcee**——路线 B 已禁用。)
 4. **跑 + 回读**:launcher 仿 `oracle/device/run-fontsmoke.sh`;面板照片 + buffer 回读断言 == PALETTE 且变色。
-5. 出不来就看 heartbeat 卡在哪个 native → 若是 dex 041 被拒 → 转路线 A(compiler 重建 ART)。
+5. 出不来就看 heartbeat 卡在哪个 native:先确认 `crit-bind nGetFlags=<expected>` 是否绑上(W-003 oracle),再看
+   `nCreateDisplayListCanvas/nFinishRecording/nSetDisplayList` 有没有发布(同属 critical,路线 A 一并解决)。
 
 ---
 
 ## 7. 板/安全约束(不可违)
 
-- 验收/实验优先**副板 5ce2dcee**(big-any);5583(big-clean)是 #43 验收基线,动它前**先备份 framework.jar**、事后恢复。
+- **路线 A 在 5583(big-clean)验收**:改的是 `libwestlake_art.so`(重建 + atom-43 hash-lock 同步 + 自证不回退 #43),
+  **不换 framework.jar**,所以不需要占用副板。5ce2dcee 持 W-002 lane 安全禁令,**本线不在其上换 framework jar**。
 - **绝不** wipe/flash/擦除任何板;**绝不**碰 small 板(085cac00 有不可重建 blob 16e08711 / 0404ac00)。
 - 不 reboot compiler/远程机;不停 ssh/tunnel/frp;不按名 mass-kill(只对确认 PID 的自有进程动手);不碰 stock `/system/bin/appspawn`。
 - 不 auto-merge/push main;只在 `dayu600-hwui-gate1-2` 分支 commit;先报 branch/upstream/ahead-behind/dirty。
@@ -138,3 +152,6 @@
 - 按 codex 定案**重写 W-003(#49)卡**(现卡打错层)。
 - 把 codex 全文 verdict 并入 `evidence/W-001/2026-07-11-hwui49-rediagnosis-binding-not-dispatch.txt`。
 - 更新 `state/FRONTIER.md`/`QUEUE.md` 指向本 handoff 与修正后的 #49 理解。
+- 落地 de-risk(设备无关):证 WestlakeUpscreen 走 shim classpath 编不过 → 改用现成 dex 035;
+  证 crit-stripped jar 是 dex 041。证据 `evidence/W-001/2026-07-11-color-apk-landing-derisks.txt`;
+  并据 live state 把本 handoff 路线 B 标注禁用、路线 A 定为唯一在办(§4/§5/§6/§7)。

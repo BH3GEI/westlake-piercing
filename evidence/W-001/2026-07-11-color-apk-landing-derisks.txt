@@ -1,0 +1,56 @@
+# color-apk 上屏 · 落地 de-risk(device-free,交接后补)
+日期: 2026-07-11
+给出者: 主号(thinker),交接后设备无关排雷
+关联: state/HANDOFF-2026-07-11-color-apk-onscreen.md §5/§6、tasks/todo/W-003.md
+
+目的: 在接手窗口动手前,先替它踩掉两个会浪费一个调试轮次的坑。均为 host 侧
+可复现事实,不碰板、不碰前沿探针文件、不碰 W-002 lane。
+
+================================================================
+[1] WestlakeUpscreen.java 不能走探针的 shim classpath 编译(会 compile-fail)
+================================================================
+现象(observed):
+- WestlakeUpscreen.java 直接用 android.view.View 的 measure/layout/draw、
+  View.MeasureSpec.EXACTLY、MotionEvent.dispatchTouchEvent 等真方法。
+- 探针 build (test-fixtures/dayu600-apk-probe/build-probe-mac.sh) 的 javac
+  classpath = `framework-shim:android.jar`(shim 在前)。
+- framework-shim 里有 android/view/View.class + View$MeasureSpec.class 的
+  **部分桩**,会 shadow 掉 android.jar 里的真 View。
+  验证: `grep -cE 'public.*(measure|layout|draw|dispatchTouchEvent)'`
+  test-fixtures/dayu600-framework-shim/src/android/view/View.java = **0**
+  → shim View 一个都没有这些方法。
+- 因此若照 handoff §6 旧写法"把 WestlakeUpscreen.java 加进 build-probe-mac.sh
+  的 javac 源集",会报 `cannot find symbol: measure/layout/draw/MeasureSpec.EXACTLY`。
+- 对照(observed): 同一份 WestlakeUpscreen.java 用**纯 android.jar**(不含 shim)
+  能编过。矛盾点纯粹是 shim 的 shadow。
+
+修法(inferred,已有现成产物,免重编):
+- **别重编**。直接合并现成 dex:
+  scratchpad-shared/upscreen-render/upscreen-render.dex.jar
+  内含 classes.dex,**dex version = 035**(与探针 dex 同代,板可收)。
+  用 d8 把它并进探针 dex,或作为第二 dex 一起 load。
+- 若确要从源重编: 单独用**纯 android.jar**(不带 shim)编 WestlakeUpscreen.java →
+  得 .class → d8 → 再和探针 dex 合并。现成 .class 也在:
+  scratchpad-shared/upscreen-render/WestlakeUpscreen.class(6014 B)。
+
+================================================================
+[2] crit-stripped framework.jar 是 dex version 041(路线 B 已被 live state 禁用)
+================================================================
+现象(observed):
+- scratchpad-shared/upscreen-render/framework-patchers/verified-builds/
+  framework.crit-stripped-20260708.jar 的 classes.dex magic = **dex 041**。
+  (对照: 探针 dex / upscreen dex = 035;color-smoke.apk 的 dex 也是低代。)
+- AOSP-15 ART 名义支持 041,但本 fork 未在板上验证过收 041。
+影响:
+- 这正是 handoff §4 路线 B 的已知风险,现在**路线 B 已按 live state 禁用**
+  (FRONTIER/QUEUE: "走 W-003 正修,不在持安全禁令的 5ce2dcee 替换 framework jar")。
+- 记录在此仅作历史:即便日后重启路线 B,dex-041 收不收仍是未验证闸,
+  且换 framework.jar 会破 #43 的 atom-43 hash-lock。
+
+================================================================
+结论
+================================================================
+- 落地走**路线 A**(W-003 正修: class_linker 发布块前移 + 两 resolver 查
+  GetRegisteredNative),在 5583 验收;不在 5ce2dcee 换 framework jar。
+- color 上屏合并 WestlakeUpscreen 时,用**现成 dex 035**(upscreen-render.dex.jar),
+  不要走 shim classpath 重编。
