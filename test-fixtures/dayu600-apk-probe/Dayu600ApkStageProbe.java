@@ -2281,6 +2281,150 @@ public final class Dayu600ApkStageProbe {
         try { writeText("/data/local/tmp/firstframe-result.txt", res.toString()); } catch (Throwable ig) {}
     }
 
+    /** Lowercase 8-hex-digit ARGB (zero-padded) — matches the oracle's pixel0=ffff0000 form. */
+    private static String hex8(int v) {
+        String s = Integer.toHexString(v);
+        while (s.length() < 8) s = "0" + s;
+        return s;
+    }
+
+    /** Invoke WestlakeUpscreen.nativeLastSwapArgb(); -1 on any failure (distinct from opaque ARGB). */
+    private static long readSwapArgb(java.lang.reflect.Method nSwap) {
+        try {
+            Object o = nSwap.invoke(null);
+            return (o instanceof Long) ? ((Long) o).longValue() : -1L;
+        } catch (Throwable t) { return -1L; }
+    }
+
+    /**
+     * #53 color-liveness — the color-apk's OWN ColorView.onDraw (a single Canvas.drawColor
+     * op) paints a CHANGING pure color through OUR libhwui; egl_interposer captures the
+     * center pixel pre-swap and nativeLastSwapArgb hands it back. Frame0 = red (PALETTE[0]),
+     * the app's own nextColor() advances the palette, frame1 = green (PALETTE[1]).
+     *
+     * Writes the two marker files oracle/verify/color-smoke-5ce.sh greps:
+     *   color-smoke-result.txt : color-smoke=ok + changed=yes
+     *   color-smoke-pixels.txt : pixel0=ffff0000 (red ARGB) + pixel1=ff00ff00 (green ARGB)
+     *
+     * ColorView is loaded from color-smoke.apk's OWN dex, so the drawColor op provably comes
+     * from the APP's compiled render code — not the probe, not OH direct fill. provenance > visual.
+     * View prep mirrors firstFrame53's DEVICE-PROVEN path (unsafe-alloc + seed RenderNode +
+     * force bounds), avoiding View(Context)/measure() crash risk on the alloc'd leaf.
+     */
+    private static void runColorApk() {
+        StringBuilder res = new StringBuilder();
+        StringBuilder px = new StringBuilder();
+        res.append("colorApk stage\n");
+        earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "00-enter");
+        long p0 = -1L, p1 = -1L;
+        try {
+            try {
+                if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper();
+            } catch (Throwable ig) {}
+
+            // 1. Load ColorView from the app's OWN dex (color-smoke.apk). Parent = probe loader
+            //    so ColorView's superclass android.view.View resolves to the same substrate View.
+            String apk = apkPath("color-smoke.apk");
+            java.io.File odex = new java.io.File(rootPath() + "/apks/color-odex");
+            try { odex.mkdirs(); } catch (Throwable ig) {}
+            ClassLoader cl = new dalvik.system.DexClassLoader(
+                    apk, odex.getAbsolutePath(), null,
+                    Dayu600ApkStageProbe.class.getClassLoader());
+            Class<?> cvCls = cl.loadClass("com.westlake.colorapk.ColorView");
+            res.append("01 ColorView loaded from ").append(apk).append('\n');
+
+            // 2. Unsafe-alloc (skip ctor) — seed the app-defined start color red = PALETTE[0]
+            //    (alloc'd instance skips field inits, so mColor/mIndex are 0). mIndex stays 0
+            //    so the first nextColor() advances to PALETTE[1] = green.
+            android.view.View view = (android.view.View) wlAlloc(cvCls);
+            if (view == null) {
+                res.append("FAIL alloc ").append(String.valueOf(WL_SVC_ERR)).append('\n');
+                writeText("/data/local/tmp/color-smoke-result.txt", res.toString());
+                return;
+            }
+            int startColor = 0xFFFF0000;
+            java.lang.reflect.Field colorF = cvCls.getField("mColor");
+            try {
+                int[] palette = (int[]) cvCls.getField("PALETTE").get(null);
+                if (palette != null && palette.length > 0) startColor = palette[0];
+            } catch (Throwable ig) {}
+            colorF.setInt(view, startColor);
+            earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "01-alloc");
+
+            int w = 1200, h = 1920;
+            wlEnsureRenderNodes(view);
+            wlForceViewBounds(view, 0, 0, w, h);
+
+            // 3. Wire our upscreen renderer (same JNI triple as firstFrame53) + the readback.
+            Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
+            java.lang.reflect.Method record = ups.getMethod("record",
+                    android.view.View.class, int.class, int.class);
+            java.lang.reflect.Method nPtr = ups.getDeclaredMethod("nativeRenderNodePtr",
+                    Class.forName("android.graphics.RenderNode"));
+            nPtr.setAccessible(true);
+            java.lang.reflect.Method nInit = ups.getDeclaredMethod("nativeInit",
+                    long.class, int.class, int.class);
+            nInit.setAccessible(true);
+            java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
+            nDraw.setAccessible(true);
+            java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
+            nSwap.setAccessible(true);
+            java.lang.reflect.Method nextColor = cvCls.getMethod("nextColor");
+
+            // Record red once to obtain a stable native RenderNode ptr for nativeInit; re-record
+            // into the SAME root keeps the ptr valid across frames (color changes, ptr doesn't).
+            Object node = record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+            Object ptrObj = nPtr.invoke(null, node);
+            long ptr = (ptrObj instanceof Long) ? ((Long) ptrObj).longValue() : 0L;
+            res.append("02 renderNodePtr=").append(String.valueOf(ptr)).append('\n');
+            /* Load skia AFTER recording so RTLD_NEXT can see MakeGL; EGL/GLESv3 so egl_interposer's
+             * glReadPixels/glGetIntegerv resolve. Mirrors firstFrame53's load order. */
+            try { java.lang.Runtime.getRuntime().load("/system/lib64/libskia_canvaskit.z.so"); }
+            catch (Throwable ig) {}
+            try {
+                java.lang.Runtime.getRuntime().load("/system/lib64/libEGL.so");
+                java.lang.Runtime.getRuntime().load("/system/lib64/libGLESv3.so");
+            } catch (Throwable ig) {}
+            Object irc = nInit.invoke(null, Long.valueOf(ptr), Integer.valueOf(w), Integer.valueOf(h));
+            int ir = (irc instanceof Integer) ? ((Integer) irc).intValue() : -1;
+            res.append("03 nativeInit=").append(String.valueOf(ir)).append('\n');
+            earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "02-init-" + ir);
+
+            if (ir == 2) {
+                // frame0: the red display list is already recorded above — push + read swap pixel.
+                nDraw.invoke(null);
+                p0 = readSwapArgb(nSwap);
+                res.append("04 frame0 color=").append(hex8(colorF.getInt(view)))
+                   .append(" pixel0=").append(hex8((int) p0)).append('\n');
+                // Advance via the APP's own driver method, re-record the new color, push, read.
+                nextColor.invoke(view);
+                record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+                nDraw.invoke(null);
+                p1 = readSwapArgb(nSwap);
+                res.append("05 frame1 color=").append(hex8(colorF.getInt(view)))
+                   .append(" pixel1=").append(hex8((int) p1)).append('\n');
+            }
+            earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "03-frames");
+
+            // color-smoke=ok requires BOTH frames to have produced a real swap pixel (>=0, i.e.
+            // nativeLastSwapArgb saw a swap). changed=yes requires the two pixels to differ — the
+            // exact liveness proof (a one-shot static fill would give p0==p1 and FAIL).
+            boolean rendered = (ir == 2) && p0 >= 0L && p1 >= 0L;
+            boolean changed = rendered && (p0 != p1);
+            px.append("pixel0=").append(hex8((int) p0)).append('\n');
+            px.append("pixel1=").append(hex8((int) p1)).append('\n');
+            res.append(rendered ? "color-smoke=ok\n" : "color-smoke=fail\n");
+            res.append(changed ? "changed=yes\n" : "changed=no\n");
+        } catch (Throwable t) {
+            res.append("FAIL ").append(t.getClass().getName())
+               .append(':').append(String.valueOf(t.getMessage())).append('\n');
+            earlyWriteStack("/data/local/tmp/color-err.txt", t);
+        }
+        earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "99-done");
+        try { writeText("/data/local/tmp/color-smoke-pixels.txt", px.toString()); } catch (Throwable ig) {}
+        try { writeText("/data/local/tmp/color-smoke-result.txt", res.toString()); } catch (Throwable ig) {}
+    }
+
     /**
      * Append stack frames field-by-field (getClassName/getMethodName/getLineNumber) — never
      * StackTraceElement.toString(), whose internal String concat ArrayStores on this board.
@@ -3246,6 +3390,12 @@ public final class Dayu600ApkStageProbe {
         }
         if ("firstFrame".equals(stageNorm) || "firstFrame".equals(subStage)) {
             runFirstFrame53();
+            finishOrExit(0);
+            return;
+        }
+        if ("colorApk".equals(stageNorm) || "colorApk".equals(subStage)
+                || "colorapk".equals(stageNorm) || "colorapk".equals(subStage)) {
+            runColorApk();
             finishOrExit(0);
             return;
         }
