@@ -2119,18 +2119,24 @@ extern "C" const void* artQuickGenericJniTrampoline(Thread* self,
   if (UNLIKELY(nativeCode == nullptr ||
                nativeCode == GetJniDlsymLookupStub() ||
                nativeCode == GetJniDlsymLookupCriticalStub())) {
-    JavaVMExt* vm = down_cast<JNIEnvExt*>(self->GetJniEnv())->GetVm();
+    // [W-003 / #49] Mirror upstream artFindNativeMethodRunnable: pending
+    // @CriticalNative map first, then Java_/dlsym lookup.
+    ClassLinker* class_linker = Runtime::Current()->GetClassLinker();
+    const void* resolved_code = class_linker->GetRegisteredNative(self, called);
     std::string error_msg;
-    void* resolved_code = vm->FindCodeForNativeMethod(called,
-                                                      &error_msg,
-                                                      /*can_suspend=*/ true);
+    if (resolved_code == nullptr) {
+      JavaVMExt* vm = down_cast<JNIEnvExt*>(self->GetJniEnv())->GetVm();
+      resolved_code = vm->FindCodeForNativeMethod(called,
+                                                  &error_msg,
+                                                  /*can_suspend=*/ true);
+    }
     if (resolved_code == nullptr) {
       {
         self->ThrowNewException("Ljava/lang/UnsatisfiedLinkError;", error_msg.c_str());
         return nullptr;
       }
     }
-    nativeCode = Runtime::Current()->GetClassLinker()->RegisterNative(self, called, resolved_code);
+    nativeCode = class_linker->RegisterNative(self, called, resolved_code);
     static thread_local int repair_count = 0;
     if (repair_count < 80) {
       repair_count++;
