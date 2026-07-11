@@ -79,6 +79,12 @@ public class View {
         return null;
     }
 
+    // Compile stub for WestlakeUpscreen.record(): recording a laid-out View into a
+    // RenderNode's RecordingCanvas. The real View.draw(Canvas) runs at runtime from the
+    // substrate framework.jar; this signature only lets the probe dex compile.
+    public void draw(android.graphics.Canvas canvas) {
+    }
+
     public static class MeasureSpec {
         public static final int EXACTLY = 0x40000000;
 
