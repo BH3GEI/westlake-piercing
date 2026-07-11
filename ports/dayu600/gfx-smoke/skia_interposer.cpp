@@ -115,6 +115,15 @@ sk_sp<GrDirectContext> MakeGL(sk_sp<const GrGLInterface> iface, const GrContextO
                     "_ZN16GrDirectContexts6MakeGLE5sk_spIK13GrGLInterfaceERK16GrContextOptions"));
         }
     }
+    // Self-resolution guard (mirrors egl_interposer.cpp:67-70). This .so is
+    // --export-dynamic and defines MakeGL, so if all libskia dlopen paths miss and
+    // a fallback lands on RTLD_DEFAULT/RTLD_NEXT, dlsym can return OUR OWN symbol —
+    // calling it would recurse forever / blow the stack. Treat that as not-found.
+    if (real == &MakeGL) {
+        fprintf(stderr,
+                "[skia-interposer] FATAL: MakeGL resolved to self; libskia handle broken\n");
+        return nullptr;
+    }
     fprintf(stderr,
             "[skia-interposer] GrDirectContexts::MakeGL: fGpuPathRenderers=kNone "
             "(no AtlasPathRenderer -> empty onFlush list -> gate never armed) real=%p\n",
