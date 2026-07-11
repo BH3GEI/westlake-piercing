@@ -20,10 +20,16 @@
 - ❌ 用 `setBackgroundColor`/`ColorDrawable`(它走 `drawRect`,见 §5 陷阱)。
 - ✅ 只认:**像素由 APK 的 `Canvas.drawColor` 这行安卓 draw op 产生**,OH 只搬运 buffer。
 
-### 验收建议(比拍照更硬)
-面板 buffer 逐帧回读(#53 用 `r==2` 判据 = 存在像素回读路径,查 #22 是怎么验的:
-`scratchpad-shared/upscreen-render/5583f5be-realpixels-bluecolor.jpeg` 是照片证据,另找 buffer readback)。
-断言:回读像素 == APK 当前 `PALETTE[i]`,且随 app `nextColor()` 循环改变。
+### 验收建议(比拍照更硬)—— 回读原语已找到,但**未接线**
+- **像素回读原语 = `g214bb_raw_read_pixel(x,y)`**(`ports/dayu600/bridge-src/hwui_oh_abi_patch.cpp:1005`,
+  板上 adapter libhwui 导出 `extern "C"`):raw `glReadPixels`,返回 **0xAABBGGRR**(低字节=R)。
+  这就是 #22 蓝像素照片(`scratchpad-shared/upscreen-render/5583f5be-realpixels-bluecolor.jpeg`)背后的验证族。
+- **现状:无任何调用点**——这是诊断助手,要**接进 harness**:renderer 的 `nativeDrawFrame` 内(EGL current、swap 前)
+  或 probe dlsym 后同线程调;launcher 仿 `oracle/device/run-fontsmoke.sh` 加 `WESTLAKE_SUBSTAGE=colorapk`。
+- **断言:比整个回读值(0xAABBGGRR),别只比 R**——PALETTE 红/绿/品红/黄的 R=FF/00/FF/FF,R 单通道只分得出绿;
+  整值可分全 4 档。判据 = 回读值随 `nextColor()` 循环、四档两两不同(**caveat**:OH 色管线会压值——#53 `r==2` 即证——
+  整值精确匹配或过严,稳妥做法是先测四档实际回读值再写死期望)。
+- 细节见 `evidence/W-001/2026-07-11-color-apk-landing-derisks.txt` §6。
 
 ---
 

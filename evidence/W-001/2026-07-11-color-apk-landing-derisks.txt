@@ -81,9 +81,28 @@ sha256 = 082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4(1075 B
 与 handoff §2 记录一致 → 固定 ZIP mtime 后确定性构建成立。
 
 ================================================================
+[6] 变色验收的像素回读原语已找到(handoff §1 "另找 buffer readback" 已解),但**未接线**
+================================================================
+现象(observed):
+- 板上 adapter libhwui(ports/dayu600/bridge-src/hwui_oh_abi_patch.cpp:1005-1015)导出
+  `extern "C" uint32_t g214bb_raw_read_pixel(int x,int y)`:raw `glReadPixels(x,y,1,1,GL_RGBA,UBYTE)`,
+  返回 **0xAABBGGRR**(低字节=R;注释锚:红 0xff0000ff = R=ff,G=0,B=0,A=ff)。
+- **无任何调用点**(grep 全仓仅定义处):这是 G2.14bb 诊断助手,**未接进任何 harness/probe/launcher**。
+影响 / 设计:
+- 变色验收 = 每帧 drawFrame 后调 g214bb_raw_read_pixel(cx,cy) → 值随 nextColor() 循环、且每档不同。
+- **必须比整个回读值(0xAABBGGRR),别只比 R**:PALETTE 红/绿/品红/黄 的 R = FF/00/FF/FF,
+  R 单通道只能分出绿;整值可分全部 4 档(红→0xff0000ff、绿→0xff00ff00、品红→0xffff00ff、黄→0xff00ffff)。
+- **caveat**:#22/#53 的 `r==2` 说明 OH 色管线会压/移值(蓝的 R 落到 2),整值精确匹配可能过严;
+  稳妥判据 = "回读值随 nextColor 变、且四档两两不同",或先测四档实际回读值再写死期望。
+- 接线缺口(device-free 可先设计,运行需板):g214bb 要在 EGL context current、swap 之前调
+  (renderer nativeDrawFrame 内,或 probe dlsym 后在同线程调);launcher 仿 oracle/device/run-fontsmoke.sh
+  加 WESTLAKE_SUBSTAGE=colorapk 路由。
+
+================================================================
 结论
 ================================================================
 - 落地走**路线 A**(W-003 正修: class_linker 发布块前移 + 两 resolver 查
   GetRegisteredNative),在 5583 验收;不在 5ce2dcee 换 framework jar。
 - color 上屏合并 WestlakeUpscreen 时,用**现成 dex 035**(upscreen-render.dex.jar),
   不要走 shim classpath 重编。
+- 变色验收用 g214bb_raw_read_pixel 每帧整值回读(未接线,需在 renderer/probe 接上)。
