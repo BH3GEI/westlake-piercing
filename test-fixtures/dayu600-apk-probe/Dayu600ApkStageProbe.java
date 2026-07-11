@@ -924,6 +924,170 @@ public final class Dayu600ApkStageProbe {
     }
 
     /**
+     * W-003 precursor / #51 de-risk: font/text native surface smoke, run as its OWN pristine
+     * early stage (no prior graphics <clinit> in this VM). Per codex refute+deep-dive: field-poking
+     * graphics natives AFTER a class's <clinit> permanently poisons it, so this stage must be the
+     * FIRST-ever toucher of Paint/Typeface. It decisively separates the failure modes:
+     *   UnsatisfiedLinkError            → native never bound (startReg RegisterNatives no-op'd) → field-poke needed
+     *   ExceptionInInitializerError / NoClassDefFoundError → <clinit> poisoned → fresh-VM + pre-bind mandate
+     *   SIGBUS (no Java stack; ONLY the on-disk ladder survives) → bad ABI → #49 double-ABI dispatch needed
+     *   Typeface.DEFAULT == null / measureText == 0 → font-map never built → ship our own TTF
+     * Every risky op overwrites the ladder file FIRST, so a non-catchable SIGBUS leaves the exact
+     * death-point on disk. Each op also drops a distinct literal OK-marker so partial progress is
+     * visible even if a later op crashes before the summary is flushed. No String '+' anywhere on the
+     * risky path (dual-String board ArrayStores); values go through StringBuilder.append (proven safe).
+     */
+    private static void runFontSmoke() {
+        StringBuilder res = new StringBuilder();
+        android.graphics.Paint p = null;
+        android.graphics.Typeface tf = null;
+
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "00-enter");
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-enter.txt", "runFontSmoke entered");
+        res.append("fontsmoke pristine-VM stage\n");
+
+        // 01 Paint ctor — THE gate: Paint.<clinit> + nInit/nGetNativeFinalizer binding.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "01-paint-ctor");
+        try {
+            p = new android.graphics.Paint();
+            earlyWriteLiteral("/data/local/tmp/fontsmoke-01-paint-ok.txt", "paint-ctor-ok");
+            res.append("01 paint-ctor OK\n");
+        } catch (Throwable t) {
+            res.append("01 paint-ctor FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-01-paint-err.txt", t);
+        }
+
+        // 02 nSetFlags — the exact native that SIGBUS'd inside setContentView recon.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "02-antialias");
+        try {
+            if (p != null) {
+                p.setAntiAlias(true);
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-02-antialias-ok.txt", "antialias-ok");
+                res.append("02 antialias OK\n");
+            } else {
+                res.append("02 antialias SKIP(p==null)\n");
+            }
+        } catch (Throwable t) {
+            res.append("02 antialias FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-02-antialias-err.txt", t);
+        }
+
+        // 03 setTextSize (nSetTextSize)
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "03-textsize");
+        try {
+            if (p != null) {
+                p.setTextSize(28f);
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-03-textsize-ok.txt", "textsize-ok");
+                res.append("03 textsize OK\n");
+            } else {
+                res.append("03 textsize SKIP\n");
+            }
+        } catch (Throwable t) {
+            res.append("03 textsize FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-03-textsize-err.txt", t);
+        }
+
+        // 04 Typeface.DEFAULT — triggers Typeface.<clinit> + system font map. null == map never built.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "04-typeface-default");
+        try {
+            tf = android.graphics.Typeface.DEFAULT;
+            res.append("04 typeface-default ").append(tf == null ? "NULL" : "nonnull").append('\n');
+            earlyWriteLiteral("/data/local/tmp/fontsmoke-04-typeface.txt",
+                    tf == null ? "typeface-default-NULL" : "typeface-default-nonnull");
+        } catch (Throwable t) {
+            res.append("04 typeface-default FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-04-typeface-err.txt", t);
+        }
+
+        // 05 setTypeface
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "05-set-typeface");
+        try {
+            if (p != null && tf != null) {
+                p.setTypeface(tf);
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-05-settypeface-ok.txt", "settypeface-ok");
+                res.append("05 settypeface OK\n");
+            } else {
+                res.append("05 settypeface SKIP\n");
+            }
+        } catch (Throwable t) {
+            res.append("05 settypeface FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-05-settypeface-err.txt", t);
+        }
+
+        // 06 measureText — THE success signal: a plausible non-zero advance == real glyphs.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "06-measure");
+        try {
+            if (p != null) {
+                float adv = p.measureText("Hi");
+                res.append("06 measureText adv=").append(String.valueOf(adv)).append('\n');
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-06-measure.txt",
+                        new StringBuilder("measure-adv=").append(adv).toString());
+            } else {
+                res.append("06 measure SKIP\n");
+            }
+        } catch (Throwable t) {
+            res.append("06 measure FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-06-measure-err.txt", t);
+        }
+
+        // 07 getFontMetricsInt — MeasuredText/Paint metrics path.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "07-fontmetrics");
+        try {
+            if (p != null) {
+                android.graphics.Paint.FontMetricsInt fm = p.getFontMetricsInt();
+                res.append("07 fontmetrics ascent=").append(String.valueOf(fm.ascent))
+                   .append(" descent=").append(String.valueOf(fm.descent)).append('\n');
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-07-fontmetrics.txt",
+                        new StringBuilder("fm-ascent=").append(fm.ascent)
+                                .append(" descent=").append(fm.descent).toString());
+            } else {
+                res.append("07 fontmetrics SKIP\n");
+            }
+        } catch (Throwable t) {
+            res.append("07 fontmetrics FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-07-fontmetrics-err.txt", t);
+        }
+
+        // 08 Typeface.create — the path a shipped TTF would eventually use.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "08-typeface-create");
+        try {
+            // style arg 0 == Typeface.NORMAL (the compile-time shim Typeface omits the constant;
+            // at runtime the real android.graphics.Typeface.create(Typeface,int) is invoked).
+            android.graphics.Typeface tf2 =
+                    android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 0);
+            res.append("08 typeface-create ").append(tf2 == null ? "NULL" : "nonnull").append('\n');
+            earlyWriteLiteral("/data/local/tmp/fontsmoke-08-typeface-create.txt",
+                    tf2 == null ? "create-NULL" : "create-nonnull");
+        } catch (Throwable t) {
+            res.append("08 typeface-create FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-08-typeface-create-err.txt", t);
+        }
+
+        // 09 getTextBounds — draws into a Rect; exercises the glyph raster path shape.
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "09-textbounds");
+        try {
+            if (p != null) {
+                android.graphics.Rect r = new android.graphics.Rect();
+                p.getTextBounds("Hi", 0, 2, r);
+                res.append("09 textbounds w=").append(String.valueOf(r.width()))
+                   .append(" h=").append(String.valueOf(r.height())).append('\n');
+                earlyWriteLiteral("/data/local/tmp/fontsmoke-09-textbounds.txt",
+                        new StringBuilder("bounds-w=").append(r.width())
+                                .append(" h=").append(r.height()).toString());
+            } else {
+                res.append("09 textbounds SKIP\n");
+            }
+        } catch (Throwable t) {
+            res.append("09 textbounds FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/fontsmoke-09-textbounds-err.txt", t);
+        }
+
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-ladder.txt", "99-done");
+        try { writeText("/data/local/tmp/fontsmoke-result.txt", res.toString()); } catch (Throwable ig) {}
+        earlyWriteLiteral("/data/local/tmp/fontsmoke-done.txt", "runFontSmoke done");
+    }
+
+    /**
      * Append stack frames field-by-field (getClassName/getMethodName/getLineNumber) — never
      * StackTraceElement.toString(), whose internal String concat ArrayStores on this board.
      * Per-frame guarded, and emits frames=N so an empty trace (unpopulated on minimal ART)
@@ -1860,6 +2024,18 @@ public final class Dayu600ApkStageProbe {
                     "runResolved stageNorm=[" + stageNorm + "] eq="
                             + "uptodownProbe".equals(stageNorm));
         } catch (Throwable ig) {}
+        // W-003 precursor / #51 de-risk: font/text native surface smoke in a PRISTINE VM.
+        // Must run before any other stage touches graphics classes (poisoned-clinit constraint).
+        // The sidecar only routes WESTLAKE_STAGE=uptodownProbe to this Java entry, so we ride
+        // that routing and select fontsmoke via a separate WESTLAKE_SUBSTAGE env var — checked
+        // FIRST (before the theme oracle / targetClassLoader) so Paint/Typeface stay untouched.
+        String subStage = null;
+        try { subStage = System.getenv("WESTLAKE_SUBSTAGE"); } catch (Throwable ig) {}
+        if ("fontsmoke".equals(stageNorm) || "fontsmoke".equals(subStage)) {
+            runFontSmoke();
+            finishOrExit(0);
+            return;
+        }
         // W-001: early oracle MUST run before targetClassLoader() — PathClassLoader(2048)
         // can StackOverflow on the thin main stack and never reach uptodownProbe.
         if ("uptodownProbe".equals(stageNorm)) {

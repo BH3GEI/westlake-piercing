@@ -41,10 +41,20 @@
   3. **#53 首帧**:**手动 measure/layout/draw 进 RenderNode**(不走 ViewRootImpl —— 缺 WMS/IWindowSession/vsync,
      是死胡同),把 `sceneNode.mNativeRenderNode` 交货架 RenderProxy;单静态帧不需 Choreographer/vsync,不加 Java
      HardwareRenderer。→ 面板像素 r==2(#53 判据)。
-- **头号风险闸(先打的探针)**:**Typeface/Minikin bootstrap + 文本测量**。无 boot image/无 zygote 字体初始化时,光
-  field-poke Typeface 方法不够(默认 family map/native handle 从未构造)—— 构造能过但会晚死在 MeasuredText/LineBreaker/
-  drawText。**可能要 fresh VM 或在 art-latest 装配里做最小字体初始化(不碰 stock jar)**。#43 遗留下游点(attr-ordering
-  升序、TypedArray.mDataAddress 需 VMRuntime.newNonMovableArray/addressOf、先 nativeThemeApplyStyle)并入上面 ①②。
+- **头号风险闸 —— 探针已打(2026-07-11,fontsmoke pristine-VM,5583)**:证据
+  `evidence/W-001/2026-07-11-fontsmoke-pristine-vm-result.txt`。结论(observed,ladder 到 99-done 无 SIGBUS):
+  1. **字体 map 是真闸**:`Typeface.DEFAULT==null`、`sDefaults==null` —— Typeface.<clinit> 跑了但**从未构造系统字体表**
+     (无 zygote preload `loadPreinstalledSystemFontMap`)。measureText/metrics/bounds 全退化。**修法 = 自带 .ttf +
+     `Typeface.Builder(path)` + 预绑 Font/FontFamily/Typeface native + 设 sDefaults**;别赌 OHOS `/system/fonts`。
+  2. **图形 native 绑定是"部分"而非"全无",且可干净恢复**:`new Paint()`、nSetFlags、nSetTextSize(normal-JNI)**已绑能用**;
+     `@CriticalNative` getter(nGetFlags)是 **UnsatisfiedLinkError = No implementation found**(内部 libhwui 符号非导出
+     Java_*,dlsym 找不到)—— 正是 **#49 双 ABI + field-poke** 的面。**失败是可 catch 的 Java 异常,不是怕的 SIGBUS/ABI 崩**。
+  3. **fresh-VM 授权得证**:recon 说的 "nSetFlags 在 setContentView 里 SIGBUS" 在 pristine VM **未复现**(step 02 OK)——
+     那次是下游/poisoned-state,不是 nSetFlags 本身。坐实 poisoned-<clinit> / fresh-VM 纪律。
+  - **推论**:#51 的字体子问题=门(已证),但字体 bootstrap **可先于 #49 起步**(Typeface/Font native 多为 normal/@FastNative,
+    先 field-poke normal 的;#49 补 @CriticalNative 缺口)。下一穿刺 = fontsmoke 扩:自带 .ttf → field-poke → Builder →
+    setTypeface → **measureText != 0 即 SUCCESS**。#43 遗留下游点(attr-ordering 升序、TypedArray.mDataAddress 需
+    VMRuntime.newNonMovableArray/addressOf、先 nativeThemeApplyStyle)并入 ①②。
 - 复核队列(工厂):LEDGER 38 个 V=? claimed 项仍不得当当前板事实,尤其 #4「onCreate 越过全部框架墙」有矛盾。
 
 ## 跨 lane 提醒（可复用,勿丢）

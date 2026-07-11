@@ -1,0 +1,61 @@
+FONTSMOKE PRISTINE-VM RESULT — 2026-07-11 — board 5583f5be (big-clean)
+========================================================================
+Harness: Dayu600ApkStageProbe.runFontSmoke() (new stage), routed via
+WESTLAKE_STAGE=uptodownProbe + WESTLAKE_SUBSTAGE=fontsmoke (sidecar only routes
+uptodownProbe to the Java embeddedMain path; substage selects fontsmoke FIRST,
+before the theme oracle / targetClassLoader → Paint/Typeface untouched = pristine).
+Launcher: oracle/device/run-fontsmoke.sh. Dex: dayu600-apk-probe.dex 213680 B.
+No sidecar/ART rebuild — pure Mac-side dex + existing 3ea7b69d ART.
+
+LADDER reached 99-done  →  NO SIGBUS anywhere. VM survived the whole smoke.
+
+RESULT (observed):
+  01 paint-ctor        OK
+  02 antialias         OK   (Paint.nSetFlags — the op recon blamed for setContentView SIGBUS)
+  03 textsize          OK
+  04 typeface-default  NULL (Typeface.DEFAULT == null)
+  05 settypeface       SKIP (tf==null)
+  06 measureText       FAIL java.lang.UnsatisfiedLinkError: nGetFlags(long)
+  07 getFontMetricsInt ascent=0 descent=0
+  08 typeface-create   FAIL NPE  Typeface.getDefault:274 (synchronize on null sDefaults)
+  09 getTextBounds     w=0 h=0
+
+measureText stack (06):
+  No implementation found for int android.graphics.Paint.nGetFlags(long)
+   (tried Java_android_graphics_Paint_nGetFlags and ...__J) — is the library loaded?
+  android.graphics.Paint#nGetFlags:-2 -> getFlags:883 -> measureText:2789/2817
+  Dayu600ApkStageProbe#runFontSmoke:1021
+
+typeface-create stack (08):
+  java.lang.NullPointerException: synchronize on a null object
+  android.graphics.Typeface#getDefault:274 -> create:964
+
+VERDICT (two walls, de-conflated) — both consult predictions confirmed:
+
+[A] FONT MAP is the real #1 gate. Typeface.<clinit> ran but built NO system font
+    map (sDefaults/DEFAULT null) — no zygote preload ran loadPreinstalledSystemFontMap
+    / SystemFonts.buildSystemTypefaces. Every text op degenerates (measure/metrics/
+    bounds all zero/throw). FIX = font deep-dive prescription: ship our own .ttf +
+    build Typeface via Typeface.Builder(path) + bind Font/FontFamily/Typeface natives
+    BEFORE any init + set sDefaults (or call loadPreinstalledSystemFontMap). Do NOT
+    rely on OHOS /system/fonts.
+
+[B] GRAPHICS NATIVE BINDING is PARTIAL, not absent, and cleanly recoverable.
+    Paint ctor + normal-JNI setters (nInit/nSetFlags/nSetTextSize) are bound and work.
+    @CriticalNative getters (nGetFlags) come back UnsatisfiedLinkError = "No
+    implementation found" (internal libhwui symbol, not an exported Java_* → dlsym
+    fails). This is EXACTLY the #49 WestlakeGenericJni double-ABI + field-poke surface.
+    Failure mode is a clean catchable Java exception — NOT the SIGBUS/ABI-corruption
+    the plan feared. Pristine-VM approach is viable.
+
+[C] The recon claim "Paint.nSetFlags SIGBUS inside setContentView" did NOT reproduce
+    in a pristine VM (step 02 OK). That earlier crash was downstream/poisoned-state,
+    not a raw nSetFlags ABI fault. Reinforces the poisoned-<clinit> / fresh-VM mandate.
+
+CONSEQUENCE FOR PLAN:
+  - #51 font sub-problem is the gating risk (confirmed). Path is clear (ship TTF).
+  - #49 (W-003) needed for @CriticalNative graphics getters (nGetFlags & kin), but
+    font bootstrap can START without it (Typeface/Font natives are mostly normal/
+    @FastNative; field-poke the normal ones now, #49 fills the @CriticalNative gaps).
+  - Next pierce: extend fontsmoke — ship a .ttf, field-poke Typeface/Font natives,
+    new Typeface.Builder(ttf) → setTypeface → measureText != 0 == SUCCESS signal.
