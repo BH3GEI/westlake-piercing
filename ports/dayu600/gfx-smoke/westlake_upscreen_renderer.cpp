@@ -109,6 +109,20 @@ jint nativeInit(JNIEnv*, jclass, jlong rootNodePtr, jint w, jint h) {
     g_window = reinterpret_cast<ANativeWindow*>(oh_anw_wrap(raw));
     if (!g_window) { LOGI("init: oh_anw_wrap failed"); return 0; }
     RenderNode* rootNode = reinterpret_cast<RenderNode*>(rootNodePtr);
+    // #49 workaround (render path): Java RenderNode.setPosition() dispatches through
+    // @CriticalNative nSetLeftTopRightBottom, which is UNBOUND (realfn=0) on this imageless
+    // ART -> the root node keeps empty bounds -> hwui clips the app's Canvas.drawColor to an
+    // empty rect and the panel stays black (buffer reads 0x00000000). We hold the native
+    // RenderNode* here, so set the bounds + disable clipping DIRECTLY in C++ (native field
+    // access, no JNI), exactly as the proven pure-C westlake_upscreen_color_smoke does. The
+    // app's drawColor op is already in the display list (recorded via @FastNative nDrawColor,
+    // which IS bound); only the node geometry was missing.
+    {
+        RenderProperties& props = rootNode->mutateStagingProperties();
+        props.setLeftTopRightBottom(0, 0, w, h);
+        props.setClipToBounds(false);
+        rootNode->setPropertyFieldsDirty(0xFFFFFFFF);
+    }
     g_proxy = new RenderProxy(/*opaque=*/true, rootNode, &g_factory);
     g_proxy->loadSystemProperties();
     g_proxy->setName("westlake_upscreen");

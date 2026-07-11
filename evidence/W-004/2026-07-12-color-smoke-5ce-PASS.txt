@@ -1,0 +1,110 @@
+W-004 / wall #53 color-liveness — ORACLE PASS on 5ce — 2026-07-12
+================================================================================
+oracle/verify/color-smoke-5ce.sh 5ce2dcee00000000000000000923012c  ->  PASS (exit 0)
+
+  colorApk stage
+  01 ColorView loaded from /data/local/tmp/wl-color-codex/apks/color-smoke.apk
+  02 renderNodePtr=545578654384
+  03 nativeInit=2
+  04 frame0 color=ffff0000 pixel0=ffff0000
+  05 frame1 color=ff00ff00 pixel1=ff00ff00
+  color-smoke=ok
+  changed=yes
+  pixel0=ffff0000
+  pixel1=ff00ff00
+  PASS
+
+WHAT THIS PROVES (observed, oracle-gated — not self-report):
+- A REAL Android APK (com.westlake.colorapk.ColorView, loaded at runtime from
+  color-smoke.apk's OWN dex via DexClassLoader) drives its OWN render code
+  ColorView.onDraw -> Canvas.drawColor, painting a CHANGING pure color
+  (frame0 red 0xFFFF0000 -> frame1 green 0xFF00FF00) on the physical DAYU600 panel
+  through RenderNode -> our libhwui(skia) -> OHOS RSSurfaceNode(display 0).
+- The pixel is read back PRE-SWAP on the RenderThread (egl_interposer, EGL-current),
+  the only point the just-drawn frame is readable, packed ARGB. center=corner=quarter
+  all agree per frame (full-screen fill), alpha=ff (opaque), read across 3 VM runs:
+  ff0000ff (red) and 00ff00ff (green) in wire order -> 0xffff0000 / 0xff00ff00 ARGB.
+- provenance > visual: the drawColor op provably originates in the APP's compiled
+  ColorView (its own dex), not the probe, not OH direct fill, not setBackgroundColor.
+- changed=yes: the two frames differ -> the Android stack is ALIVE driving pixels
+  (a one-shot static fill would give p0==p1 and FAIL).
+
+BOARD/ISOLATION (safety):
+- 5ce ONLY, private root /data/local/tmp/wl-color-codex. Baseline substrate NOT touched:
+  baseline ART (2026-07-07) + baseline android/lib64/libhwui.so (2026-07-06) timestamps
+  unchanged; baseline libhwui sha 12872849e1.. != private capture libhwui d314d71f75..
+- No wipe/flash/reboot. All 4 boards online after the run. Shared /data/local/tmp/
+  westlake-dayu600 symlink repointed back to baseline (hygiene).
+
+DEPLOYED ARTIFACTS (into /data/local/tmp/wl-color-codex real dirs only):
+  art/libwestlake_art.so                 = dc1d5e82.. (28462512B, W-003 route-A #49 ART)   [WCOLOR_ART_SHA]
+  apks/dayu600-apk-probe.dex             = 46041825.. (240664B, has colorApk stage)          [WCOLOR_DEX_SHA]
+  apks/color-smoke.apk                   = 082559ae.. (1075B, deterministic, pinned in oracle)
+  art/libhwui.so                         = capture adapter libhwui (see BUILD below), FIRST on LD_LIBRARY_PATH
+  art/libwestlake_upscreen_renderer.so   = interposer-free capture renderer (see BUILD below)
+  probes/libwestlake_embedded_art_dlopen_probe.so -> baseline sidecar (symlink; LD_PRELOAD)
+  launcher: oracle/device/run-colorapk-5ce.sh (WESTLAKE_SUBSTAGE=colorApk + heavy-bridge)
+
+TWO ROOT CAUSES FOUND & FIXED (this is why the first two on-device shots read wrong):
+
+1) interposer-R2 (pixel readback returned -1, Java hex8((int)-1)=ffffffff "white"):
+   The board's libhwui-adapter had the OLD egl_interposer folded in (NO capture). hwui's
+   OWN eglSwapBuffersWithDamageKHR bound to that in-DSO copy (-Bsymbolic-functions), so the
+   NEW capturing egl_interposer in the standalone renderer.so was NEVER called by hwui
+   (log: center_argb appeared 0 times). g_wl_swap_count stayed 0 -> nativeLastSwapArgb=-1.
+   FIX: rebuild libhwui-adapter WITH the new capturing egl_interposer.o folded in (the
+   -Bsymbolic-functions self-bind makes hwui call the capturing copy), deploy it as libhwui.so
+   FIRST on LD_LIBRARY_PATH so register_hwui_if_present's dlopen("libhwui.so") + the renderer's
+   DT_NEEDED libhwui.so BOTH resolve to the single capture instance (R2: one libhwui mapped once).
+   The renderer is rebuilt INTERPOSER-FREE (g_wl_last_swap_argb UNDEFINED -> resolved from
+   libhwui at runtime) so there is exactly ONE g_wl global, in libhwui. Confirmed after fix:
+   log shows center_argb=0xffff0000/0xff00ff00, [wl-capture] drawFB=0 readFB=0 readErr=0x0.
+
+2) #49 @CriticalNative bounds unbound (buffer read 0x00000000 all-zero, panel black):
+   Java RenderNode.setPosition() dispatches through @CriticalNative nSetLeftTopRightBottom,
+   which is UNBOUND on this imageless ART (device log: "WLXMLIJ3 nSetLeftTopRightBottom
+   realfn=0"). The root node kept EMPTY bounds -> hwui clipped the app's drawColor to an empty
+   rect: frame0 replayed onDrawPaint #1 (fDAG.size=1) but produced 0 pixels; frame1 computed
+   empty damage (fDAG.size=0) and did not even swap -> changed=no. nDrawColor itself is
+   @FastNative and IS bound, so the drawColor op was correctly in the display list.
+   FIX (render path workaround, not the ART fix): the renderer holds the native RenderNode*,
+   so in nativeInit it sets bounds DIRECTLY in C++ (no JNI):
+       RenderProperties& props = rootNode->mutateStagingProperties();
+       props.setLeftTopRightBottom(0,0,w,h); props.setClipToBounds(false);
+       rootNode->setPropertyFieldsDirty(0xFFFFFFFF);
+   exactly mirroring the proven pure-C westlake_upscreen_color_smoke. After fix: onDrawPaint
+   12x, fDAG.size=1 for all, frames render full-screen red/green, changed=yes.
+   NOTE: this is a render-path bypass; the general #49 @CriticalNative publish fix (task #7,
+   W-003) is still the proper cure for Java-side setPosition and any other @CriticalNative.
+
+GATES CROSSED (all observed in the device log, same shot):
+- #49 native-publish (render path): hwui reg[0/50/51/53] END rc=0 -> the 6 color natives bind.
+- R2 same-source libhwui: single capture libhwui.so, dlopen + DT_NEEDED both resolve to it.
+- R1 interposer preemption: SOLVED by folding capture into libhwui (-Bsymbolic-functions),
+  not by RTLD_GLOBAL load-order (heavy-bridge WESTLAKE_LOAD_HEAVY_BRIDGE=1 still loads the
+  interposer-free renderer before the stage; preemption is no longer load-order dependent).
+- pixel readback wiring: egl_interposer glReadPixels(FBO 0, center) pre-swap, fence()'d.
+
+BUILD (reproduce on the deploy host; A2OH MUST be the full tree):
+  export A2OH=/Users/yao/Desktop/code/a2oh-source-audit
+  # (a) capture adapter libhwui — fold NEW egl_interposer.o (with g_wl capture) into libhwui:
+  #     first rebuild egl_interposer.o if edited:
+  "$A2OH/ohos-sdk/native/llvm/bin/clang++" --target=aarch64-linux-ohos \
+    --sysroot="$A2OH/ohos-sdk/native/sysroot" -std=c++17 -O2 -g -fPIC \
+    -c ports/dayu600/gfx-smoke/egl_interposer.cpp -o ports/dayu600/out/gfx-smoke/obj/egl_interposer.o
+  bash ports/dayu600/gfx-smoke/build-adapter-libhwui.sh      # -> out/libhwui-build/libhwui-adapter.so
+  cp out/libhwui-build/libhwui-adapter.so <stage>/libhwui.so
+  # (b) renderer.o carries the #49 bounds workaround; rebuild then link INTERPOSER-FREE,
+  #     DT_NEEDED libhwui.so (NOT libhwui-adapter.so), soname libwestlake_upscreen_renderer.so:
+  bash ports/dayu600/gfx-smoke/build-upscreen-renderer.sh    # recompiles westlake_upscreen_renderer.o
+  clang++ ... -Wl,-soname,libwestlake_upscreen_renderer.so \
+     westlake_upscreen_renderer.o ohos_display_surface.pic.o rs_abi_shims.pic.o oh_anativewindow_shim.o \
+     -L<stage> -l:libhwui.so <device-libs...>  -o libwestlake_upscreen_renderer.so
+  #     (egl_interposer.o / skia_interposer.o are NOT linked into the renderer — they live in libhwui.)
+
+RUN:
+  hdc -t 5ce2dcee00000000000000000923012c file send oracle/device/run-colorapk-5ce.sh \
+      /data/local/tmp/wl-color-codex/run-colorapk.sh
+  hdc -t 5ce2dcee00000000000000000923012c shell "sh /data/local/tmp/wl-color-codex/run-colorapk.sh"
+  WCOLOR_ART_SHA=dc1d5e82..  WCOLOR_DEX_SHA=46041825.. \
+      bash oracle/verify/color-smoke-5ce.sh 5ce2dcee00000000000000000923012c

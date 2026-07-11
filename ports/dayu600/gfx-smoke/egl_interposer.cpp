@@ -84,6 +84,7 @@ extern "C" EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
 // style in hwui_oh_abi_patch.cpp so no GLES header include is required.
 extern "C" void glReadPixels(int x, int y, int w, int h, unsigned fmt, unsigned type, void* px);
 extern "C" void glGetIntegerv(unsigned pname, int* params);
+extern "C" unsigned glGetError(void);
 
 extern "C" {
 // Center pixel of the most recent swap, ARGB (0xAARRGGBB). Read by the renderer.
@@ -93,18 +94,33 @@ volatile int g_wl_swap_count = 0;
 }
 
 static void wl_capture_center_argb() {
+    glGetError();  // clear any prior error
     int vp[4] = {0, 0, 0, 0};
     glGetIntegerv(0x0BA2 /*GL_VIEWPORT*/, vp);
+    int drawFB = -1, readFB = -1;
+    glGetIntegerv(0x8CA6 /*GL_DRAW_FRAMEBUFFER_BINDING*/, &drawFB);
+    glGetIntegerv(0x8CAA /*GL_READ_FRAMEBUFFER_BINDING*/, &readFB);
     int cx = vp[2] > 0 ? vp[2] / 2 : 0;
     int cy = vp[3] > 0 ? vp[3] / 2 : 0;
-    unsigned char px[4] = {0, 0, 0, 0};
+    unsigned char px[4] = {0, 0, 0, 0};     // center
+    unsigned char pc[4] = {0, 0, 0, 0};     // near-corner (1,1)
+    unsigned char pq[4] = {0, 0, 0, 0};     // quarter (vp/4)
     glReadPixels(cx, cy, 1, 1, 0x1908 /*GL_RGBA*/, 0x1401 /*GL_UNSIGNED_BYTE*/, px);
+    unsigned errc = glGetError();
+    glReadPixels(1, 1, 1, 1, 0x1908, 0x1401, pc);
+    glReadPixels(vp[2] > 0 ? vp[2] / 4 : 0, vp[3] > 0 ? vp[3] / 4 : 0, 1, 1, 0x1908, 0x1401, pq);
     // glReadPixels(GL_RGBA) gives px = R,G,B,A. Pack to ARGB so the oracle sees red as
     // 0xffff0000 and green as 0xff00ff00 (the AABBGGRR wire order would write red as
     // 0xff0000ff and fail the red check; green is symmetric and would not expose it).
     g_wl_last_swap_argb = ((uint32_t)px[3] << 24) | ((uint32_t)px[0] << 16) |
                           ((uint32_t)px[1] << 8)  |  (uint32_t)px[2];
     ++g_wl_swap_count;
+    fprintf(stderr,
+            "[wl-capture] vp=%d,%d,%d,%d drawFB=%d readFB=%d center(%d,%d)=%02x%02x%02x%02x "
+            "corner(1,1)=%02x%02x%02x%02x quarter=%02x%02x%02x%02x readErr=0x%x\n",
+            vp[0], vp[1], vp[2], vp[3], drawFB, readFB, cx, cy,
+            px[0], px[1], px[2], px[3], pc[0], pc[1], pc[2], pc[3],
+            pq[0], pq[1], pq[2], pq[3], errc);
 }
 
 // hwui presents via eglSwapBuffersWithDamageKHR (EglManager.cpp:629). The proven

@@ -67,13 +67,13 @@
 | 50 | createSubDecor windowActionBar 解析出 → subDecor | L6 | ⏳ | - | B | COORD L2910 |
 | 51 | setContentView(app R.layout.main) → content FrameLayout | L6 | ⏳ | - | B | **app 布局至今从未 inflate** |
 | 52 | tap → WLTEST CLICK(input .so bd6d2a77) | L6 | ⏳ | - | D | COORD L2746 |
-| 53 | show() 真 DecorView 首帧 → 面板像素 r==2 | L5/L6 | ⏳ | - | C | COORD L2866 |
+| 53 | show() 真 DecorView 首帧 → 面板像素 r==2;**app 自绘变色像素 slice(render-only,绕 ViewRootImpl)已 PASS on 5ce**(show() 全路径未达) | L5/L6 | 🔧 | ✔ | C | W-004 · evidence/W-004/2026-07-12-color-smoke-5ce-PASS.txt |
 
 ## 2. 计数 (honest)
 
 - **✅ 状态**: 45/53 = **已复核(V=✔)** 4(#22,#43,#48,#49) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
 - 38 个 claimed 未复核项不得当作当前板事实。**复核 = 工厂队列第一批(见 QUEUE.md)。**
-- 真·首帧(#53)仍未达；app 自己的 R.layout.main(#51)至今一次都没 inflate。
+- 真·首帧 #53 的 **DecorView show() 全路径仍未达**；但 app 自绘变色像素 slice(render-only,绕 ViewRootImpl,W-004)已 **oracle PASS on 5ce**(红↔绿逐帧,provenance=APK 自有 dex)。app 自己的 R.layout.main(#51)至今一次都没 inflate。
 
 ## 3. 诚实警告 (必须带上)
 
