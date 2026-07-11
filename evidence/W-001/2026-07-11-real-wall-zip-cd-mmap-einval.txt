@@ -1,0 +1,60 @@
+W-001 / 墙 #43 — 真墙订正:不是 Trace ULE,是板 libziparchive 打不开真实 apk
+========================================================================
+日期 2026-07-11 · 证据板 5ce2dcee(当前提交产物,17:05 部署)· observed
+
+## TL;DR
+FRONTIER 记的墙(Trace.nativeIsTagEnabled ULE)在提交的 sidecar 里**已被 P2
+field-poke 绕过**。真正的当前墙在更上游:板上 libandroidfw 的 libziparchive
+**打不开真实签名/标准 apk**(uptodown 15MB、framework-res 35MB),资源根本没进
+AssetManager2 → 第一次真实资源访问 `nativeGetResourceName` 在空指针上 SIGBUS。
+两个专家 + FRONTIER 都停在下游(Trace / attr-ordering),没到这堵上游墙。
+
+## 观测链(5ce2dcee,`sh /data/local/tmp/run-utd-w001.sh`,rc=139)
+1. 主日志:`W001 P2 enter (field-poke SetEntryPointFromJni)` → `P2 poked` →
+   `P2 recall ok (no ULE)`。→ Trace 已解,不再是墙。FRONTIER 过时。
+2. `w001-native-append.txt`:`nativeSet=ok ck=1`(app apk)、`ck=2`(framework-res)。
+   —— 但这是**假阳性**:空 AssetManager2 的 setApkAssets 不抛。
+3. `apks/probe-logs/nativeload.txt`:
+   - `ZipAssetsProvider::Create(.../2048-2-9.apk) => OK`(2MB,能开)
+   - `ZipAssetsProvider::Create(.../test-uptodown.apk) => NULL`
+   - `ZipAssetsProvider::Create(.../framework-res.apk) => NULL`
+4. `w001-stdout.txt` 里 libziparchive 的确切错误:
+   `+++ Found EOCD at buf+65535`   ← EOCD 找到了,解析 OK
+   `Zip: failed to map central directory (offset 15050189, size 132063): Invalid argument`
+   `Zip: failed to map central directory (offset 34946341, size 780749): Invalid argument`
+   —— mmap 中央目录返回 **EINVAL**。
+5. 崩溃栈(OHBridge SIGBUS 处理器抓的,fault_addr=0x8):
+   `android.content.res.AssetManager.nativeGetResourceName(Native Method)`
+   ← `Resources.getResourceName` ← `Dayu600ApkStageProbe.earlyResName:1009`
+   ← `runEarlyThemeOracle:1188`。空 AssetManager2 → null+8 解引用。
+
+## 根因(源码级,local-build-adapters/zip-15-src/zip_archive.cc)
+- `MappedZipFile` 的整文件 mmap 块被 **`#if 0` 关掉**(1707–1724,注释
+  `TODO(b/287285733): restore mmap() when the cold cache regression is fixed`)。
+  故 `GetBasePtr()` 恒 null。
+- `ZipArchive::InitializeCentralDirectory`(1825)在 GetBasePtr()==null 时走
+  `android::base::MappedFile::FromFd(fd, cd_start_offset, cd_size, PROT_READ)`
+  —— 单独 mmap 中央目录。
+- 板上这颗 libbase 的 `FromFd(mmap)` 对**小 apk 的 CD**(2048,58KB@2M)成功,
+  对**大真实 apk 的 CD**(uptodown 132KB@15M、framework 780KB@35M)返回 EINVAL。
+  → Create 返 NULL → ApkAssets 空 → AssetManager2 空 → getResourceName 段错误。
+- 反证不是"纯页对齐":2048 的 CD offset(2051829)同样非页对齐却能映;是
+  尺寸/偏移量级触发的 FromFd/mmap 缺陷。而条目数据映射走的是 utils 的
+  `FileMap::create`(IncFs stub 用),正常 —— 只有 CD 走的 libbase FromFd 坏。
+
+## 修复(已改本仓源;待 compiler 重建 libandroidfw)
+`InitializeCentralDirectory` 在 GetBasePtr()==null 时,改用 **pread** 把 CD 读进
+自持堆缓冲(`ZipArchive::cd_heap_`),彻底绕开坏的 FromFd/mmap:
+- `zip_archive_private.h`:ZipArchive 加 `std::vector<uint8_t> cd_heap_;`
+- `zip_archive.cc`:`MappedFile::FromFd(...)` → `ReadAtOffset(cd_heap_.data(), cd_size,
+  cd_start_offset)`(经 `ReadFullyAtOffset`=pread,无对齐/尺寸约束)。
+这是改 OUR loader,不改 apk —— **不违反 #53 的"unmodified apk"**。
+重建配方:`local-build-adapters/androidfw-build/relink_libandroidfw.sh`
+(compiler 上 `/Users/yao/westlake-local-build/androidfw-build/`,OHOS SDK clang)。
+zip_archive.cc 属 `$OBJ/*.o` 里的一颗,需先重编该 .o 再 relink。
+
+## 下游墙(修好加载后会遇到,已知)
+1. attr-ordering bug(probe ~1205,`{0x7f040691,0x01010059,0x7f040141}` 未升序)——
+   专家#2 指出,加载成功后再修。
+2. TypedArray.mDataAddress 需 VMRuntime.newNonMovableArray/addressOf(顾问给了注册码)。
+3. 主题须先 nativeThemeApplyStyle 再 obtainStyledAttributes。

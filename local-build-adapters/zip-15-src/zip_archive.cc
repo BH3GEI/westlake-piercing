@@ -1824,17 +1824,20 @@ void CentralDirectory::Initialize(const void* map_base_ptr, off64_t cd_start_off
 
 bool ZipArchive::InitializeCentralDirectory(off64_t cd_start_offset, size_t cd_size) {
   if (!mapped_zip.GetBasePtr()) {
-    directory_map = android::base::MappedFile::FromFd(mapped_zip.GetFileDescriptor(),
-                                                      mapped_zip.GetFileOffset() + cd_start_offset,
-                                                      cd_size, PROT_READ);
-    if (!directory_map) {
-      ALOGE("Zip: failed to map central directory (offset %" PRId64 ", size %zu): %s",
+    // [WL/DAYU600] Whole-file mmap is compiled out (#if 0, AOSP b/287285733) so GetBasePtr() is
+    // null here. Upstream maps the CD with libbase MappedFile::FromFd(mmap); this board's FromFd
+    // returns EINVAL for the CD of large real APKs (uptodown 15MB, framework-res 35MB) while
+    // succeeding for small prepared apks (2048 2MB) — leaving every real APK unloadable and
+    // making obtainStyledAttributes segfault on an empty AssetManager2. Read the CD with pread
+    // into an owned heap buffer instead: no page-alignment / size constraint, same fd-offset
+    // accounting as the streaming entry reader.
+    cd_heap_.resize(cd_size);
+    if (mapped_zip.ReadAtOffset(cd_heap_.data(), cd_size, cd_start_offset) == nullptr) {
+      ALOGE("Zip: failed to read central directory (offset %" PRId64 ", size %zu): %s",
             cd_start_offset, cd_size, strerror(errno));
       return false;
     }
-
-    CHECK_EQ(directory_map->size(), cd_size);
-    central_directory.Initialize(directory_map->data(), 0 /*offset*/, cd_size);
+    central_directory.Initialize(cd_heap_.data(), 0 /*offset*/, cd_size);
   } else {
     if (mapped_zip.GetBasePtr() == nullptr) {
       ALOGE(

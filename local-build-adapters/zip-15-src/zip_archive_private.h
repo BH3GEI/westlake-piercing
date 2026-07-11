@@ -83,6 +83,11 @@ struct ZipArchive {
   off64_t directory_offset;
   CentralDirectory central_directory;
   std::unique_ptr<android::base::MappedFile> directory_map;
+  // [WL/DAYU600] Owning buffer when the central directory is read via pread instead of
+  // mmap. This board's libbase MappedFile::FromFd(mmap) returns EINVAL for the CD of large
+  // real APKs (works only for small prepared apks), so InitializeCentralDirectory falls back
+  // to a pread into this heap buffer. central_directory points into it; keep it alive here.
+  std::vector<uint8_t> cd_heap_;
 
   // number of entries in the Zip archive
   uint64_t num_entries;
