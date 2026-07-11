@@ -57,7 +57,7 @@
 | 40 | Surface/RenderThread renderer 4 native 自注册 | L5 | ✅ | ? | C | COORD L2864 |
 | 41 | createSubDecor 要 Theme.AppCompat(Material.Light 无 windowActionBar) | L6 | ✅ | ? | B | COORD L2801 |
 | 42 | setTheme 换 AppThemeBar 0x7f15000e | L6 | ✅ | ? | A·E | COORD L2817 |
-| 43 | ★前沿:AppCompatTheme 真 WAB oracle(机制在副板 5ce2dcee PASS;验收板 5583 卡 getSystem NPE) | L6 | 🔧 | - | B | W-001 · CD-mmap interposer + P2 · 见 FRONTIER.md |
+| 43 | AppCompatTheme 真 WAB oracle:验收板 5583 `atom-43.sh` PASS ×4(wabAttr=0x7f040691 uamHasWab=true) | L6 | ✅ | ✔ | B | W-001 · CD-mmap interposer + P2 + ART 库 3ea7b69d · 见 FRONTIER.md |
 | 44 | Canvas draw native 分类,show() crit 缩到 2 | L5 | 🔧 | - | C | COORD L2947 |
 | 45 | onClick mAttachInfo 墙 → attachForInput 内联(已编未上板) | L6 | ✅ | ✗ | D | COORD L2535 |
 | 46 | 5ce2dcee ~50% 早停 lottery(板 vs bug,悬案) | L1 | 🔧 | - | H | COORD L2768 · INCONCLUSIVE |
@@ -71,7 +71,7 @@
 
 ## 2. 计数 (honest)
 
-- **✅ 状态**: 43/53 = **已复核(V=✔)** 2(#22,#48) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
+- **✅ 状态**: 44/53 = **已复核(V=✔)** 3(#22,#43,#48) + **claimed 未复核(V=?)** 38 + **矛盾(V=✗)** 3(#4,#9,#45)
 - 38 个 claimed 未复核项不得当作当前板事实。**复核 = 工厂队列第一批(见 QUEUE.md)。**
 - 真·首帧(#53)仍未达；app 自己的 R.layout.main(#51)至今一次都没 inflate。
 

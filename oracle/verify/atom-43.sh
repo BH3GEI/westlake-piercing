@@ -33,6 +33,13 @@ REMOTE_PROBE="/data/local/tmp/westlake-dayu600-substrate/apks/probe-logs/uptodow
 REMOTE_DEX="/data/local/tmp/westlake-dayu600-substrate/apks/dayu600-apk-probe.dex"
 REMOTE_SO="/data/local/tmp/westlake-dayu600-substrate/probes/libwestlake_embedded_art_dlopen_probe.so"
 REMOTE_SO_COPY="/data/local/tmp/westlake-dayu600-substrate/android/lib64/sidecars/libwestlake_embedded_art_dlopen_probe.so"
+# The embedded-ART runtime lib is a substrate artifact (no local build output to diff against),
+# so we lock the board's copy to the known-good hash. 331568b2 (foreign WSL, mixed-toolchain build)
+# does NOT bind SystemProperties.native_get → getSystem() NPE → silent #43 FAIL. 3ea7b69d is the
+# clean build from local-build-adapters/art-latest/Makefile.ohos-arm64. See REPO_LOCK w001_substrate_art
+# and evidence/W-001/2026-07-11-5583-acceptance-pass-artlib-rootcause.txt.
+REMOTE_ART="/data/local/tmp/westlake-dayu600-substrate/art/libwestlake_art.so"
+KNOWN_ART_SHA="${W001_ART_SHA:-3ea7b69d07fb9591a1ac1420e4444b658d2cb6c83794f41f07d0bd5a858f6d09}"
 LOCAL_RUN="$ROOT/oracle/device/run-utd-w001.sh"
 LOCAL_DEX="${W001_DEX:-$ROOT/test-fixtures/dayu600-apk-probe/out/dayu600-apk-probe.dex}"
 LOCAL_SO="${W001_SO:-$ROOT/test-fixtures/dayu600-embedded-art-probe/out/libwestlake_embedded_art_dlopen_probe.so}"
@@ -48,11 +55,12 @@ done
 LOCAL_RUN_SHA="$(shasum -a 256 "$LOCAL_RUN" | awk '{print $1}')"
 LOCAL_DEX_SHA="$(shasum -a 256 "$LOCAL_DEX" | awk '{print $1}')"
 LOCAL_SO_SHA="$(shasum -a 256 "$LOCAL_SO" | awk '{print $1}')"
-REMOTE_HASHES="$($HDC -t "$SERIAL" shell "sha256sum '$REMOTE_RUN' '$REMOTE_DEX' '$REMOTE_SO' '$REMOTE_SO_COPY' 2>/dev/null" | tr -d '\r')"
+REMOTE_HASHES="$($HDC -t "$SERIAL" shell "sha256sum '$REMOTE_RUN' '$REMOTE_DEX' '$REMOTE_SO' '$REMOTE_SO_COPY' '$REMOTE_ART' 2>/dev/null" | tr -d '\r')"
 REMOTE_RUN_SHA="$(printf '%s\n' "$REMOTE_HASHES" | awk -v p="$REMOTE_RUN" '$2 == p {print $1}')"
 REMOTE_DEX_SHA="$(printf '%s\n' "$REMOTE_HASHES" | awk -v p="$REMOTE_DEX" '$2 == p {print $1}')"
 REMOTE_SO_SHA="$(printf '%s\n' "$REMOTE_HASHES" | awk -v p="$REMOTE_SO" '$2 == p {print $1}')"
 REMOTE_SO_COPY_SHA="$(printf '%s\n' "$REMOTE_HASHES" | awk -v p="$REMOTE_SO_COPY" '$2 == p {print $1}')"
+REMOTE_ART_SHA="$(printf '%s\n' "$REMOTE_HASHES" | awk -v p="$REMOTE_ART" '$2 == p {print $1}')"
 if [ "$LOCAL_RUN_SHA" != "$REMOTE_RUN_SHA" ] \
   || [ "$LOCAL_DEX_SHA" != "$REMOTE_DEX_SHA" ] \
   || [ "$LOCAL_SO_SHA" != "$REMOTE_SO_SHA" ] \
@@ -60,6 +68,13 @@ if [ "$LOCAL_RUN_SHA" != "$REMOTE_RUN_SHA" ] \
   echo "artifact hash mismatch; deploy the locally built W-001 launcher/dex/sidecar before testing"
   echo "local run=$LOCAL_RUN_SHA dex=$LOCAL_DEX_SHA so=$LOCAL_SO_SHA"
   echo "remote run=${REMOTE_RUN_SHA:-missing} dex=${REMOTE_DEX_SHA:-missing} so=${REMOTE_SO_SHA:-missing} copy=${REMOTE_SO_COPY_SHA:-missing}"
+  echo "FAIL"
+  exit 1
+fi
+if [ "$REMOTE_ART_SHA" != "$KNOWN_ART_SHA" ]; then
+  echo "libwestlake_art.so mismatch on board: getSystem()/SystemProperties binding not guaranteed."
+  echo "  board art=${REMOTE_ART_SHA:-missing} known-good=$KNOWN_ART_SHA"
+  echo "  deploy the canonical ART lib (Makefile.ohos-arm64 output) to $REMOTE_ART, or set W001_ART_SHA."
   echo "FAIL"
   exit 1
 fi

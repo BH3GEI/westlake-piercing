@@ -44,3 +44,6 @@ scratchpad-shared/**/*-poll.log
 # 白板时代 agent 工作区(2026-07-09 冻结):整树不进远程。磁盘保留。
 scratchpad-shared/
 .claude/worktrees/
+
+# contains plaintext GZ02 SSH credential — never commit (creds in macOS Keychain: gz02_ssh_password)
+docs/reference/GZ02-build-tree-access-guide-v2.html

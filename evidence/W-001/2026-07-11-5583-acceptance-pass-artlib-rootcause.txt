@@ -1,0 +1,53 @@
+W-001 / 墙 #43 — 验收板 5583 PASS;根因 = 板上 libwestlake_art.so 版本不一致(非代码墙)
+=====================================================================================================
+日期 2026-07-11 · observed · 主号(thinker 主攻)· 验收板 5583f5be(big-clean)
+
+## TL;DR
+5583(卡片验收板)此前 `atom-43.sh 5583` FAIL(`new Resources()→getSystem()→
+createSystemAssetsInZygoteLocked` NPE)。根因不是代码,而是**5583 上装的 ART 运行时库
+`libwestlake_art.so` 与 5ce2dcee(能过的板)不是同一个 build**:
+- 5583(旧,FAIL):sha256 `331568b2…`(28247000 B)
+- 5ce2dcee(能过):sha256 `3ea7b69d…`(28455728 B)
+- REPO_LOCK.toml/ARTIFACT-INVENTORY 记的 canonical:`a3ed8c58…`(**两板都不是它** —— 记录已过时)
+把 5ce2dcee 的 `3ea7b69d` 部署到 5583 的 `$S/art/libwestlake_art.so`(先备份旧的),
+**`atom-43.sh 5583` 连过 4 次(稳定,非偶然)**。旧板的非确定性(seed 时而 NPE)也随之消失。
+
+## 诊断链(如何定位到 ART 库)
+1. 决定性诊断(dex 加 readSSystemState + 多态 seed):`w001-seed=seeded`、`w001-ssys-pre=pre-nonnull`
+   —— sSystem 在 new Resources 前确实非 null,但 getSystem 仍进 createSystemAssets 并 NPE。
+   排除「seed 被重置」;指向 reinitialize=true(LEDGER #31)或 dual-class 或环境。
+2. 逐层比对两板产物(read-only sha256):
+   - framework.jar **字节相同**(`9a858944…`)——代码同,排除 reinitialize/dual-class 是板差。
+   - core-libart.jar **字节相同**(`017aae7e…`)——ART core jar 同。
+   - sidecar `libwestlake_embedded_art_dlopen_probe.so` 同(`a311b0ad…`)。
+   - **全 substrate `.so` 做 hash diff → 只有 `libwestlake_art.so` 在活跃加载路径上不同**
+     (另有 `libwl_xmlblock_create.so` 不同,属 W-002/xmlblock,与本墙无关)。
+3. `libwestlake_art.so` 由 sidecar 从 `$S/art/libwestlake_art.so` dlopen(sidecar .c:660 build_root_path,
+   :1531/:1539 dlopen 日志)——确认它是被加载的 ART 运行时。
+4. 交换验证:把 5ce2dcee 的 `3ea7b69d` 装到 5583,new Resources 立刻越过,oracle PASS。
+
+## PASS 证据(5583,`atom-43.sh 5583f5be…`,连 4 次 run_rc=0 PASS)
+- `EARLY stack=main wabAttr=0x7f040691 uamHasWab=true wcoHas=false hasColorPrimary=true`
+- `nativeSet=ok ck=2`
+- 四判据(atom-43 判官)全中:RUN_RC==0 ∧ nativeSet=ok ck=2 ∧ wabAttr=0x7f040691 ∧ uamHasWab=true。
+- A/B:A(app-only)`A wab=0 wco=0 cp=0`;主路径(app+framework)uamHasWab=true —— 与 5ce2dcee 结论一致
+  (windowActionBar 需 framework 第二包)。
+
+## 根因(observed)
+5583 装的 `libwestlake_art.so`(331568b2)里,`SystemProperties.native_get` 一类 boot native 没被
+正确注册/绑定,导致 `createSystemAssetsInZygoteLocked`(getSystem 内)走 `OverlayConfig.getZygoteInstance()`
+→ `PackagePartitions.<clinit>`(getFingerprint→SystemProperties.get 返 null→String.length() NPE)级联崩,
+终以 `ArrayList.size() on null` 抛出。5ce2dcee 的 `3ea7b69d` 无此问题。两板其它产物(framework.jar/
+core-libart/sidecar)完全一致,故差异唯一来源就是这颗 ART 库。符号级差异见并行调查(见下)。
+
+## 复现/落盘注意(重要 —— 尚未 hash-lock ART 库)
+- 本墙的 PASS 依赖板上 `$S/art/libwestlake_art.so == 3ea7b69d`。**atom-43.sh 当前不 hash-lock 这颗库**
+  (只锁 launcher/dex/sidecar),故一次误装旧 331568b2 就会静默回退到 FAIL。
+- 待办(下一步,已在做):(1) 确认 3ea7b69d 的构建来源与是否 canonical(并行 agent 调查中);
+  (2) 把 REPO_LOCK.toml `libwestlake_art_sha256` 从过时的 a3ed8c58 改为确认后的 canonical;
+  (3) 给 atom-43.sh 加一条「板上 libwestlake_art.so == 已知良好 hash」的断言,让 oracle 能抓到 ART 库回退。
+- 旧库已在 5583 备份为 `$S/art/libwestlake_art.so.pre-w001-artswap`(可回退)。
+
+## 与前序证据的关系
+- CD-mmap interposer + P2(Trace)+ 双包装载的机制证成见 2026-07-11-cd-mmap-interposer-oracle-pass-5ce2dcee.txt。
+- 本文件补齐验收板 5583 的最后一环:机制正确,5583 之前只是 ART 库版本落后。#43 现于卡片验收板 PASS。

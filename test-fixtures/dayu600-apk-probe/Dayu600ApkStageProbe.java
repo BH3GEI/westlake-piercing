@@ -1027,31 +1027,66 @@ public final class Dayu600ApkStageProbe {
      * the guard just early-returns. Field reflection works on this ART even
      * though getMethod/getDeclaredMethod NPE. Writes w001-seed.txt.
      */
+    // Seed AssetManager.sSystem (class-literal only — this board NPEs on Class.forName(String))
+    // so getSystem() early-returns and never runs createSystemAssetsInZygoteLocked →
+    // PackagePartitions/SystemProperties clinit cascade (the 5583 NPE). Writes a literal-only
+    // diagnostic (no concatenation — StringBuilder is board-hostile here).
     private static void seedSystemAssetManager() {
+        Class<?> amCls = android.content.res.AssetManager.class;
+        java.lang.reflect.Field fSys;
         try {
-            Class<?> amCls = android.content.res.AssetManager.class;
-            java.lang.reflect.Field fSys = amCls.getDeclaredField("sSystem");
+            fSys = amCls.getDeclaredField("sSystem");
             fSys.setAccessible(true);
             if (fSys.get(null) != null) {
                 earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "already-set");
                 return;
             }
+        } catch (Throwable t) {
+            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "fieldfail");
+            return;
+        }
+        Object seedAm;
+        try {
             java.lang.reflect.Constructor<?> amC = amCls.getDeclaredConstructor(boolean.class);
             amC.setAccessible(true);
-            Object seedAm = amC.newInstance(Boolean.TRUE);
-            fSys.set(null, seedAm);
-            // sSystemApkAssetsSet defaults to null; seed a non-null ArraySet so any
-            // later setApkAssets(...,system=true) contains()-check does not NPE.
-            try {
-                java.lang.reflect.Field fSet = amCls.getDeclaredField("sSystemApkAssetsSet");
-                fSet.setAccessible(true);
-                if (fSet.get(null) == null) {
-                    fSet.set(null, new android.util.ArraySet<Object>());
-                }
-            } catch (Throwable ig) {}
-            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "seeded");
+            seedAm = amC.newInstance(Boolean.TRUE);
         } catch (Throwable t) {
-            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", t.getClass().getName());
+            // Sentinel ctor is flaky on 5583 (clinit-order NPE). The pre-newResources reader
+            // will show sSystem=null and we fall to fix (b) SystemProperties binding.
+            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "ctorfail");
+            return;
+        }
+        try {
+            fSys.set(null, seedAm);
+        } catch (Throwable t) {
+            earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "setfail");
+            return;
+        }
+        // sSystemApkAssetsSet defaults null; seed a non-null ArraySet so any later
+        // setApkAssets(...,system=true) contains()-check does not NPE.
+        try {
+            java.lang.reflect.Field fSet = amCls.getDeclaredField("sSystemApkAssetsSet");
+            fSet.setAccessible(true);
+            if (fSet.get(null) == null) { fSet.set(null, new android.util.ArraySet<Object>()); }
+        } catch (Throwable ig) {}
+        earlyWriteLiteral("/data/local/tmp/w001-seed.txt", "seeded");
+    }
+
+    // Read AssetManager.sSystem (class-literal only) right before a new Resources() to
+    // decide: seed-reset (null) vs reinitialize=true / dual-getSystem (nonnull yet
+    // createSystemAssets still runs → NPE). Literal-only writes; caller passes the file path.
+    private static void readSSystemState(String path) {
+        try {
+            java.lang.reflect.Field f =
+                    android.content.res.AssetManager.class.getDeclaredField("sSystem");
+            f.setAccessible(true);
+            if (f.get(null) != null) {
+                earlyWriteLiteral(path, "pre-nonnull");
+            } else {
+                earlyWriteLiteral(path, "pre-null");
+            }
+        } catch (Throwable t) {
+            earlyWriteLiteral(path, "pre-err");
         }
     }
 
@@ -1144,6 +1179,8 @@ public final class Dayu600ApkStageProbe {
             nativeW001Append(am, W001_FW_PATH);
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY postNativeFw");
             stepCode = 3;
+            // Decisive 5583 diagnostic: is sSystem still seeded right before the NPE site?
+            readSSystemState("/data/local/tmp/w001-ssys-pre.txt");
             earlyWriteLiteral("/data/local/tmp/uptodown-early.txt", "EARLY step=res");
             android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
             try { dm.setToDefaults(); } catch (Throwable ig) {
