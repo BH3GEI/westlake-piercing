@@ -18,8 +18,10 @@
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
 
-> 路线定案见 `evidence/W-001/2026-07-11-road-to-first-frame-plan.md`。**下一动作 = 字体 bootstrap 冒烟探针**(唯一真变数,
-> 决定 #51 工作量;可先于 W-003 用 normal-JNI 字体 native 探,不必等 #49)。
+> 路线定案见 `evidence/W-001/2026-07-11-road-to-first-frame-plan.md`。**字体冒烟探针已打(2026-07-11,5583)**:
+> 结论 = 字体 map 是真闸(`Typeface.DEFAULT==null`),绑定部分可恢复(nGetFlags=UnsatisfiedLinkError,#49 面),无 SIGBUS。
+> 证据 `evidence/W-001/2026-07-11-fontsmoke-pristine-vm-result.txt`。**下一动作 = fontsmoke 扩:自带 .ttf + Typeface.Builder
+> + 预绑 Font/Typeface native → measureText != 0**;可先于 #49 起步。
 
 ## 工厂队列 (factory) — 弱模型舰队
 
