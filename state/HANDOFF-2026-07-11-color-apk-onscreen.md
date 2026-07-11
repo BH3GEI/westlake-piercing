@@ -66,9 +66,17 @@
 
 **⚠️ 关键心智模型:color-apk 上屏 = 三道独立门全过,W-003 是必要非充分:**
 1. **#49 / W-003**(native 发布+派发):@CriticalNative 图形指针发布 + 解释器有对应 shorty arm。← 并发窗口在打。
+   **✅ 已审计证充分(19-agent workflow + 对抗复核 HOLDS,见 `evidence/W-001/2026-07-12-color-path-native-audit.md`)**:
+   color 路径实际只有 6 个解释器派发 native,**全有 arm,无需再改 interpreter.cc**。真正靠 W-003 发布的是
+   **4 个** @CriticalNative(nSetLeftTopRightBottom ZJIIII@793、nCreateDisplayListCanvas JJII@873、
+   nResetDisplayListCanvas VJJII@877、nFinishRecording VJJ@868);nCreate(JL@1011)与 **nDrawColor(@FastNative,VJII@1954)**
+   在 RegisterNatives 时就绑,**不依赖 W-003**。
 2. **R2**(RenderNode 指针跨库合法):libandroid_runtime 与 renderer 必须**同一份 libhwui 实例**(链接命名不匹配,见 §5 R2 trap)。ART 路未证。
 3. **回读接线**(变色验收):`g214bb_raw_read_pixel` 已有但**未接**任何 harness(见 §1 验收建议)。
    三者独立:W-003 全绑上,R2 破仍崩、回读没接仍验不了"变色"。板期应把 2、3 与 W-003 **同一枪**验,别串行发现。
+   **另有注册层前提(审计新发现,非 interpreter 代码)**:(a) sidecar `register_hwui_if_present` 必须能 dlopen 到
+   libhwui-adapter(否则零绑定 graphics native = R2 门同源);(b) **截断 env 门**:`WESTLAKE_HWUI_STOP_AT` 不设或 >51、
+   `WESTLAKE_HWUI_SKIP` 不含 idx 0/50/51,否则丢掉 RenderNode(50)/DisplayListCanvas(51) 注册 → 六个 native 全不绑。
 
 ---
 
@@ -108,7 +116,8 @@
 ## 5. 陷阱(workflow 已核,务必避开)
 
 - **`nDrawRect`(VJFFFFJ)没有 critical arm**(只有 normal @:2081)→ `setBackgroundColor`/`ColorDrawable` 在 critical 下不画。
-  **ColorView 必须继续用 `drawColor`(VJII,arm @:855)**——已按此写好,别改成背景色。
+  **ColorView 必须继续用 `drawColor`**——已按此写好,别改成背景色。(审计更正:`nDrawColor(JII)V` 实为 **@FastNative**,
+  走 normal arm **@1954**(不是 critical @855),RegisterNatives 时就绑、不依赖 W-003;结论不变,只是别再引用 @855/依赖 W-003。)
 - `show()`/record 路径的 native(`nCreateDisplayListCanvas` JJII @:873、`nFinishRecording` JJ @:849、`nSetDisplayList` VJJ @:806、
   `nSetLeftTopRightBottom` ZJIIII @:793)**都有 arm**,但同样受"指针没绑"影响——路线 A/B 一并解决。
 - **`libandroid-fake.so` 必须在 LD_LIBRARY_PATH 最前**:adapter libhwui 的 RenderThread ctor 会 dlopen `libandroid.so`
@@ -143,7 +152,11 @@
 3. **先做路线 A**:W-003 修 ART(class_linker 发布块前移 + 两 resolver 查表)→ compiler 重建 `libwestlake_art.so`
    → hdc 部署到 **5583**(`$S/art/libwestlake_art.so`)+ 同步 atom-43 hash-lock,先自证不回退 #43。
    (**不换 framework.jar、不上 5ce2dcee**——路线 B 已禁用。)
-4. **跑 + 回读**:launcher 仿 `oracle/device/run-fontsmoke.sh`;面板照片 + buffer 回读断言 == PALETTE 且变色。
+3b. **注册层前提(审计新发现,和 W-003 同一板期一起就位,别串行发现)**:
+   - libhwui-adapter 部到 sidecar `register_hwui_if_present` 探测路径(= R2 门:改名覆盖 `$S/android/lib64/libhwui.so`);
+   - launcher 里 `WESTLAKE_HWUI_STOP_AT` 不设或 >51、`WESTLAKE_HWUI_SKIP` 不含 idx 0/50/51(否则丢 RenderNode/DisplayListCanvas 注册,六个 native 全不绑);
+   - (建议)g_hwui_reg_all 循环后 log idx 0/50/51 注册成功 → 截断/失败在 boot 期报错,而非上屏黑屏活体发现。
+4. **跑 + 回读**:launcher 仿 `oracle/device/run-fontsmoke.sh`;面板照片 + `g214bb_raw_read_pixel` 整值回读断言 == PALETTE 且变色(见 §1)。
 5. 出不来就看 heartbeat 卡在哪个 native:先确认 `crit-bind nGetFlags=<expected>` 是否绑上(W-003 oracle),再看
    `nCreateDisplayListCanvas/nFinishRecording/nSetDisplayList` 有没有发布(同属 critical,路线 A 一并解决)。
 
