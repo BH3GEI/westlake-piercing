@@ -14,7 +14,12 @@
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
-| (待铸) | #49/#50/#51 createSubDecor→subDecor→setContentView(app R.layout.main inflate) | todo | big-clean | #43 已通真 WAB 解析;app 自身布局至今从未 inflate,是 #53 前的关键缺口 |
+| **W-003** | #49 WestlakeGenericJni 接线(双 ABI) | **todo(已铸)** | big-clean | 地基:dispatcher 已存在(interpreter.cc:214),接 :769/:2262 两 hook + 重建 ART。为 #51/#53 绑 @CriticalNative 图形 native 铺路 |
+| (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
+| (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
+
+> 路线定案见 `evidence/W-001/2026-07-11-road-to-first-frame-plan.md`。**下一动作 = 字体 bootstrap 冒烟探针**(唯一真变数,
+> 决定 #51 工作量;可先于 W-003 用 normal-JNI 字体 native 探,不必等 #49)。
 
 ## 工厂队列 (factory) — 弱模型舰队
 
