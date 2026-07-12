@@ -227,3 +227,45 @@ First arm64 boot image bearing the M2-patched framework (§C/§G/etc. guards). B
     boot-framework.vdex=44.8MB (M2 repack stored dexes uncompressed → full dex carried in vdex; not an error).
   Reproducible: jars10p + run10p.sh + dex2oat_final all on device; framework.patched.jar re-derivable from M2 recipe.
   REAL GATE (untested): M7 load — does deployed 5ce libart accept art v118 (M0 pairing) and reach app-child systemMain.
+
+================================================================================
+M7 first-load VERIFY — real patched-framework arm64 boot image LOADS (2026-07-12, 5ce)
+================================================================================
+The M3 real boot image (out10p, framework.patched a369ebae, art118) was loaded by the DEPLOYED
+5ce libart (substrate/art/libwestlake_art.so) — M0 pairing PROVEN, non-destructive, umount-clean.
+  Evidence (5ce, read-only): /data/local/tmp/m7-fcp2-stdout.txt (success + systemMain stack),
+    /data/local/tmp/m7-fcp-stdout.txt (try1 no-jar fail proof), shared probe log tail.
+  Decisive log lines (main-loop independently re-grepped, observed):
+    [IMG] Loaded .../boot-framework.art at 0x714cf000 (size=0x217efd0 = ~35MB real framework)
+    [IMG] MaybeRelocateSpaces: actual=0x70000000 compiled=0x70000000 diff=0
+    [IMG] Fixed 363554 method entry points across 10 image spaces
+    bad-marker count = 0 (no "was 114"/version mismatch/imageless fallback/rc=-1)
+  Reached: image load → framework native register (startReg rc=0) → ActivityThread.systemMain()
+    called + deep-executed into REAL ThreadedRenderer/Resources/AssetManager (real AOSP line#s).
+  NEXT blocker (observed, exact throw site): AssetManager.createSystemAssetsInZygoteLocked
+    (AssetManager.java:284) → NullPointerException: charset ; reached via BOTH
+    Typeface.getSystemFontMapSharedMemory→getSystemFontMap→getSystemDefaultTypeface (font-map
+    bootstrap — couples to task#6 Typeface/Minikin work) AND AssetManager.getSystem().
+    NOT framework-load failure, NOT §C/§G (those are app-child handleBindApplication).
+  Architecture note: ThreadedRenderer.initForSystemProcess is systemMain(system_server)-ONLY;
+    real Material Catalog runs ActivityThread.main() as app-child, bypassing it. But
+    createSystemAssetsInZygoteLocked / Resources.getSystem() are shared → framework-res.apk
+    wiring is a real prerequisite (→ M7b). systemMain itself need NOT complete.
+  Deploy method (reproducible, no flash): private mount ns + overlayfs mounts jars10p onto the
+    burned-in dex-location /system/android/framework/ (exit → vanishes; global ns verified clean).
+    vdex-only dexes insufficient (ART opens the jar at image-component validation).
+  Route-B probe (env-gated copy, repo probe UNMODIFIED): compiler:/tmp/m7src.patched.c,
+    product 5ce:/data/local/tmp/libwestlake_embedded_art_dlopen_probe.m7.so (sha256 4ee0fcdb…).
+    Delta vs repo probe = 2 env-gated appends: WESTLAKE_BROUTE_BCP=1 (-Xbootclasspath = M3's 10
+    /system/android/framework/*.jar) + WESTLAKE_BROUTE_IMAGE_DIR (-Ximage:<dir>/boot.art, ISA-expanded).
+
+================================================================================
+M5 WMS-client link libs — pulled from 5ce /system/lib64 (2026-07-12)
+================================================================================
+Client-side link inputs for the arm64 oh_window_manager_client (M5). Pulled read-only from board
+5ce, staged to compiler:~/b-route-stage/m5-libs/ (also mac:/tmp/m5-libs/). NOT committed (device blobs).
+  libwm.z.so                   sha256 4d79d815…  2729672B  <- /system/lib64/libwm.z.so           (client WindowManagerProxy)
+  libwmutil.z.so               sha256 3e2f0173…   456048B  <- /system/lib64/platformsdk/libwmutil.z.so           (WindowProperty + Marshalling)
+  librender_service_client.z.so sha256 6b9fd4f7… 3180520B  <- /system/lib64/platformsdk/librender_service_client.z.so  (RSSurfaceNode/RSTransaction)
+  Note: libwms.z.so (server, WindowManagerService/Stub) is NOT a client link input — kept only for
+    understanding the server-side parcel un-marshalling (TRANS_ID_CREATE_WINDOW). See B-ROUTE-PLAN risk#2.
