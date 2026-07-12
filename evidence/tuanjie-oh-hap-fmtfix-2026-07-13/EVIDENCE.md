@@ -59,3 +59,30 @@ effect). Actual driver: the engine requests an inverted portrait at runtime via
 default-orientation setting. Proper fix is the game's Unity PlayerSettings (Default Orientation →
 Portrait) for the real-game build, or ArkTS `.abc` surgery on `WindowUtils.setOrientation`
 (heavier; low value for this throwaway min_mono demo). Does not block rendering.
+
+## UPDATE 2026-07-13 — 180° flip RESOLVED in-house (board-verified upright)
+
+The "Known remaining" 180° inversion above is now FIXED, entirely in-house, and verified on
+the 5ce panel.
+
+Confirmed driver: the engine requests inverted portrait at runtime through the ArkTS layer —
+the `WindowUtils.ScreenOrientation` map in `ets/modules.abc` sends the engine's
+`kPortraitUpsideDown` to OH `window.Orientation.PORTRAIT_INVERTED`, then
+`setPreferredOrientation(PORTRAIT_INVERTED)` inverts the whole display. It is NOT native, NOT
+boot.config, NOT the ability's static `orientation` attribute.
+
+Fix = one-operand Ark bytecode (.abc) patch. In `modules.abc` the map's PORTRAIT_INVERTED value
+is a string-id operand (LE `54 59 01 00` = string offset 0x15954), occurring EXACTLY ONCE (file
+offset 0x1b70). Rewrite it to the PORTRAIT string-id (LE `4a 59 01 00` = 0x1594a) and recompute
+the panda-file adler32 (header @ bytes 8..12, computed over data[12:]): 0x1126e861 → 0x53aae857.
+`kPortraitUpsideDown` now maps to `PORTRAIT` → upright. Tool: `patch_abc.py` (patches in place,
+asserts the pre-patch adler, and refuses via an `n==1` guard if the abc layout differs).
+
+Pipeline: unpack → `patch_abc.py ets/modules.abc` → (fmt-shim inject as before) → repack →
+page-align 4096 → resign for 5ce. Combined build:
+`~/Downloads/tuanjie-ohmin-upright-5ce.hap` sha256 `448f3c5ec517a06f6081c4e1a83bfb7664fd213827d99abea8e1aea673eaded1`.
+
+Board-verified: installed on 5ce, `snapshot_display` → `panel-game-rendered-upright.jpeg` —
+status bar at top, nav bar at bottom, 「鸿蒙游戏 / 点击/触摸小球得分 / Tap the spheres! /
+Score:0 Taps:0」 upright, magenta GL viewport below. Both defects (black screen + 180° flip) are
+now fixed in-house; nothing colleague-gated for this demo.

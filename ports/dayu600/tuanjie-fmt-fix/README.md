@@ -40,3 +40,12 @@ hdc -t 5ce shell aa start -a TuanjiePlayerAbility -b com.tuanjie.ohmin
 Note: a 3rd hook (`GetDefaultDisplayRotation` → 0) was tried for the 180° orientation but the
 board already reports rotation 0 — orientation is a Unity-PlayerSettings/ArkTS matter, not this
 shim's concern. See EVIDENCE.md "Known remaining".
+
+## Orientation (180° flip) — also fixed in-house
+`patch_abc.py <modules.abc>` flips the min_mono demo's baked inverted portrait: it rewrites the
+single `WindowUtils.ScreenOrientation` map operand PORTRAIT_INVERTED → PORTRAIT
+(string-id 0x15954 → 0x1594a) and recomputes the .abc adler32, with an `n==1` safety guard.
+Apply it to `ets/modules.abc` between `app_unpacking_tool` and `app_packing_tool` (i.e. drop the
+patched abc into `U/ets/` before repack). The real game won't need it — set Unity PlayerSettings
+Default Orientation → Portrait. Board-verified upright:
+`evidence/tuanjie-oh-hap-fmtfix-2026-07-13/panel-game-rendered-upright.jpeg`.
