@@ -68,10 +68,42 @@ bytes). Removed all my footprint (wl-m9-opus-run.sh, stdout, backup dir) and rep
 /data/local/tmp/westlake-dayu600 -> wl-color-codex. codex's lane art/apks/probes and canonical
 sources were never modified.
 
-BOTTOM LINE
------------
-"按照B彻底完成App上屏" (M9) remains NOT done. But the gap is now concrete, not abstract: the
-real-Android-APK render->display-0-OHNativeWindow->swap path WORKS; the only thing between that
-and a photographable panel frame is a SIGBUS in real Canvas.drawPath inside codex's triangleApk
-hold-frame stage. That single ART/drawPath crash is the current M9-visible wall, and it is
-codex's live single-writer lane.
+CORRECTION (added after discovering codex's committed panel evidence)
+--------------------------------------------------------------------
+The "M9-VISIBLE IS NOT ACHIEVED / SIGBUS is the wall" framing above OVER-STATED the blocker.
+codex's working-tree carries evidence/W-004/triangle-apk-panel-2026-07-12/ with ACTUAL PANEL
+PHOTOS of the real Android triangle-apk successfully on the 5ce panel:
+    panel-triangle-red-up.jpeg            (22:43) solid red equilateral triangle, ffff0000
+    panel-triangle-yellow-angle90.jpeg    (22:43) rotated, yellow fill
+    panel-triangle-gouraud-gradient-S10*.jpeg (22:57) per-vertex R/G/B gouraud triangle
+    triangle-result.txt: triangleApk stage, TriangleView from triangle.apk's OWN dex,
+      nativeInit=2, frames angle 30->180 with pixel==fill-colour each frame, changed=yes.
+    oracle/verify/triangle-smoke-5ce.sh gates it: hash-pinned ART+probe-dex+triangle.apk,
+      render marker, colour-advance, per-frame center pixel == app fill colour, integer-angle
+      rotation. APK_SHA b9218768..., single-board guard (5ce only), board-health precheck.
+=> A REAL Android APK's OWN Canvas draw code (drawColor backdrop + filled rotating triangle,
+   gouraud-shaded) is VISIBLY on the physical 5ce panel, provenance-verified, oracle-PASS.
+   This is the same picture as the Route-A OH GLES2 triangle, produced by the real Android
+   View/Canvas/RenderNode/libhwui stack instead of ArkUI+EGL. The render->panel-visible path is
+   DONE, not blocked. The SIGBUS I observed at board-clock 08:56 was a LATER/more-advanced
+   iteration codex was pushing (the "S10" gouraud/higher variant), NOT the achieved baseline.
+
+WHAT REMAINS vs the LITERAL M9 bar (Material Catalog)
+----------------------------------------------------
+The triangle-apk (like colorApk) is driven by INSTANTIATING the app's View directly
+(MainActivity.java: "full Activity lifecycle / ViewRootImpl is a separate wall"). So what is
+proven-visible is the app's OWN RENDER CODE, not the full appspawn-x -> ActivityThread ->
+Activity.onCreate -> setContentView/inflate -> ViewRootImpl.show() -> measure/draw lifecycle,
+and not the specific io.material.catalog app. Distance to the literal M9:
+  1. Full Activity lifecycle + ViewRootImpl.show() window path (M5/#51/#11), replacing direct
+     View instantiation, so an unmodified APK's own onCreate drives the visible frame.
+  2. A complex real app (Material Catalog) inflating a real resource/theme/font layout.
+Both are still open; the render->panel-visible RAIL underneath them is now proven (photos).
+
+BOTTOM LINE (corrected)
+-----------------------
+Route-B has reached: a real Android APK's own Canvas draw code VISIBLE + provenance-verified on
+the 5ce panel (triangle-apk photos, oracle-PASS) — the hardest render->panel-visible half is
+DONE, not "unsolved research". The literal M9 (Material Catalog via full Activity/ViewRootImpl
+lifecycle) is NOT yet done; the remaining distance is the lifecycle/window path + the complex
+app, on top of a now-proven visible rail. codex owns this live single-writer lane.
