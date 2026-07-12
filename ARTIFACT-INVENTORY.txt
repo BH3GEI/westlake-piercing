@@ -123,3 +123,22 @@ Full manifest+sha256: compiler:~/b-route-stage/substrate/PROVENANCE-STOCK-A15.md
 GAP (M2b, NOT stock-sourceable): adapter-mainline-stubs.jar, adapter-runtime-bcp.jar
   (PackageInfoBuilder — origin snapshot has NO source), oh-adapter-framework.jar (OhImeBridge).
   Must be rebuilt/synthesized for A15. Origin runtime was AOSP-14 ART OAT230 — its jars non-reusable for A15.
+
+================================================================================
+B-route same-source arm64 dex2oat (M3t) — built 2026-07-12
+================================================================================
+Same-source pairing w/ deployed v114 arm64 libart CONFIRMED (observed):
+  art source = art-android-15.0.0_r10.tar.gz  ->  ImageHeader::kImageVersion=114 (v114),
+  kOatVersion=247; compiler/optimizing/code_generator_arm64.cc sha256 == compiler's copy.
+Built on MAC via darwin-hosted OHOS clang cross -> aarch64-linux-ohos (reused the 460
+proven v114 libart .o + 25 dex2oat objs). Route A (host x86_64 dex2oat) REJECTED (no host
+scaffolding). Runs NATIVELY on 5ce arm64. NOT committed (large); landed:
+  compiler:~/b-route-stage/dex2oat-arm64/
+  69e725d62003c55c9695f5d4565888e0dfc88814a73e1ab9702832c65787fb2a  dex2oat      (static, 26257144 B, ELF aarch64)
+  548bc03843daa6293f851410efa5852697807d3350460c7ab4f07ab8cee33bc6  dex2oat_dyn  (dyn PIE, 20561912 B, NEEDED libc++_shared.so+libc.so, both on 5ce)
+STATUS: on-device run reaches class-link+clinit+GC+writes boot.vdex (5.8MB for 2-jar BCP),
+then SIGSEGV null-collector call in Heap::CollectGarbageInternal <- CompilerDriver::
+InitializeThreadPools (harness stubbed GC for interpreter-only; AOT compile path needs it).
+Blocker = source/build-config fix, NOT a route blocker. Non-stripped binaries allow
+llvm-symbolizer iteration. DURABILITY: full v114 source + mac build staging in /private/tmp
+(ephemeral); durable provenance = the r10 tarball above.
