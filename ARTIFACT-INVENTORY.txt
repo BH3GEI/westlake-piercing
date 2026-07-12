@@ -142,3 +142,23 @@ InitializeThreadPools (harness stubbed GC for interpreter-only; AOT compile path
 Blocker = source/build-config fix, NOT a route blocker. Non-stripped binaries allow
 llvm-symbolizer iteration. DURABILITY: full v114 source + mac build staging in /private/tmp
 (ephemeral); durable provenance = the r10 tarball above.
+
+================================================================================
+B-route A15 adapter jars (M2b) — built 2026-07-12, complete the 10-jar BCP
+================================================================================
+Rebuilt for A15 (origin snapshot had NO built adapter jars; only 3 committed smali deltas).
+NOT committed (staged compiler:~/b-route-stage/substrate/android/framework/; also
+SHA256SUMS-M2b-adapters.txt there). Build scratch: compiler:~/b-route-stage/adapter-build/.
+  sha256(head)  jar                          size    classes.dex  contents
+  e79b59c8…     adapter-mainline-stubs.jar   16486   54700 B      192 apex-stub classes (dexlib2 ref-analysis of
+                framework.jar's unresolved type refs = mainline apex surface; superset of origin 41834c1f;
+                Connectivity/Bluetooth/Nfc/Wifi FrameworkInitializer.registerServiceWrappers + ConnectivityManager
+                getDefaultProxy()->null per origin contract). FIRST-FRAME LOAD-BEARING.
+  ac67f761…     adapter-runtime-bcp.jar       2099    3796 B      adapter/packagemanager/PackageInfoBuilder
+                (SYNTHESIZED — no source; metaData=new Bundle() per CATALOG §B; signature is an ASSUMPTION, must
+                reconcile w/ real appspawn-x preload caller) + adapter/activity/TransitionOptionsHolder (faithful A14 smali).
+  2f20889f…     oh-adapter-framework.jar      2971    5500 B      adapter/window/OhImeBridge(+$1) (committed smali;
+                nativeShow/HideKeyboard match input_method_bridge.cpp RegisterNatives; IME off first-frame path).
+GAP: adapter/activity/ActivityManagerAdapter + InputMethodManagerAdapter have NO Java source (only native halves in
+  liboh_adapter_bridge.so JNI_OnLoad); first-frame-blocking ONLY if B-route loads origin's prefork bridge (M0 bypasses it).
+DEFERRED: core-oj-fieldfix.jar (A15 libart field-offset skew derivative) — thinker call, M2.
