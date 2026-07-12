@@ -2587,8 +2587,16 @@ public final class Dayu600ApkStageProbe {
                     java.lang.reflect.Field expF  = tvCls.getField("mExpected");
                     // Matches TriangleView.drawCapabilityProbe cases 0..8 (no shader op — a
                     // null-handle gradient fed to a bound draw op SIGSEGVs skia uncatchably).
+                    // drawTextRun (cap case 10) is intentionally OMITTED here: on this substrate the
+                    // nDrawTextRun native SIGSEGVs the RenderThread (no live minikin/font/Typeface path
+                    // to shape glyphs — the arm marshals correctly and reaches the native, but shaping
+                    // crashes). Driving it kills the process before the hold phase, so it is proven
+                    // separately, not in the visual dashboard run. drawBitmap (case 9) stays: it is
+                    // crash-safe (Bitmap.createBitmap returns no handle on this substrate, so the op is
+                    // skipped and simply scores '--').
                     String[] opNames = { "drawRect", "drawCircle", "drawOval", "drawRoundRect",
-                            "drawArc", "drawLine", "drawPath", "drawVertices", "drawPaint" };
+                            "drawArc", "drawLine", "drawPath", "drawVertices", "drawPaint",
+                            "drawBitmap" };
                     for (int m = 0; m < opNames.length; m++) {
                         modeF.setInt(view, m);
                         record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));

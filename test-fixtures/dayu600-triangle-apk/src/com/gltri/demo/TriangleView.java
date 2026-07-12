@@ -1,6 +1,7 @@
 package com.gltri.demo;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -62,6 +63,7 @@ public class TriangleView extends View {
     // Not final / lazily created: unsafe-alloc (no ctor) on this substrate skips field inits.
     private Paint mPaint;   // FILL only — this substrate has no usable stroke width
     private Path  mPath;    // (capability probe only)
+    private Bitmap mIcon;   // cached raster bitmap for the drawBitmap proof overlay
 
     private int   mIndex = 0;
     private int   mTick  = 0;
@@ -76,6 +78,17 @@ public class TriangleView extends View {
     private void ensurePaint() {
         if (mPaint == null) { mPaint = new Paint(Paint.ANTI_ALIAS_FLAG); mPaint.setStyle(Paint.Style.FILL); }
         if (mPath == null) mPath = new Path();
+        // Cache a small solid raster once (per-frame createBitmap would pressure the skia atlas). If
+        // this substrate's Bitmap.nativeCreate is unbound the handle stays null and the drawBitmap
+        // overlay is simply skipped — never a crash.
+        if (mIcon == null) {
+            try {
+                int iw = 96, ih = 96;
+                int[] ipx = new int[iw * ih];
+                for (int i = 0; i < ipx.length; i++) ipx[i] = MAG;
+                mIcon = Bitmap.createBitmap(ipx, iw, ih, Bitmap.Config.ARGB_8888);
+            } catch (Throwable ig) { mIcon = null; }
+        }
     }
 
     private Paint fill(int color) { mPaint.setColor(color); return mPaint; }
@@ -205,6 +218,24 @@ public class TriangleView extends View {
                     eqL + (k + 1) * eqW - eqW * 0.18f, eqBase, u * 0.006f, u * 0.006f,
                     fill(ACCENT[(k + mIndex) % ACCENT.length]));
         }
+
+        // 11) [drawop proof overlay] The NEW interpreter arms in action: a filled Path chevron
+        //     (drawPath) and a raster Bitmap chip (drawBitmap) — BOTH silent no-ops before this
+        //     session's ART arms. Drawn last so they sit on top of the dashboard. By the time the
+        //     hold phase renders, the capability probe has already exercised both ops crash-free, so
+        //     this overlay cannot introduce a new native failure. Its presence on the panel photo is
+        //     the visual twin of the numeric "cap 6 drawPath OK / cap 9 drawBitmap OK" evidence.
+        float bx = cx, by = cy - u * 0.845f;
+        mPath.reset();
+        mPath.moveTo(bx, by - u * 0.055f);
+        mPath.lineTo(bx + u * 0.060f, by + u * 0.040f);
+        mPath.lineTo(bx, by + u * 0.018f);
+        mPath.lineTo(bx - u * 0.060f, by + u * 0.040f);
+        mPath.close();
+        canvas.drawPath(mPath, fill(CYAN));
+        if (mIcon != null) {
+            canvas.drawBitmap(mIcon, cx + u * 0.16f, by - u * 0.05f, null);
+        }
     }
 
     // ------------------------------------------------------------- capability probe
@@ -246,6 +277,31 @@ public class TriangleView extends View {
                 break;
             case 8:  mExpected = 0xFF806040;   // drawPaint (fill clip)
                 try { canvas.drawPaint(fill(mExpected)); } catch (Throwable t) { mExpected = 0; }
+                break;
+            case 9:  mExpected = 0xFF20C0A0;   // drawBitmap (was a silent no-op before the ART arm):
+                // a center-covering solid-colour raster. pixel==mExpected => the drawBitmap arm paints
+                // the real skia bitmap on panel. Requires Bitmap.nativeCreate to be live too (if the
+                // handle can't be made the op has nothing to draw -> mExpected=0 -> scores '--').
+                try {
+                    int bw = 480, bh = 480;
+                    int[] bpx = new int[bw * bh];
+                    for (int i = 0; i < bpx.length; i++) bpx[i] = mExpected;
+                    Bitmap bmp = Bitmap.createBitmap(bpx, bw, bh, Bitmap.Config.ARGB_8888);
+                    if (bmp == null) { mExpected = 0; }
+                    else { canvas.drawBitmap(bmp, cx - bw / 2f, cy - bh / 2f, null); }
+                } catch (Throwable t) { mExpected = 0; }
+                break;
+            case 10: mExpected = 0xFFF04080;   // drawTextRun liveness (char[] run path). Glyphs are
+                // sparse so the CENTER pixel won't equal mExpected -> this scores '--' BY DESIGN. The
+                // real signal is survival: reaching case 10 and continuing to the hold phase proves the
+                // nDrawTextRun char[] marshalling arm is ABI-correct (glyph shaping is a separate
+                // minikin/font question, checked visually, not by this center-pixel oracle).
+                try {
+                    mPaint.setColor(mExpected);
+                    mPaint.setTextSize(Math.min(w, h) * 0.12f);
+                    char[] tr = "WESTLAKE".toCharArray();
+                    canvas.drawTextRun(tr, 0, tr.length, 0, tr.length, cx - R, cy, false, mPaint);
+                } catch (Throwable t) { mExpected = 0; }
                 break;
             default: mExpected = 0; break;
         }

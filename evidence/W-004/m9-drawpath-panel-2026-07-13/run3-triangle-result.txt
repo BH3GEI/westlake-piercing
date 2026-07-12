@@ -1,0 +1,14 @@
+triangleApk stage
+01 TriangleView loaded from /data/local/tmp/wl-mcat-w004/apks/triangle.apk
+02 renderNodePtr=545567345312
+03 nativeInit=2
+cap 0 drawRect expected=ff008080 pixel=ff008080 OK
+cap 1 drawCircle expected=ffe01050 pixel=ff0b0e1a --
+cap 2 drawOval expected=ff10e050 pixel=ff10e050 OK
+cap 3 drawRoundRect expected=ff3050ff pixel=ff3050ff OK
+cap 4 drawArc expected=ffffc020 pixel=ff0b0e1a --
+cap 5 drawLine expected=ff00e0e0 pixel=ff06777d --
+cap 6 drawPath expected=ffe0e040 pixel=ffe0e040 OK
+cap 7 drawVertices expected=ffffffff pixel=ff0b0e1a --
+cap 8 drawPaint expected=ff806040 pixel=ff806040 OK
+cap 9 drawBitmap expected=00000000 pixel=ff0b0e1a --

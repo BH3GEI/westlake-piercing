@@ -1,0 +1,52 @@
+### run3 egl-interposer digest — panel-bound EGL surface pre-swap center pixel (5ce, 2026-07-12T17:10:35Z)
+### each 'center_argb' is the actual pixel pushed to the panel surface at eglSwapBuffers; the cap-probe
+### sets ONE op center-covering in a known color, so center_argb==mExpected => that op paints on panel.
+
+--- cap-probe phase (grep: cap N verdict interleaved with its swap) ---
+triangleApk stage
+01 TriangleView loaded from /data/local/tmp/wl-mcat-w004/apks/triangle.apk
+02 renderNodePtr=545567345312
+03 nativeInit=2
+cap 0 drawRect expected=ff008080 pixel=ff008080 OK
+cap 1 drawCircle expected=ffe01050 pixel=ff0b0e1a --
+cap 2 drawOval expected=ff10e050 pixel=ff10e050 OK
+cap 3 drawRoundRect expected=ff3050ff pixel=ff3050ff OK
+cap 4 drawArc expected=ffffc020 pixel=ff0b0e1a --
+cap 5 drawLine expected=ff00e0e0 pixel=ff06777d --
+cap 6 drawPath expected=ffe0e040 pixel=ffe0e040 OK
+cap 7 drawVertices expected=ffffffff pixel=ff0b0e1a --
+cap 8 drawPaint expected=ff806040 pixel=ff806040 OK
+cap 9 drawBitmap expected=00000000 pixel=ff0b0e1a --
+
+--- egl swaps during cap-probe (center_argb per op) ---
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff008080 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff0b0e1a -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff10e050 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff3050ff -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff0b0e1a -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff06777d -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xffe0e040 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff0b0e1a -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff806040 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xff0b0e1a -> plain eglSwapBuffers ret=1 eglErr=0x3000
+[egl-interposer] eglSwapBuffersWithDamageKHR surf=0x7f13c1eae0 n_rects=1 center_argb=0xffff3b30 -> plain eglSwapBuffers ret=1 eglErr=0x3000
+
+--- animated hold phase: center_argb cycles the app dashboard palette (live on-panel) ---
+   6 center_argb=0xffff3b30
+   8 center_argb=0xff34c759
+   8 center_argb=0xff3a8cff
+   8 center_argb=0xffffcc00
+   8 center_argb=0xffff3b30
+   8 center_argb=0xff34c759
+   3 center_argb=0xff3a8cff
+
+--- crash tail (userspace ArtMethod dispatch SIGBUS during hold; board unaffected) ---
+[OHBridge] SIGBUS caught! fault_addr=0x2daf000000000c
+[OHBridge]   pc=0x7f2851dd44  lr=0x7f281e4d1c  x16=0x7f28923bb8
+[OHBridge] ArtMethod@0x7f28923bb8: access=0x7f dex_idx=127 data=0x7f281cd79c entry=0x7f283d3b08
+[OHBridge] ArtMethod alt offsets: [32]=0x7f283d6670 [40]=0x7faa2d270c
+Signal 11 
+--
+[OHBridge] SIGBUS caught! fault_addr=0x2daf000000000c
+[OHBridge]   pc=0x7f3149dd44  lr=0x7f31164d1c  x16=0x7f318a3bb8
+RC=139 (process exited after rendering the hold; board uptime kept climbing)
