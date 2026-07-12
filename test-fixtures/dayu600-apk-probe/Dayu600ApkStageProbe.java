@@ -1066,6 +1066,35 @@ public final class Dayu600ApkStageProbe {
      * visible even if a later op crashes before the summary is flushed. No String '+' anywhere on the
      * risky path (dual-String board ArrayStores); values go through StringBuilder.append (proven safe).
      */
+    // ── W-003 #49 harness: critical-native binding self-test.
+    // Grafted from worker/color-smoke-5ce during main consolidation 2026-07-12 (self-contained;
+    // deps earlyWriteStack/writeText/public Paint already present). Dispatched via WESTLAKE_STAGE/
+    // WESTLAKE_SUBSTAGE=critbind49. Proves Paint.setFlags/getFlags round-trips (the @CriticalNative
+    // publish path fixed by local-build-adapters/art-latest/patches; see oracle/verify/atom-49.sh).
+    private static void runCritBind49() {
+        StringBuilder out = new StringBuilder();
+        out.append("crit-bind stage\n");
+        try {
+            android.graphics.Paint paint = new android.graphics.Paint();
+            int expected = android.graphics.Paint.ANTI_ALIAS_FLAG
+                    | android.graphics.Paint.DITHER_FLAG;
+            paint.setFlags(expected);
+            int got = paint.getFlags();
+            long t0 = System.nanoTime();
+            long t1 = System.nanoTime();
+            boolean valueOk = got == expected;
+            boolean normalOk = t1 >= t0 && t0 != 0L;
+            out.append("crit-bind nGetFlags=").append(String.valueOf(got));
+            out.append(" expected=").append(String.valueOf(expected));
+            out.append(valueOk ? " ok" : " fail");
+            out.append(normalOk ? " normal=ok\n" : " normal=fail\n");
+        } catch (Throwable t) {
+            out.append("crit-bind FAIL ").append(t.getClass().getName()).append('\n');
+            earlyWriteStack("/data/local/tmp/critbind49-error.txt", t);
+        }
+        try { writeText("/data/local/tmp/critbind49-result.txt", out.toString()); } catch (Throwable ig) {}
+    }
+
     private static void runFontSmoke() {
         StringBuilder res = new StringBuilder();
         android.graphics.Paint p = null;
@@ -3390,6 +3419,11 @@ public final class Dayu600ApkStageProbe {
         // FIRST (before the theme oracle / targetClassLoader) so Paint/Typeface stay untouched.
         String subStage = null;
         try { subStage = System.getenv("WESTLAKE_SUBSTAGE"); } catch (Throwable ig) {}
+        if ("critbind49".equals(stageNorm) || "critbind49".equals(subStage)) {
+            runCritBind49();
+            finishOrExit(0);
+            return;
+        }
         if ("fontsmoke".equals(stageNorm) || "fontsmoke".equals(subStage)) {
             runFontSmoke();
             finishOrExit(0);

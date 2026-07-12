@@ -1,0 +1,20 @@
+# W-003 / atom-49 failure · 2026-07-12 · 5583f5be
+
+## Observed
+
+- ART on board: ff2e6e15e89ac292fff7517fc80d597ecbb7b939e349ca5f4318ce035923f7ae.
+- Probe dex on board and local: ee9954c2ea0b057ef34f5ceb67670daa4d8f2845d3293846007ce96e30a70532.
+- First run used current clean-branch sidecar/compiler rebuild a311b0ad…; second run restored the prior #51 sidecar 20206332…. Both failed identically.
+- oracle/verify/atom-49.sh 5583f5be00000000000000000323012c returned FAIL with run_rc=0, but the Java marker was:
+
+  crit-bind FAIL java.lang.UnsatisfiedLinkError
+
+  No implementation found for void android.graphics.Paint.nSetFlags(long, int).
+
+- The failure is at Paint.<init> → Paint.setFlags → nSetFlags, before nGetFlags; no value marker was emitted.
+- The board framework dex is version 040 and disassembles Paint.nSetFlags(JI)V and Paint.nGetFlags(J)I with @CriticalNative.
+- #51's earlier inflate=ok evidence is a separate stage and does not prove Paint binding or color rendering.
+
+## Verdict
+
+FixupStaticTrampolines publication plus GetRegisteredNative lookup is not sufficient on the current board substrate. The graphics registration path still does not expose a callable Paint.nSetFlags implementation to ART (likely registrar ABI/signature or classloader timing; exact cause remains unverified). Do not mark W-003 PASS or update the #43 hash lock from this run.

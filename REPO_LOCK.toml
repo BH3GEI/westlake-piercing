@@ -237,13 +237,15 @@ verified_date = "2026-07-02"
 # 根因实测(2026-07-11):331568b2(foreign WSL /mnt/c/... 混合工具链)不绑
 # SystemProperties.native_get → getSystem()→createSystemAssetsInZygoteLocked NPE → #43 静默 FAIL;
 # 3ea7b69d(单一 OHOS clang 15.0.4,canonical recipe)绑住 native_get → PASS。
+# 2026-07-12 W-003: 0742f1c4 = clean HEAD (A)(B) FixupStaticTrampolines 发布前移
+# + GetRegisteredNative 查表后 relink; atom-49+atom-43 同帧 PASS on 5583。
 [artifacts.w001_substrate_art]
-libwestlake_art_sha256 = "3ea7b69d07fb9591a1ac1420e4444b658d2cb6c83794f41f07d0bd5a858f6d09"
+libwestlake_art_sha256 = "0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e"
 build_recipe = "local-build-adapters/art-latest/Makefile.ohos-arm64"
 substrate_path = "/data/local/tmp/westlake-dayu600-substrate/art/libwestlake_art.so"
-verified_boards = "5583f5be (atom-43 PASS x4), 5ce2dcee (atom-43 PASS)"
-verified_date = "2026-07-11"
-oracle_hashlock = "oracle/verify/atom-43.sh KNOWN_ART_SHA"
+verified_boards = "5583f5be (atom-49 + atom-43 PASS), 5ce2dcee (prior atom-43 PASS @ 3ea7b69d)"
+verified_date = "2026-07-12"
+oracle_hashlock = "oracle/verify/atom-43.sh KNOWN_ART_SHA; oracle/verify/atom-49.sh KNOWN_ART_SHA"
 
 [artifacts.dayu600_color_apk]
 sha256 = "082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4"
@@ -263,15 +265,16 @@ verified_date = "2026-07-10"
 oracle_verdict = "FAIL: static JNI shorty ILL before native entry"
 
 # 越过上面 FAIL checkpoint 后达成 #43 的完整获胜产物集(atom-43.sh 对这三颗做 remote==local hash-lock,
-# 再加 w001_substrate_art 的 ART 库锁 3ea7b69d)。板上四颗全对齐才 PASS。
+# 再加 w001_substrate_art 的 ART 库锁)。板上四颗全对齐才 PASS。
+# 2026-07-12: ART 锁升到 W-003 clean relink 0742f1c4(仍保持 #43 不回退)。
 [artifacts.w001_oracle_pass]
 device_launcher_sha256 = "2ca0052e5efbb156f58225c207dd2a87a52b1bebb3c1b77acd28377c86a9eb2a"
 apk_probe_dex_sha256 = "696dd3cb9f3d9c8739c06d01dc9065be2fd4cddf293e5539855731c7f3e61773"
 embedded_art_probe_sha256 = "a311b0ad63f12f85cd6433acae8a008017c260d23dd2674ce600b80200e0e848"
-substrate_art_sha256 = "3ea7b69d07fb9591a1ac1420e4444b658d2cb6c83794f41f07d0bd5a858f6d09"
-board = "5583f5be00000000000000000323012c (PASS x4); 5ce2dcee (PASS, 已对齐同一产物)"
-verified_date = "2026-07-11"
-oracle_verdict = "PASS: run_rc=0 & nativeSet=ok ck=2 & wabAttr=0x7f040691 & uamHasWab=true"
+substrate_art_sha256 = "0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e"
+board = "5583f5be00000000000000000323012c (atom-49+atom-43 PASS); 5ce2dcee (prior #43 @ 3ea7b69d)"
+verified_date = "2026-07-12"
+oracle_verdict = "PASS: run_rc=0 & nativeSet=ok ck=2 & wabAttr=0x7f040691 & uamHasWab=true (under 0742f1c4 ART)"
 
 [verification]
 primary_status_doc = "state/LEDGER.md"

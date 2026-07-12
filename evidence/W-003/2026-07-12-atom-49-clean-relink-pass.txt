@@ -1,0 +1,52 @@
+# W-003 / #49 — 2026-07-12 — clean HEAD (A)(B) relink PASS
+
+## Scope
+
+Board: `5583f5be00000000000000000323012c` (big-clean only).
+Route: class_linker FixupStaticTrampolines publish-before-return +
+InterpreterJni / quick_trampoline GetRegisteredNative-before-FindCode.
+No ABI flag rewrites. No GenericJni expansion as #49 gate.
+
+## Inputs (host == board)
+
+- ART `$S/art/libwestlake_art.so`:
+  `0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e`
+  (28,462,512 bytes; Makefile.ohos-arm64 link-libart from clean HEAD patches)
+- Probe dex:
+  `d6f3b0fda40706370384377daf0feb9e94088a0a786ffa265be3d9935d6598bd`
+- Sidecar (probes/ + android/lib64/sidecars/):
+  `20206332f23a8793e872509dca508487324b75e0487be3180795bc3cb5c8b8f5`
+- Launcher `/data/local/tmp/run-critbind49.sh`:
+  `169cf2df48567a1aa6544325c62cfbbca476a295e9c17a50e6b8815275068274`
+
+Command:
+
+```sh
+W049_ART_SHA=0742f1c44287aee437f18e4cb305897e48a61948a39154bd9660203b5d87103e \
+  W049_LOG=/tmp/w003-clean-art-atom49.log \
+  oracle/verify/atom-49.sh 5583f5be00000000000000000323012c
+```
+
+## Observed
+
+```text
+crit-bind stage
+crit-bind nGetFlags=5 expected=5 ok normal=ok
+PASS
+PASS
+```
+
+First PASS = #49 value oracle; second PASS = atom-43 regression under the same ART hash.
+
+## Diff points (already on worker/W-003 before this delivery)
+
+- (A) `class_linker.cc::FixupStaticTrampolines`: flush `critical_native_code_with_clinit_check_`
+  via `SetEntryPointFromJni` **before** the Westlake early `return;` that skips AOT/nterp fixup.
+- (B) `interpreter.cc` InterpreterJni + `quick_trampoline_entrypoints.cc`: call
+  `class_linker->GetRegisteredNative` before `FindCodeForNativeMethod`.
+- (C) no `kAccCriticalNative` / `kAccFastNative` rewrite from JNINativeMethod.
+
+## Claim boundary
+
+#49 publication/binding wall cleared on 5583 with the hashes above.
+ColorView panel pixels / #51 inflate / #53 RenderNode drawing are out of scope.

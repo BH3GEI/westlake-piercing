@@ -643,41 +643,29 @@ static void InterpreterJni(Thread* self,
     // nativeCreate) so every shorty handler, whether it reads jni_entry or GetEntryPointFromJni(), calls
     // the real function.
     // [DAYU600] XmlBlock/StringBlock natives are @CriticalNative-trampoline mis-registered -> always
-    // force re-resolution. AssetManager/ApkAssets natives are OHBridge garbage STUBs (pre-registered,
-    // not unresolved), and MOST have no real impl anywhere (RegisterNatives stubs, not dlsym-able) — so
-    // force re-resolution ONLY for the ones our helper actually implements (else FindCodeForNativeMethod
-    // returns null -> ULE, breaking the working stubs). Probe the helper by symbol name.
+    // force re-resolution. AssetManager/ApkAssets stay on RegisterNatives / libandroidfw: the
+    // helper also exports some of their symbols, and force-resolving them makes FindCode miss →
+    // ULE (nativeCreate / nativeLoad / nativeSetApkAssets) and regresses #43.
     bool wl_is_xmlblock =
         method->GetDeclaringClass()->DescriptorEquals("Landroid/content/res/XmlBlock;") ||
         method->GetDeclaringClass()->DescriptorEquals("Landroid/content/res/StringBlock;");
-    if (!wl_is_xmlblock) {
-      const char* wl_acls = nullptr;
-      if (method->GetDeclaringClass()->DescriptorEquals("Landroid/content/res/AssetManager;")) {
-        wl_acls = "AssetManager";
-      } else if (method->GetDeclaringClass()->DescriptorEquals("Landroid/content/res/ApkAssets;")) {
-        wl_acls = "ApkAssets";
-      }
-      if (wl_acls != nullptr) {
-        static void* wl_helper = dlopen(
-            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libwl_xmlblock_create.so",
-            RTLD_NOW | RTLD_GLOBAL);
-        if (wl_helper != nullptr) {
-          std::string wl_sym = "Java_android_content_res_";
-          wl_sym += wl_acls;
-          wl_sym += "_";
-          wl_sym += method->GetName();
-          if (dlsym(wl_helper, wl_sym.c_str()) != nullptr) {
-            wl_is_xmlblock = true;
-          }
-        }
-      }
-    }
     if (jni_entry == dlsym_stub || jni_entry == dlsym_critical_stub || jni_entry == nullptr ||
         wl_is_xmlblock) {
-      // Need to resolve the native method via JNI name lookup
-      JavaVMExt* vm = down_cast<JNIEnvExt*>(self->GetJniEnv())->GetVm();
+      // [W-003 / #49] Mirror upstream artFindNativeMethodRunnable: consult the
+      // pending @CriticalNative registration map BEFORE Java_/dlsym lookup.
+      // libhwui RegisterNatives already handed us the real fnPtr; FindCode cannot
+      // see hidden internal symbols and would throw ULE first.
+      ClassLinker* class_linker = Runtime::Current()->GetClassLinker();
+      const void* native_code = nullptr;
       std::string error_msg;
-      const void* native_code = vm->FindCodeForNativeMethod(method, &error_msg, /*can_suspend=*/true);
+      if (!wl_is_xmlblock) {
+        native_code = class_linker->GetRegisteredNative(self, method);
+      }
+      if (native_code == nullptr) {
+        // Need to resolve the native method via JNI name lookup
+        JavaVMExt* vm = down_cast<JNIEnvExt*>(self->GetJniEnv())->GetVm();
+        native_code = vm->FindCodeForNativeMethod(method, &error_msg, /*can_suspend=*/true);
+      }
       if (native_code == nullptr) {
         // Classloader-scoped lookup missed it — try dlsym'ing the JNI symbol straight from
         // libandroidfw (fixes XmlBlock @CriticalNative parser natives whose symbols exist but aren't
@@ -690,7 +678,7 @@ static void InterpreterJni(Thread* self,
         return;
       }
       // Register the resolved native code
-      Runtime::Current()->GetClassLinker()->RegisterNative(self, method, native_code);
+      class_linker->RegisterNative(self, method, native_code);
       // Use the resolved code directly: for @CriticalNative on a not-yet-visibly-initialized class,
       // RegisterNative stores the code in the ClassLinker map but leaves GetEntryPointFromJni() as
       // the dlsym stub, so re-reading it would spuriously look "stale" and throw.
@@ -1887,8 +1875,9 @@ static void InterpreterJni(Thread* self,
       result->SetJ(fn(soa.Env(), klass.get(), arg0));
     } else if (shorty == "JILIL") {
       // long fn(JNIEnv*, jclass, int, String, int, Object) — ApkAssets.nativeLoad
+      // Use resolved jni_entry (RegisterNatives / libandroidfw), not GetEntryPointFromJni().
       using fntype = jlong(JNIEnv*, jclass, jint, jobject, jint, jobject);
-      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      fntype* const fn = reinterpret_cast<fntype*>(const_cast<void*>(jni_entry));
       ScopedLocalRef<jclass> klass(soa.Env(),
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       ScopedLocalRef<jobject> arg1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));
@@ -2228,8 +2217,9 @@ static void InterpreterJni(Thread* self,
       result->SetJ(fn(soa.Env(), klass.get(), a0.get(), a1.get(), args[2], args[3], args[4], args[5], a5, a6.get()));
     } else if (shorty == "VJLZZ") {
       // void fn(JNIEnv*, jclass, long, Object[], boolean, boolean) — AssetManager.nativeSetApkAssets
+      // Use resolved jni_entry (RegisterNatives / libandroidfw), not GetEntryPointFromJni().
       using fntype = void(JNIEnv*, jclass, jlong, jobjectArray, jboolean, jboolean);
-      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      fntype* const fn = reinterpret_cast<fntype*>(const_cast<void*>(jni_entry));
       ScopedLocalRef<jclass> klass(soa.Env(),
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
@@ -2239,8 +2229,9 @@ static void InterpreterJni(Thread* self,
     } else if (shorty == "J" &&
                method->GetDeclaringClass()->DescriptorEquals("Landroid/content/res/AssetManager;")) {
       // [DAYU600] long fn(JNIEnv*, jclass) — AssetManager.nativeCreate (new AssetManager2()).
+      // Use resolved jni_entry — RegisterNative may leave GetEntryPointFromJni() as the dlsym stub.
       using fntype = jlong(JNIEnv*, jclass);
-      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      fntype* const fn = reinterpret_cast<fntype*>(const_cast<void*>(jni_entry));
       ScopedLocalRef<jclass> klass(soa.Env(),
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       result->SetJ(fn(soa.Env(), klass.get()));
@@ -2321,8 +2312,9 @@ static void InterpreterJni(Thread* self,
       result->SetZ(fn(soa.Env(), klass.get(), arg0));
     } else if (shorty == "JILIL") {
       // [DAYU600] long fn(JNIEnv*, jclass, int, String, int, Object) — ApkAssets.nativeLoad
+      // Prefer resolved jni_entry over GetEntryPointFromJni() (may stay as dlsym stub).
       using fntype = jlong(JNIEnv*, jclass, jint, jstring, jint, jobject);
-      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      fntype* const fn = reinterpret_cast<fntype*>(const_cast<void*>(jni_entry));
       ScopedLocalRef<jclass> klass(soa.Env(),
                                    soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
       ScopedLocalRef<jobject> a1(soa.Env(), soa.AddLocalReference<jobject>(ObjArg(args[1])));

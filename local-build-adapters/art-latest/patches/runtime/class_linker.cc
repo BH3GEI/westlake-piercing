@@ -4037,6 +4037,30 @@ uint32_t ClassLinker::SizeOfClassWithoutEmbeddedTables(const DexFile& dex_file,
 }
 
 void ClassLinker::FixupStaticTrampolines(Thread* self, ObjPtr<mirror::Class> klass) {
+  // [W-003 / #49] Publish stashed @CriticalNative entrypoints BEFORE the Westlake
+  // early-return. RegisterNative parks CriticalNative fnPtrs in
+  // critical_native_code_with_clinit_check_ until the class is visibly initialized;
+  // this flush is what makes Paint/Canvas/RenderNode RegisterNatives stick. Skipping
+  // AOT/nterp trampoline rewrite below remains intentional (stale boot-image addresses).
+  {
+    DCHECK(klass->IsVisiblyInitialized()) << klass->PrettyDescriptor();
+    size_t num_direct_methods = klass->NumDirectMethods();
+    if (num_direct_methods != 0 && !klass->IsProxyClass()) {
+      PointerSize pointer_size = image_pointer_size_;
+      if (std::any_of(klass->GetDirectMethods(pointer_size).begin(),
+                      klass->GetDirectMethods(pointer_size).end(),
+                      [](const ArtMethod& m) { return m.IsCriticalNative(); })) {
+        ArtMethod* first_method = klass->GetDirectMethod(0u, pointer_size);
+        ArtMethod* last_method = klass->GetDirectMethod(num_direct_methods - 1u, pointer_size);
+        MutexLock lock(self, critical_native_code_with_clinit_check_lock_);
+        auto lb = critical_native_code_with_clinit_check_.lower_bound(first_method);
+        while (lb != critical_native_code_with_clinit_check_.end() && lb->first <= last_method) {
+          lb->first->SetEntryPointFromJni(lb->second);
+          lb = critical_native_code_with_clinit_check_.erase(lb);
+        }
+      }
+    }
+  }
   // PATCH: Skip trampoline fixup — interpreter handles all methods.
   // FixupStaticTrampolines sets entry points to AOT code/nterp which have stale addresses.
   return;
