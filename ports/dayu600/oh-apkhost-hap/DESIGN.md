@@ -37,9 +37,13 @@ is purely: **make `setSurface` receive the XComponent window instead of the self
   exported `extern "C"` symbol that the renderer calls through the PLT. The HAP glue `.so` provides its
   **own** `westlake_ohos_make_display_window` that returns `oh_anw_wrap(the XComponent OHNativeWindow)`
   captured in `OnSurfaceCreated`, and is loaded so its definition wins. Renderer core untouched →
-  **zero writes to W-004 files.** Caveat to verify at link/load: the renderer must not have been linked
-  `-Bsymbolic`/hidden-visibility on that symbol (else the internal call binds locally and can't be
-  interposed) — falsifiable in minutes with a link-order probe.
+  **zero writes to W-004 files.**
+  **CONFIRMED interposable (read-only, 2026-07-13):** `aarch64-readelf -d` shows `FLAGS: BIND_NOW`
+  but **no `DF_SYMBOLIC`** (BIND_NOW = eager resolution, NOT self-first search — interposition still
+  follows global symbol order); dyn-sym is `g DF .text` **default visibility**; and the call site
+  disassembles to `bl <westlake_ohos_make_display_window@plt>` — **PLT-routed** through the GOT to the
+  first global definition. Only remaining lever: **load order** (our glue `.so` searched before the
+  renderer), which we control in the HAP. → option (a) is a green light, no W-004 edit needed.
 - **(b) add an entry to the renderer (clean, but EDITS W-004).** Add
   `westlake_upscreen_attach_window(OHNativeWindow*, long rootNodePtr)` that skips `make_display_window`
   and uses the passed window. Cleaner API, but it **modifies `westlake_upscreen_renderer.cpp`** → must
