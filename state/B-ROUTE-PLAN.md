@@ -36,7 +36,7 @@
 | M8 | 5ce 刷机集中步:落 /system 运行时(**RS pid 门补丁已削掉**,仅被迫跨 pid 才需) | device-flash | 5ce | M7 | 冷启起 app-child;**不碰 BMS**(见下);像素三墙#2/#6/#7 全零 /system(源级判定);/system 写只剩运行时 bring-up 本身;备份可回滚 |
 | M9 | 真 Material Catalog UI 上屏 | device-flash | 5ce | M8 | snapshot_display 见真 UI = GOAL |
 
-**关键路径**:M0✅→M2a✅→M2b✅→M2✅→M3t✅→**M3✅(真 patched boot image 设备构建验证)**→**[下一前沿:M7 加载 smoke(M0 配对终判)‖ M5 WMS client]**→M8→M9(M1/M4 与图形并行;M6 早做)。**host-build 侧 M0–M3 全绿**:真 patched framework arm64 boot image 已在 5ce。**M7 首验 = 把 out10p/ 这颗 boot image 载入我方 libart 看是否接受 art118 并到 systemMain**(决定 M0 配对是否成立,决定性)。像素三墙#2/#6/#7 已判绿(零 /system);M5 WMS client(arm64,同进程 create+commit 硬约束)是上屏最后大件。
+**关键路径**:M0✅→M2a✅→M2b✅→M2✅→M3t✅→M3✅→**M0配对✅(部署 libart 接受 art118,observed)**→**[跑中:M7 首验=换真镜像→appspawn-x→真 framework 到 systemMain? ‖ M5 WMS client]**→M8→M9(M1/M4 与图形并行;M6 早做)。**M0 配对证据**:板上现存被 libart 载到过 systemMain 的部署镜像 `westlake-dayu600-substrate/android/framework/arm64/boot.art` = art\n **118**,与我方 M3 镜像同版 → 加载版本墙判绿。启动器=**appspawn-x**(`start-appspawnx-dayu600.sh`,WESTLAKE_ROOT 可重定向)。**host-build 侧 M0–M3 全绿**:真 patched framework arm64 boot image 已在 5ce。**M7 首验 = 把 out10p/ 这颗 boot image 载入我方 libart 看是否接受 art118 并到 systemMain**(决定 M0 配对是否成立,决定性)。像素三墙#2/#6/#7 已判绿(零 /system);M5 WMS client(arm64,同进程 create+commit 硬约束)是上屏最后大件。
 
 ## 复用地图(我方 arm64 已有 vs 要造)
 - **直接复用(已验证)**:arm64 libhwui + 图形桥(egl/skia/rs_abi/anw shim + ohos_display_surface)已在 5ce 证红/绿满屏;v114 arm64 ART 到 systemMain;我方 dex2oat;art-latest/Makefile.ohos-arm64 全量交叉编译 harness;launcher。
