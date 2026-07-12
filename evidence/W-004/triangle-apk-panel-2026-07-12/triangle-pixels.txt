@@ -1,0 +1,2 @@
+pixel0=ffff3b30
+pixel1=ffff3b30

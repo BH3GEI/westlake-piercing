@@ -1,0 +1,23 @@
+triangleApk stage
+01 TriangleView loaded from /data/local/tmp/wl-tri-codex/apks/triangle.apk
+02 renderNodePtr=546266577568
+03 nativeInit=2
+cap 0 drawRect expected=ff008080 pixel=ff008080 OK
+cap 1 drawCircle expected=ffe01050 pixel=ff0b0e1a --
+cap 2 drawOval expected=ff10e050 pixel=ff10e050 OK
+cap 3 drawRoundRect expected=ff3050ff pixel=ff3050ff OK
+cap 4 drawArc expected=ffffc020 pixel=ff0b0e1a --
+cap 5 drawLine expected=ff00e0e0 pixel=ff06777d --
+cap 6 drawPath expected=ffe0e040 pixel=ff0b0e1a --
+cap 7 drawVertices expected=ffffffff pixel=ff0b0e1a --
+cap 8 drawPaint expected=ff806040 pixel=ff806040 OK
+04 frame0 angle=6 color=ffff3b30 pixel=ffff3b30
+04 frame1 angle=12 color=ffff3b30 pixel=ffff3b30
+04 frame2 angle=18 color=ffff3b30 pixel=ffff3b30
+04 frame3 angle=24 color=ffff3b30 pixel=ffff3b30
+04 frame4 angle=30 color=ffff3b30 pixel=ffff3b30
+04 frame5 angle=36 color=ffff3b30 pixel=ffff3b30
+fps=80.92485549132948 frames=70 renderMs=865
+centerProvenance=match provFrames=70/70 distinctFrames=48 colorA=ffff3b30 colorB=ff34c759
+triangle-smoke=ok
+changed=yes

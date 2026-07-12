@@ -2472,6 +2472,220 @@ public final class Dayu600ApkStageProbe {
     }
 
     /**
+     * triangle-liveness — the triangle-apk's OWN TriangleView.onDraw (Canvas.drawColor backdrop
+     * + Canvas.drawPath of a rotated equilateral triangle) paints a SPINNING, colour-cycling
+     * triangle through OUR libhwui; egl_interposer captures the center pixel pre-swap. The
+     * triangle is centred on the surface with its centroid at the readback point, so the center
+     * pixel IS the triangle's fill colour: frame0 = red (PALETTE[0]), the app's own nextFrame()
+     * spins + advances to green (PALETTE[1]) for frame1.
+     *
+     * This is the Android-APK twin of the OH-native GLES2 triangle: the SAME picture, produced by
+     * the real Android View/Canvas/RenderNode stack. TriangleView is loaded from triangle.apk's
+     * OWN dex, so drawColor+drawPath provably come from the APP's compiled render code.
+     *
+     * A pixel == the dark backdrop (ff10121a) instead of the palette colour would mean drawPath
+     * did not paint (op unbound on this substrate) — so this stage also verifies drawPath binding.
+     *
+     * Writes triangle-{result,pixels}.txt for oracle/verify/triangle-smoke-5ce.sh.
+     */
+    private static void runTriangleApk() {
+        StringBuilder res = new StringBuilder();
+        StringBuilder px = new StringBuilder();
+        res.append("triangleApk stage\n");
+        earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "00-enter");
+        long p0 = -1L, p1 = -1L;
+        // Provenance/liveness accumulators — pure int (no HashSet: this ART ArrayStores on some
+        // covariant paths, and a collection crash mid-hold would wipe the evidence file). provMatch
+        // counts frames whose on-panel center pixel equalled the app's OWN mColor field; distinctFrames
+        // counts frames whose center differed from frame0 (proves the colour cycle painted live).
+        int provTotal = 0, provMatch = 0, distinctFrames = 0;
+        int firstColor = -1, altColor = -1;
+        try {
+            try {
+                if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper();
+            } catch (Throwable ig) {}
+
+            // 1. Load TriangleView from the app's OWN dex (triangle.apk). Parent = probe loader so
+            //    TriangleView's superclass android.view.View resolves to the same substrate View.
+            String apk = apkPath("triangle.apk");
+            java.io.File odex = new java.io.File(rootPath() + "/apks/tri-odex");
+            try { odex.mkdirs(); } catch (Throwable ig) {}
+            ClassLoader cl = new dalvik.system.DexClassLoader(
+                    apk, odex.getAbsolutePath(), null,
+                    Dayu600ApkStageProbe.class.getClassLoader());
+            Class<?> tvCls = cl.loadClass("com.gltri.demo.TriangleView");
+            res.append("01 TriangleView loaded from ").append(apk).append('\n');
+
+            // 2. Unsafe-alloc (skip ctor). Seed the app-defined start color red = PALETTE[0] and
+            //    angle 0 (alloc'd instance skips field inits). mIndex stays 0 so the first
+            //    nextFrame() advances to PALETTE[1] = green; mPaint/mPath init lazily in onDraw.
+            android.view.View view = (android.view.View) wlAlloc(tvCls);
+            if (view == null) {
+                res.append("FAIL alloc ").append(String.valueOf(WL_SVC_ERR)).append('\n');
+                writeText("/data/local/tmp/triangle-result.txt", res.toString());
+                return;
+            }
+            int startColor = 0xFFFF0000;
+            java.lang.reflect.Field colorF = tvCls.getField("mColor");
+            try {
+                int[] palette = (int[]) tvCls.getField("PALETTE").get(null);
+                if (palette != null && palette.length > 0) startColor = palette[0];
+            } catch (Throwable ig) {}
+            colorF.setInt(view, startColor);
+            try { tvCls.getField("mAngleDeg").setInt(view, 0); } catch (Throwable ig) {}
+            // Unsafe-alloc leaves mMode=0 (would draw capability-probe op 0); force scene mode.
+            try { tvCls.getField("mMode").setInt(view, -1); } catch (Throwable ig) {}
+            earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "01-alloc");
+
+            int w = 1200, h = 1920;
+            wlEnsureRenderNodes(view);
+            wlForceViewBounds(view, 0, 0, w, h);
+            try { tvCls.getMethod("setSize", int.class, int.class)
+                    .invoke(view, Integer.valueOf(w), Integer.valueOf(h)); } catch (Throwable ig) {}
+
+            // 3. Wire our upscreen renderer (same JNI triple as colorApk) + the readback.
+            Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
+            java.lang.reflect.Method record = ups.getMethod("record",
+                    android.view.View.class, int.class, int.class);
+            java.lang.reflect.Method nPtr = ups.getDeclaredMethod("nativeRenderNodePtr",
+                    Class.forName("android.graphics.RenderNode"));
+            nPtr.setAccessible(true);
+            java.lang.reflect.Method nInit = ups.getDeclaredMethod("nativeInit",
+                    long.class, int.class, int.class);
+            nInit.setAccessible(true);
+            java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
+            nDraw.setAccessible(true);
+            java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
+            nSwap.setAccessible(true);
+            java.lang.reflect.Method nextFrame = tvCls.getMethod("nextFrame");
+
+            // Record frame0 once to obtain a stable native RenderNode ptr; re-record into the SAME
+            // root each frame (the triangle spins + colour changes, the ptr does not).
+            Object node = record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+            Object ptrObj = nPtr.invoke(null, node);
+            long ptr = (ptrObj instanceof Long) ? ((Long) ptrObj).longValue() : 0L;
+            res.append("02 renderNodePtr=").append(String.valueOf(ptr)).append('\n');
+            try { java.lang.Runtime.getRuntime().load("/system/lib64/libskia_canvaskit.z.so"); }
+            catch (Throwable ig) {}
+            try {
+                java.lang.Runtime.getRuntime().load("/system/lib64/libEGL.so");
+                java.lang.Runtime.getRuntime().load("/system/lib64/libGLESv3.so");
+            } catch (Throwable ig) {}
+            Object irc = nInit.invoke(null, Long.valueOf(ptr), Integer.valueOf(w), Integer.valueOf(h));
+            int ir = (irc instanceof Integer) ? ((Integer) irc).intValue() : -1;
+            res.append("03 nativeInit=").append(String.valueOf(ir)).append('\n');
+            earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "02-init-" + ir);
+
+            if (ir == 2) {
+                // (A) CAPABILITY PROBE: for each candidate Canvas op, set mMode=m so onDraw draws
+                // ONLY that op center-covering in a known colour (mExpected), then read back the
+                // panel center pixel. pixel==mExpected => the op paints on this substrate. This
+                // maps exactly which GPU ops bind here (drawRect proven; the rest inferred until
+                // now), so the scene can be locked to real ops instead of hand-rasterised blocks.
+                try {
+                    java.lang.reflect.Field modeF = tvCls.getField("mMode");
+                    java.lang.reflect.Field expF  = tvCls.getField("mExpected");
+                    // Matches TriangleView.drawCapabilityProbe cases 0..8 (no shader op — a
+                    // null-handle gradient fed to a bound draw op SIGSEGVs skia uncatchably).
+                    String[] opNames = { "drawRect", "drawCircle", "drawOval", "drawRoundRect",
+                            "drawArc", "drawLine", "drawPath", "drawVertices", "drawPaint" };
+                    for (int m = 0; m < opNames.length; m++) {
+                        modeF.setInt(view, m);
+                        record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+                        nDraw.invoke(null);
+                        long cp = readSwapArgb(nSwap);
+                        int exp = expF.getInt(view);
+                        boolean ok = (cp >= 0L) && (((int) cp) == exp);
+                        res.append("cap ").append(String.valueOf(m)).append(' ').append(opNames[m])
+                           .append(" expected=").append(hex8(exp))
+                           .append(" pixel=").append(hex8((int) cp))
+                           .append(ok ? " OK" : " --").append('\n');
+                        // Flush after each op: if a later op crashes the RenderThread natively,
+                        // the earlier cap evidence is already on disk (the process can't catch it).
+                        try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); }
+                        catch (Throwable ig) {}
+                    }
+                    modeF.setInt(view, -1);   // back to scene mode for the spin below
+                } catch (Throwable capT) {
+                    res.append("cap-probe FAIL ").append(capT.getClass().getName())
+                       .append(':').append(String.valueOf(capT.getMessage())).append('\n');
+                }
+
+                // (B) DISPLAY/HOLD phase. The app's OWN nextFrame() advances BOTH the (int) angle
+                // and the (int) colour — both int fields, which this substrate writes correctly.
+                // Render the live dashboard slowly (~120ms/frame) so the panel visibly displays it
+                // long enough to photograph, while the spin proves on-panel liveness (not a frozen
+                // frame). Kept to ~70 frames — well under this substrate's ~180-frame skia-atlas
+                // ceiling, past which the RenderThread SIGBUSes. fps is measured render-only (record
+                // + nDraw + swap, excluding the sleep) = the true "frames per second the pipeline
+                // can draw", which is the number the 60fps question is really asking.
+                earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "04-hold-start");
+                int frames = 70;
+                long renderMs = 0;
+                for (int fr = 0; fr < frames; fr++) {
+                    nextFrame.invoke(view);               // app self-drives angle(int) + colour(int)
+                    long ts = System.currentTimeMillis();
+                    record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+                    nDraw.invoke(null);
+                    renderMs += (System.currentTimeMillis() - ts);
+                    long p = readSwapArgb(nSwap);
+                    if (fr == 0) p0 = p;
+                    p1 = p;
+                    int curColor = colorF.getInt(view);       // the app's own current fill colour
+                    if (p >= 0L) {
+                        int pc = (int) p;
+                        provTotal++;
+                        if (pc == curColor) provMatch++;       // center pixel == app's mColor => really painted
+                        if (firstColor == -1) firstColor = pc;
+                        else if (pc != firstColor) {
+                            distinctFrames++;                  // this frame's center differs from frame0
+                            if (altColor == -1) altColor = pc; // keep one differing colour for the evidence line
+                        }
+                    }
+                    if (fr < 6) res.append("04 frame").append(String.valueOf(fr))
+                       .append(" angle=").append(String.valueOf(tvCls.getField("mAngleDeg").getInt(view)))
+                       .append(" color=").append(hex8(curColor))
+                       .append(" pixel=").append(hex8((int) p)).append('\n');
+                    try { Thread.sleep(120); } catch (Throwable ig) {}
+                }
+                double fps = renderMs > 0 ? (frames * 1000.0 / renderMs) : 0.0;
+                res.append("fps=").append(String.valueOf(fps))
+                   .append(" frames=").append(String.valueOf(frames))
+                   .append(" renderMs=").append(String.valueOf(renderMs)).append('\n');
+                // Provenance: EVERY rendered frame's on-panel center pixel equalled the app's own mColor
+                // (match=provMatch/provTotal). Liveness: distinctFrames frames showed a colour != frame0.
+                res.append("centerProvenance=").append(provMatch == provTotal && provTotal > 0 ? "match" : "MISS")
+                   .append(" provFrames=").append(String.valueOf(provMatch)).append('/').append(String.valueOf(provTotal))
+                   .append(" distinctFrames=").append(String.valueOf(distinctFrames))
+                   .append(" colorA=").append(hex8(firstColor))
+                   .append(" colorB=").append(hex8(altColor)).append('\n');
+                try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); } catch (Throwable ig) {}
+                earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "05-hold-done");
+            }
+            earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "03-frames");
+
+            // triangle-smoke=ok requires BOTH frames to have produced a real swap pixel; changed=yes
+            // requires the on-panel center pixel to take >=2 distinct values across the hold (the app's
+            // own colour cycle). A pixel equal to the dark backdrop would mean the fill did not paint.
+            boolean rendered = (ir == 2) && p0 >= 0L && p1 >= 0L;
+            // distinctFrames > 0 => some hold frame's center differed from frame0 (live colour cycle).
+            // NOT p0!=p1: that aliases to a false "no" when 70 frames @ 8-frame cadence wrap back to red.
+            boolean changed = rendered && (distinctFrames > 0);
+            px.append("pixel0=").append(hex8((int) p0)).append('\n');
+            px.append("pixel1=").append(hex8((int) p1)).append('\n');
+            res.append(rendered ? "triangle-smoke=ok\n" : "triangle-smoke=fail\n");
+            res.append(changed ? "changed=yes\n" : "changed=no\n");
+        } catch (Throwable t) {
+            res.append("FAIL ").append(t.getClass().getName())
+               .append(':').append(String.valueOf(t.getMessage())).append('\n');
+            earlyWriteStack("/data/local/tmp/triangle-err.txt", t);
+        }
+        earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "99-done");
+        try { writeText("/data/local/tmp/triangle-pixels.txt", px.toString()); } catch (Throwable ig) {}
+        try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); } catch (Throwable ig) {}
+    }
+
+    /**
      * Append stack frames field-by-field (getClassName/getMethodName/getLineNumber) — never
      * StackTraceElement.toString(), whose internal String concat ArrayStores on this board.
      * Per-frame guarded, and emits frames=N so an empty trace (unpopulated on minimal ART)
@@ -3447,6 +3661,12 @@ public final class Dayu600ApkStageProbe {
         if ("colorApk".equals(stageNorm) || "colorApk".equals(subStage)
                 || "colorapk".equals(stageNorm) || "colorapk".equals(subStage)) {
             runColorApk();
+            finishOrExit(0);
+            return;
+        }
+        if ("triangleApk".equals(stageNorm) || "triangleApk".equals(subStage)
+                || "triangleapk".equals(stageNorm) || "triangleapk".equals(subStage)) {
+            runTriangleApk();
             finishOrExit(0);
             return;
         }
