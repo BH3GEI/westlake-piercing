@@ -1,0 +1,99 @@
+B-route M7c-pre — EXACT NATIVE FIX-POINT LOCALIZED (not a Java DEX rebuild) — 2026-07-12
+==============================================================================
+Follow-up to 2026-07-12-m7b-wall-verify-5ce.txt. That note said the remaining
+M7c-pre work was "wire OHServiceManager.install() before attach(false), rebuild
+the probe DEX." Deeper trace shows that phrasing is HALF RIGHT and would mislead a
+blind DEX-rebuild shot. Recording the precise fix-point so codex's next run lands.
+Read-only host analysis; the board and codex's deployed artifacts were NOT touched.
+
+KEY CORRECTION — the m7b bringup path is NATIVE, not Java-dispatched
+------------------------------------------------------------------
+The m7b bringup runs WESTLAKE_STAGE=frameworkClassProbe (and the plan's M7c-pre
+oracle is activityThreadStepProbe "reach before Looper.loop"). In the native probe
+test-fixtures/dayu600-embedded-art-probe/westlake_embedded_art_dlopen_probe.c,
+run_stage_probe() has DEDICATED C handlers for exactly these stages:
+    appSpawnXInit, frameworkClassProbe, activityThreadMethodProbe,
+    activityThreadMainProbe, activityThreadStepProbe            (lines ~3146-3180)
+Only OTHER stage names fall through to Java Dayu600ApkStageProbe.embeddedMain().
+=> frameworkClassProbe -> call_framework_class_probe()  (native, line 1793)
+=> activityThreadStepProbe -> call_activity_thread_step_probe()  (native, line 1887)
+Neither native handler calls OHServiceManager.install. grep 'OHServiceManager' over
+the whole .c = ZERO hits. The native step-probe DOES call
+android/app/ActivityThread$AndroidOs.install (line 1921-1926) — that is the libcore
+*os* shim, a DIFFERENT class, and does NOT populate ServiceManager.sServiceManager.
+
+Therefore the Java-side install() wiring that already exists
+(Dayu600ApkStageProbe.java line 3717 in the assetProbe stage, line 3883 in
+uptodownProbe) only covers the JAVA stages. It is never reached on the native
+frameworkClassProbe / activityThreadStepProbe path the M7b bringup exercises.
+A Java-DEX-only rebuild will NOT clear the getService2 NPE on that path.
+
+EXACT FIX-POINT (native, call_activity_thread_step_probe)
+---------------------------------------------------------
+The function re-implements ActivityThread.main() step by step via JNI:
+    Trace.traceBegin -> AndroidOs.install(1926) -> CloseGuard.setEnabled(false) ->
+    Environment.initForCurrentUser -> UserHandle.myUserId ->
+    TrustedCertificateStore.setDefaultUserDirectory ->
+    initializeMainlineModules(2028) -> Looper.prepareMainLooper(2045) ->
+    Process.setArgV0(2063) -> new ActivityThread()(2074) ->
+    ActivityThread.attach(false,0)(line 2085)  <== getService2 NPE FIRES HERE
+    (attach -> getSystemContext -> ResourcesManager.getDisplayMetrics ->
+     DisplayManagerGlobal.getInstance -> ServiceManager.getService ->
+     rawGetService -> IServiceManager.getService2 on null sServiceManager;
+     check_activity_step returns rc=92)
+    -> Trace.traceEnd(2104) -> "activityThreadStepProbe reached before Looper.loop"(2111)
+
+FIX: insert an OHServiceManager.install() JNI call BEFORE line 2085 (the attach
+call). Mirror the existing AndroidOs.install block (1916-1930):
+    jclass ohsm = (*env)->FindClass(env, "westlake/adapter/OHServiceManager");
+    // + ExceptionCheck/describe
+    jmethodID ins = (*env)->GetStaticMethodID(env, ohsm, "install", "()V");
+    // + ExceptionCheck/describe
+    (*env)->CallStaticVoidMethod(env, ohsm, ins);
+    rc = check_activity_step(env, "step OHServiceManager.install", <code>);
+    if (rc != 0) return rc;
+Place it after AndroidOs.install (1926) and before ActivityThread.<init>/attach so
+sServiceManager is populated when attach->getSystemContext->getService2 runs.
+(Same insertion is needed in call_framework_class_probe if that path must clear too.)
+NOTE: OHServiceManager.install() also runs repairProxyCache()/repairProxyComparators()
+and (for the uptodown path) benefits from repairMethodHandleStatics() being called
+first — the step-probe already ran AndroidOs.install but NOT the MethodHandle repair;
+if the dynamic-Proxy build inside install() trips a null MethodType static on this
+boot image, add repairMethodHandleStatics() (Java) or its native equiv before install.
+
+JAVA SIDE IS READY (verified, host build)
+-----------------------------------------
+Rebuilt the probe DEX from current committed source on this Mac via
+test-fixtures/dayu600-apk-probe/build-probe-mac.sh (brew openjdk + android-35
+android.jar + r8 d8). BUILD OK, no errors (compiles the untracked framework-shim
+additions PackagePartitions/OverlayConfig cleanly too):
+    out/dayu600-apk-probe.dex  241424 bytes
+    sha256 302cb48236366f73b7e74d6733bf63611af3511726185b03396093d75cb29bb0
+    contains westlake/adapter/OHServiceManager + inner classes
+      ServiceManagerHandler / BinderHandler / LocalInterfaceHandler /
+      IServiceManagerProxy / LocalBinder / LocalInterface  (strings-verified)
+So once the native probe CALLS OHServiceManager.install, the class is present and
+handles getService2 (verified sound in the prior m7b-wall note). The Java build is
+NOT the blocker; the missing call is in the native .c.
+
+NATIVE BUILD PATH (codex's toolchain, documented for completeness)
+------------------------------------------------------------------
+build-dlopen-probe.ps1 cross-compiles the .so under WSL:
+    aarch64-linux-gnu-gcc -fPIC -shared -nostdlib -nodefaultlibs
+      -fno-stack-protector -I<jdk>/include -I<jdk>/include/linux
+      -Wl,--unresolved-symbols=ignore-all
+      -Wl,-soname,libwestlake_embedded_art_dlopen_probe.so
+      -o out/libwestlake_embedded_art_dlopen_probe.so
+      westlake_embedded_art_dlopen_probe.c
+This Mac has neither aarch64-linux-gnu-gcc nor an Android NDK, so the native .so
+CANNOT be cross-compiled or runtime-verified here. The .c mtime is today (17:09) =
+codex is actively editing this exact file. Landing + verifying M7c-pre therefore =
+codex's single-writer W-004 native lane: edit .c (insertion above) -> arm64 build
+-> deploy -> re-run m7b bringup. Per BOARDS.toml (5ce=W-004) and DISPATCH single-
+writer rule, I did NOT edit the .c, did NOT cross-compile a competing snapshot .so
+(would conflict with codex's live edit), and did NOT touch the board.
+
+ORACLE for the fix (unchanged): after the native install() insertion, the step
+probe passes attach(false) without the getService2 NPE and logs
+"activityThreadStepProbe reached before Looper.loop" (rc 0), i.e. M7c-pre PASS.
+M7c-pre is still only the first of M7c-pre -> M7c -> M8 -> M9; not M9 by itself.

@@ -1,0 +1,56 @@
+B-route M7b wall — INDEPENDENT SECOND-OPERATOR VERIFICATION — 2026-07-12 (5ce)
+================================================================================
+Purpose: independently confirm, on the physical board, exactly where the B-route
+full-lifecycle frontier stands (per state/B-ROUTE-PLAN.md M7b→M7c-pre), and whether
+the STAGED M7c-pre fix (OHServiceManager) actually covers the observed failure — so
+codex's next DEX-rebuild run isn't a blind shot. Read-only; nothing on the W-004
+board/probe was modified (lock = W-004 respected; I only read files + logs).
+
+VERIFIED (device, root, read-only):
+- The deployed m7b run (/data/local/tmp/m7b-seed-stdout.txt, 15:12) reaches
+  ActivityThread.systemMain():8545 → attach(boolean,long):8510/8515 and dies at:
+    java.lang.NullPointerException: Attempt to invoke InvokeType(4) method
+      'android.os.Service android.os.IServiceManager.getService2(java.lang.String)'
+      on a null object reference
+      at android.os.ServiceManager.rawGetService(ServiceManager.java:428)
+      at android.os.ServiceManager.getService(ServiceManager.java:175)
+      at android.hardware.display.DisplayManagerGlobal.getInstance(:189)
+      at android.app.ResourcesManager.getDisplayMetrics(...)
+      at android.app.ContextImpl.createSystemContext(:3432)
+      at android.app.ActivityThread.getSystemContext(:3129)
+      at android.app.ActivityThread.attach(:8510)  ← systemMain:8545
+  == EXACTLY the M7b wall the plan predicts: standalone VM has no binder →
+     ServiceManager.sServiceManager is null → getService2 NPE. Confirmed.
+  Note: this A15 framework calls IServiceManager.getService2(String) (not the classic
+  getService) at rawGetService:428 — the M7c-pre stub MUST answer getService2, or the
+  fix would not clear this exact NPE.
+
+FIX-SOUNDNESS REVIEW (host, read-only) of the staged
+  test-fixtures/dayu600-apk-probe/adapter-src/westlake/adapter/OHServiceManager.java:
+- install() reflectively sets ServiceManager.sServiceManager = Proxy over @hide
+  android.os.IServiceManager (ServiceManagerHandler). ✓ addresses the null field.
+- ServiceManagerHandler HANDLES getService2 (case at ~L389→getService2Result), not
+  just getService/checkService/waitForService. ✓ covers the OBSERVED call.
+- getService2Result wraps the local IBinder into the version-specific Service union
+  (isInstance short-circuit → setBinder(IBinder) → 'binder' field → null fallback). ✓
+- Also carries DAYU600 boot-image repairs this ART needs before any dynamic Proxy:
+  repairProxyCache() (proxyClassCache==null) + repairProxyComparators()
+  (ORDER_BY_SIGNATURE* null → TimSort CCE). ✓ these are real prerequisites here.
+- display/package/window/activity/activity_task → two-layer local binder whose
+  queryLocalInterface returns the IInterface stub (so IXxx.Stub.asInterface skips the
+  transaction); other names → null (boot path expected to tolerate). ✓
+VERDICT: the staged OHServiceManager is correct for THIS wall. What remains is purely
+INTEGRATION (not a code bug): wire OHServiceManager.install() before attach(false),
+resolve adapter.window.InputVerifyStage (currently ClassNotFound in the deployed DEX),
+rebuild the probe DEX, re-run m7b bringup. Oracle (per plan): getService("display")/
+getService2 NPE clears ∧ activityThreadStepProbe reaches "before Looper.loop".
+
+LANE NOTE: M7c-pre is codex's active in-progress integration (sources staged, DEX
+rebuild mid-flight). Per BOARDS.toml 5ce lock = W-004 and DISPATCH single-writer rule,
+I did NOT rebuild the probe DEX or mutate the board — that would fork codex's live work.
+This file is an independent verification datapoint for that lane, nothing more.
+
+SCOPE: "按照B彻底完成App上屏" = plan M9 (real Material Catalog Java UI on panel) =
+M7c-pre → M7c (app-child handleBindApplication→onCreate→inflate#51→measure/draw#53→M5
+window→panel) → M8 → M9, with open sub-walls (Typeface/Minikin bootstrap, focus #11).
+Multi-milestone; not reachable in one turn and owned by the W-004/B-route lane.

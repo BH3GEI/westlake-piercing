@@ -1,0 +1,55 @@
+W-004 / color-apk on 5ce — INDEPENDENT LIVE RE-VERIFICATION — 2026-07-12
+================================================================================
+Context: FRONTIER.md said "尚无 color record / R2 / 面板像素 PASS", but
+evidence/W-004/2026-07-12-color-smoke-5ce-PASS.txt claimed ORACLE PASS. Two
+same-dated files contradicted. Per the repo rule "完成只认 oracle 脚本 PASS,
+worker 自述不算数", I re-ran the oracle LIVE on 5ce (boards are on this Mac) to
+resolve it — trusting neither file.
+
+Verified device state before the run:
+- 5ce online; NO live dalvik/probe/art process (idle, not colliding with a worker).
+- Deployed artifacts under /data/local/tmp/wl-color-codex, hashes match the oracle:
+    art/libwestlake_art.so           dc1d5e8239dc6fb4aeff6d70e21c12985fe7f85e6e02efcfa7f433cb3b257a83
+    apks/dayu600-apk-probe.dex       46041825e51aafc0c42d6ee01d0e143e19dcbf15be4f5ae41ece2d68d851457f
+    apks/color-smoke.apk             082559aeb0e87bb9076a707e3f014938e78534fdbb6ec172c3211830275ae9c4 (pinned)
+- Cleared the stale result files first, so the next run had to regenerate them.
+
+Fresh run (sh /data/local/tmp/wl-color-codex/run-colorapk.sh):
+- launcher log: "[hwui-harness/ohos] attached to display, background flushed",
+  OHNativeWindow=0x7f1053f250
+- result: renderNodePtr=546231524016  <<< DIFFERENT from the stale 546151918256
+  -> genuinely fresh VM allocation, not a re-read of an old txt.
+  frame0 color=ffff0000 pixel0=ffff0000 ; frame1 color=ff00ff00 pixel1=ff00ff00
+  color-smoke=ok ; changed=yes
+
+Oracle:
+  HDC=~/.local/bin/hdc \
+  WCOLOR_ART_SHA=dc1d5e82.. WCOLOR_DEX_SHA=46041825.. \
+    bash oracle/verify/color-smoke-5ce.sh 5ce2dcee00000000000000000923012c
+  -> board health OK; ART/dex/color-APK hashes OK; color-smoke=ok; changed=yes;
+     pixel0=ffff0000; pixel1=ff00ff00 -> PASS (exit 0).
+
+VERDICT: the color-smoke-5ce PASS is REAL and reproducible (re-verified fresh by a
+second operator on the physical board). The FRONTIER text was merely stale.
+
+WHAT THIS PROVES (== the FRONTIER user-acceptance line for "APK 自绘变色上屏"):
+- A real Android APK (com.westlake.colorapk.ColorView, loaded at runtime from
+  color-smoke.apk's OWN dex via DexClassLoader) runs its OWN onDraw -> Canvas.drawColor,
+  driving a CHANGING pure color (red 0xFFFF0000 -> green 0xFF00FF00) through Android's
+  RenderNode -> our libhwui(skia) -> OHOS RSSurfaceNode(display 0) on the DAYU600 panel.
+  Pixel read back PRE-SWAP on the RenderThread (egl_interposer), the only point the
+  just-drawn frame is readable. provenance > visual.
+
+HONEST SCOPE (what is NOT yet proven — the fuller Route-B):
+- This drives onDraw surgically via the probe (unsafe-alloc ColorView + direct RenderNode),
+  NOT the normal Android app-launch pipeline (appspawn-x -> ActivityThread -> Activity ->
+  setContentView -> ViewRootImpl -> traversal -> draw).
+- No BMS-installed 3rd-party real-world APK running as a normal app (the colleague's
+  Andor's Trail full-adapter path is stuck at G01 install on their board 5EAB5).
+- snapshot_display cannot capture the 2-frame transient (surface torn down at probe exit;
+  panel reverts to launcher). A persistent on-panel visual would need the probe to hold
+  the last frame + sleep — a small probe change, not done here to stay in-lane.
+
+Isolation respected: only /data/local/tmp (private root + my own result/burst files, since
+cleaned). Baseline substrate /data/local/tmp/westlake-dayu600-substrate NOT touched. No
+wipe/flash/reboot. All boards online after.
