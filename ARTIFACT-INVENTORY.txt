@@ -101,3 +101,25 @@ d5d39a05->6e32a253->c026e80c; libart 2813065e->ba40f173; boot-framework.oat
 device 2026-06-25). A from-scratch build must apply ALL the smali/source patches
 to each component and do ONE final boot regen — do not deploy per-session md5s in
 isolation; regenerate the boot image to match whatever jar set you assemble.
+
+================================================================================
+B-route stock A15 BCP (io.material.catalog target) — staged 2026-07-12 (M2a)
+================================================================================
+Source: AOSP GSI aosp_arm64 codename vic (Android 15 QPR1), single deterministic build.
+  url         dl.google.com/developers/android/vic/images/gsi/aosp_arm64-exp-AP4A.241205.013-12621605-14e72a7c.zip (866 MB)
+  fingerprint Android/aosp_arm64/generic_arm64:15/AP4A.241205.013/12621605:user/release-keys
+  release=15  sdk=35  codename=REL  security_patch=2024-12-05  ART-module=352090000
+Extracted WITHOUT root via debugfs on raw ext4 apex_payload.img. All DEX real classes.dex v039 (dex2oat-ready).
+NOT committed (large); staged on compiler:~/b-route-stage/substrate/android/framework/{,core-jars/}.
+Full manifest+sha256: compiler:~/b-route-stage/substrate/PROVENANCE-STOCK-A15.md
+  sha256(head)  jar                    size       origin-apex
+  c3a06db5…     framework.jar          44043531   /system/framework/         (×5 multidex; STOCK/unpatched = M2 patch input)
+  e3c61656…     core-oj.jar             5853304   com.android.art /javalib/  (needs A15 fieldfix -> core-oj-fieldfix.jar)
+  10b75a7b…     core-libart.jar          603317   com.android.art /javalib/
+  5f3bd06f…     core-icu4j.jar          2989888   com.android.i18n /javalib/
+  dd1fa823…     okhttp.jar               409773   com.android.art /javalib/
+  19a5791d…     bouncycastle.jar         755693   com.android.art /javalib/
+  c8944bf4…     apache-xml.jar          1214184   com.android.art /javalib/
+GAP (M2b, NOT stock-sourceable): adapter-mainline-stubs.jar, adapter-runtime-bcp.jar
+  (PackageInfoBuilder — origin snapshot has NO source), oh-adapter-framework.jar (OhImeBridge).
+  Must be rebuilt/synthesized for A15. Origin runtime was AOSP-14 ART OAT230 — its jars non-reusable for A15.

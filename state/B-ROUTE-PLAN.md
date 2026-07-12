@@ -24,8 +24,9 @@
 |---|---|---|---|---|---|
 | M0 | 锁 base(已定 v114)+ 定 framework 版本 | host | mac | — | 决策落盘 + framework/boot 版本组合定论 |
 | M1 | arm64 libart(复用 v114,按需补 W 系) | host | compiler | M0 | 复用 dc1d5e82;Material 撞墙时再逐个补 |
-| M2a | 外源 stock A15 framework.jar + BCP core(GSI/factory/apex 抽 dex) | host | compiler | M0 | 10 jar DEX 就位 + 版本=API35;libcore 与我方 libart 配对 |
-| M2 | arm64 patched BCP jars(dexlib2 重打 origin 配方) | host | compiler | M2a | 补丁在位(先 §B/§C/§G);10-jar 序 == launcher kBootClasspath |
+| M2a | 外源 stock A15 framework.jar + BCP core | host | compiler | M0 | **7/10 ✅ 已 staged**(GSI vic AP4A.241205.013 sdk35 REL,debugfs 免 root 抽,含真 classes.dex v039;`compiler:~/b-route-stage/substrate/`)。缺 3 origin adapter jar(见 M2b) |
+| M2b | 重建 3 origin adapter jar(A15) | host | compiler | M2a | adapter-mainline-stubs / adapter-runtime-bcp(PackageInfoBuilder 首帧承重)/ oh-adapter-framework(OhImeBridge);origin 快照无成品/PackageInfoBuilder 无源,须为 A15 重建/合成 |
+| M2 | arm64 patched BCP jars(dexlib2 重打 origin 配方) | host | compiler | M2a,M2b | 补丁在位(先 §B/§C/§G);core-oj→加 A15 fieldfix 改名;10-jar 序 == launcher kBootClasspath |
 | M3 | arm64 boot image(我方 dex2oat 同源) | host | compiler | M1,M2 | 段数/ISA/checksum;JARS 序一致 |
 | M4 | arm64 libhwui 重建(折入 hwui_oh_abi_patch §1/§2/§3) | host | compiler | — | 零 undefined;真 app 走 updateDisplayInfo/LOG_ALWAYS_FATAL 不 abort |
 | M5 | arm64 WMS 真窗口(oh_window_manager_client)+ app 启动器 | host | compiler | M4,M2 | WMS CreateWindow/ISession 符号解析;真窗口 Surface 出 |
@@ -43,7 +44,7 @@
 - **后补(非上屏阻塞)**:输入桥(touch/key/IME)、字体 SkFontMgr、连通性(DNS/TLS/CA)、桌面图标 entry.hap。
 
 ## Top risks(活跃)
-1. **【新头号】外源不到 stock A15(API 35)framework.jar + BCP core**:编译机零真 BCP jar;需从 AOSP-15 GSI / Pixel-15 factory / android-15_r10 抽 DEX-bearing jar。core-oj/core-libart 现代 AOSP 在 com.android.art apex 内,须解 apex 抽 dex。此料卡死 M2/M3(关键路径)。已派活。framework skew 本身已定(站 A15,见 M0 拍板),不再是 open risk。
+1. **stock A15 BCP 外源 —— 7/10 已解(observed)**:framework.jar + 6 core(core-oj/core-libart/core-icu4j/okhttp/bouncycastle/apache-xml)已从 GSI vic AP4A.241205.013(sdk35 REL,ART module 352090000)debugfs 免 root 抽出、staged 到 compiler,含真 classes.dex v039,API-35 已证。ART-module vs 我方 android-15_r10 = 同 major 同 VIC,skew 低(inferred 可接受;需更近可换 AP3A/BP1A 同管线重抽)。**残留缺口→ 见新风险#9(adapter jar)**。framework 版本 skew 已定站 A15(M0),非 open risk。
 2. **WMS 真窗口(XL)【M5 scoping 完成;sceneboard 生死问已板级降险】**:调用面全摸清(SAMGR→GetSystemAbility(4606)→iface_cast IWindowManager→CreateWindow/AddWindow);需 4 shim(node-type RSSurfaceNode::Create+PaddedConfig+64/2-arg Create/WindowProperty::SetWindowName/SetBufferAvailableCallback)。**sceneboard 降险(2026-07-12 板级只读 observed,推翻 synthesis 的"几乎必 ON"假设)**:5ce 已装 bundle 仅 launcher/systemui/intelligentscene,**无 com.ohos.sceneboard**(bm dump -a);桌面=经典 `com.ohos.launcher.MainAbility`(aa dump);`hidumper -ls` 注册的是经典 **WindowManagerService**(非 SceneSessionManager)且 `hidumper -s WindowManagerService` 真响应→**经典 legacy WMS 活着**,origin 的 oh_window_manager_client(sceneboard=false)大概率可沿用,无需重写 scene 路。**残留(须真 CreateWindow 读 hilog OH_WindowMgrClient 终判)**:OH6.1 merged 接口下经典 WMS 是否仍内部走 session、以及是否解 legacy TRANS_ID_CREATE_WINDOW。`libwms.z.so` 板上已证存在(1.28MB,120 WindowManagerProxy/WindowProperty 符号,observed);broker 导出待 llvm-readelf 细验。
 3. **libart↔boot 同源配对**:route(b)已自洽(v114 libart + v114 dex2oat boot);framework 版本已定 A15,须用 A15 同源 core-oj/core-libart(见风险#1 取料)。
 4. **~~stock BMS 认不认 APP_ANDROID~~【M6 落定,已拆解】**:(a).apk 已是 arm64 stock 原生白名单(CheckFilePath@0x5384 原生比对,observed)→ 单字节补丁前提**作废**;(b)stock OH6.1 BMS **无 APP_ANDROID/apk/dex/manifest 安装管线**(三 lib strings 零命中,bm dump 只见 bundleType:0,observed)→ **已拍板绕过 BMS,launcher 冷启上屏**(与 M0 appspawn-x 绕过同构;GOAL 不要求 bm install)。M8 不再注册 catalog。
@@ -51,3 +52,4 @@
 6. **【新·真墙】RS pid 门(compositor)**:`librender_service.z.so`(5ce)含 `RSTransactionData::IsCallingPidValid` + 字符串 "COMMIT_TRANSACTION/RecvParcel IsCallingPidValid check failed"(observed)→ uis7885 stock RS 的 pid 门**是活的**,非法 pid 的 APP_WINDOW_NODE 事务会被丢(buffer 到队列却永不合成)。origin 靠 G2.14aq pid_ fallback 绕它,补在 /system RS。→ 冷启的非 ability 进程若 pid 不被认,像素出不来;修它须写 /system RS(M8,须授权)或让进程 pid 被 RS 认。**耦合 #7(token 语义)**。
 7. **【新】冷启 App 无真 bundle/ability token**:绕过 BMS→app 无真实 bundle/ability token;WMS 对非 ability 进程的合成 token 收不收(SetTokenState 真伪)未知,仅板上验;与风险#6 一起定。
 8. **刷机 brick 红线**:init 服务绝不 critical;persist.sys.usb.config 绝不乱设;小板 085cac00 blob 16e08711 绝不碰;刷机集中 M8 且逐项可逆。
+9. **【新】3 origin adapter jar 不可外源(M2b)**:adapter-mainline-stubs / adapter-runtime-bcp(含首帧承重 PackageInfoBuilder 空 Bundle)/ oh-adapter-framework(OhImeBridge);M2a 证 origin 快照**无成品 jar**,仅部分 smali 源(OhImeBridge/TransitionOptionsHolder),**PackageInfoBuilder 连源都缺**。须为 A15 重建/合成。**分层**:mainline-stubs(让 framework.jar 的 mainline 引用可解)+ adapter-runtime-bcp(PackageInfoBuilder)= 首帧承重必需;oh-adapter-framework(IME)非首帧阻塞可先 stub。A15 上 mainline 引用或可用 GSI 真 apex module jar 顶替 origin stub(待评)。
