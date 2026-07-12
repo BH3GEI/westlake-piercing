@@ -36,17 +36,30 @@ BASE="${BASE:-0x70000000}"
 FW="$SUBSTRATE/android/framework"
 CORE="$FW/core-jars"
 
+# core-oj 源:M0 决策——先用 stock A15 core-oj.jar;fieldfix 是**经验需求**,仅当我方 v114
+# libart 加载 stock core-oj 撞字段偏移错位(NoSuchField / verify skew / clinit 崩)时才造
+# core-oj-fieldfix.jar(A15 libart-skew r10 vs ART-module 352090000 的私有字段 derivative)。
+# fieldfix 若已在场则优先;否则默认 stock,不因缺 fieldfix 而 MISSING-jar 挂。
+if [ -f "$CORE/core-oj-fieldfix.jar" ]; then COREOJ_SRC="$CORE/core-oj-fieldfix.jar"; else COREOJ_SRC="$CORE/core-oj.jar"; fi
+echo "  core-oj src: $COREOJ_SRC"
+
+# framework 源:M2 产出 framework.patched.jar(保留原 framework.jar 作对照);patched 在场则优先。
+# ⚠ 未打补丁的 stock framework.jar 首帧会因 §C ConnectivityManager / §G ContentResolver 等 NPE 崩,
+# 证不了真 UI —— M9 必须用 patched 版;此处 fallback 到 stock 仅供工具链冒烟(段数/ISA)用。
+if [ -f "$FW/framework.patched.jar" ]; then FW_SRC="$FW/framework.patched.jar"; else FW_SRC="$FW/framework.jar"; fi
+echo "  framework src: $FW_SRC$([ "$FW_SRC" = "$FW/framework.jar" ] && echo '  (⚠ stock 未打补丁,仅冒烟;M9 须 patched)')"
+
 # canonical 10-jar boot 顺序(prepare-boot-workdir.ps1 jarPlan;dexLocation 用部署期路径)
 #   name(workdir 内文件)              source(substrate 内来源)          dex-location(设备期)
 JARS=(
-  "core-oj.jar|$CORE/core-oj-fieldfix.jar|core-oj.jar"
+  "core-oj.jar|$COREOJ_SRC|core-oj.jar"
   "core-libart.jar|$CORE/core-libart.jar|core-libart.jar"
   "core-icu4j.jar|$CORE/core-icu4j.jar|core-icu4j.jar"
   "okhttp.jar|$CORE/okhttp.jar|okhttp.jar"
   "bouncycastle.jar|$CORE/bouncycastle.jar|bouncycastle.jar"
   "apache-xml.jar|$CORE/apache-xml.jar|apache-xml.jar"
   "adapter-mainline-stubs.jar|$FW/adapter-mainline-stubs.jar|adapter-mainline-stubs.jar"
-  "framework.jar|$FW/framework.jar|framework.jar"
+  "framework.jar|$FW_SRC|framework.jar"
   "adapter-runtime-bcp.jar|$FW/adapter-runtime-bcp.jar|adapter-runtime-bcp.jar"
   "oh-adapter-framework.jar|$FW/oh-adapter-framework.jar|oh-adapter-framework.jar"
 )
