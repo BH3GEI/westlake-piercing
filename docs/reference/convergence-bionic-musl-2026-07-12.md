@@ -47,6 +47,24 @@
 
 ---
 
+## 0.2 引擎入口 RE 定论(2026-07-12 晚,主控本地 ELF .dynsym 亲解)
+
+把 arm64 `libtuanjie.so` 的 `.dynsym` 在本地 python 解出来(888 符号,221 defined FUNC),定死了 T2a 的**接法**:
+
+- **引擎导入 `napi_module_register`(UND),且没有任何可调用的 bring-up 入口**——221 个导出 FUNC 全是 FreeType(`FT_*`/`UNITY_FT_*`)、LZ4、`UnitySendMessage`、`_init/_fini`;没有 `il2cpp_init`/`UnityMain`/`nativeRender`/任何 `*Init`/`*Bootstrap` 导出。
+- **判定(observed→inferred,证据强)**:这颗引擎是一个 **napi/ArkTS 模块**——dlopen 时自注册,只有当 **ArkTS 运行时**加载它、把 `napi_env` + ArkUI 的 XComponent 交给它的 init 时才会启动。
+- **推论 1(接法)**:**纯 native 宿主起不动它**。我原设想的 XComponent interposer(`ports/dayu600/gfx-smoke/xcomponent_interposer.cpp`,已写、已编过 aarch64-ohos object)解决的是"喂窗口"那半,但**喂不了 kick-off**;它因此**降级为 T1/退路工具**(把用 XComponent-NDK 的**外来** native-GL app 顶到 OH 显示,或将来非要在 ArkUI 外嵌 napi_env 时的底座)。
+- **推论 2(最省力 T2a 变清晰)**:**最省力 = 一个薄 OH `.hap`**(ArkUI 一页一个全屏 `<XComponent>` 绑到引擎的 napi 模块 + il2cpp 数据作 rawfile)。**它走 OH 自己的 XComponent→RS→render_service→panel 路**(板上 `render_service`/`composer_host` 实测在跑)。→ **对这颗 OH 原生游戏,我那套上屏桥(egl_interposer/rs_abi_shims/ohos_display_surface)根本不在关键路径**——桥只在把**外来栈**硬顶上 OH 显示时才需要。
+- **推论 3(工具链缺口,已实测)**:compiler 上**没有 ArkTS/.hap 工具链**(`es2abc`/`ark_asm`/`hvigorw`/`ohpm`/`ace`/`node` 全无;`ohos-sdk/` 只有 `native/`,无 `ets/`/`toolchains/`)。→ **我当前造不出 .hap**,这是 T2a 的真阻塞。
+
+**因此 T2a 的最省力路线两条腿并行:**
+1. **头等:向同事要这游戏的完整 OH `.hap`(或团结编辑器的 OH 工程)。** 他能产出 arm64 OH 原生 il2cpp 引擎,就说明他手里有整条团结 OH 构建管线 → **他极可能已经能直接产出这颗游戏的 .hap**。若拿到,**近乎 stock OH 就能把游戏跑上 5ce 面板**(`aa start`),可能**用不到我任何桥**。这是最快一枪。
+2. **并行:我在 compiler 上补 HarmonyOS 全量 SDK / DevEco command-line-tools(es2abc + hvigor + ace)**,先自造一个**平凡 XComponent GL `.hap`**端到端验 5ce 的 stock OH 装+起+渲染路,把游戏 .hap 的路提前证掉、并取得不依赖同事的独立能力。
+
+**净修正(对本文件 §0/§3/§4 的收口)**:同事那条 bionic→musl 翻译线,对**这一款 OH 原生游戏**几乎完全用不上;我那条上屏桥,对**这一款**也几乎用不上。**真正的 T2a 是一件"OH 应用工程 + il2cpp 数据"的活**,主要落在**同事的团结 OH 构建管线**上,我这边的增量是**板级验证 + .hap 工具链 + 装起渲染的落地**。两条硬核资产(他的 bionic 翻译、我的上屏桥)都主要留给 **T1(外来 native-GL)** 与 **T3(Java-UI 安卓 app)** 两条路。
+
+---
+
 ## 附:workflow 综合报告全文(未改,供追溯)
 
 > 说明:下文 §0 把 arm64 缺口写成「Mono 未随包」——已被主控复核修正为「il2cpp 数据缺口」(见本文件顶 §0 修正 1);下文把输入列为共享缺口——T2a 上由 XComponent 覆盖(修正 2)。其余判断与主控复核一致,保留原文作证据链。
