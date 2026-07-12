@@ -269,3 +269,31 @@ Client-side link inputs for the arm64 oh_window_manager_client (M5). Pulled read
   librender_service_client.z.so sha256 6b9fd4f7… 3180520B  <- /system/lib64/platformsdk/librender_service_client.z.so  (RSSurfaceNode/RSTransaction)
   Note: libwms.z.so (server, WindowManagerService/Stub) is NOT a client link input — kept only for
     understanding the server-side parcel un-marshalling (TRANS_ID_CREATE_WINDOW). See B-ROUTE-PLAN risk#2.
+
+================================================================================
+M5 arm64 WMS window client — BUILT + verified (2026-07-12, on compiler)
+================================================================================
+Minimal arm64 OH WMS window client for the Route B pixel path. Cross-compiled with OHOS SDK
+clang 15.0.4. NOT committed (build artifact; source recipe on compiler).
+  Location: compiler:~/b-route-stage/m5-build/liboh_window_manager_client_min.so
+  sha256: 4f88444d1fe3611e0c4dbb48a1662e16444f2dc6090d32e2fc9200eec380df7e  (1,174,440 B, AArch64 ELF64 DYN)
+  Exported entry: westlake_wms_pixel_smoke (the app-child calls this to create window+surface+commit)
+  Pixel path (7 steps, symbols all satisfied by staged libs): SAMGR GetSystemAbilityManager →
+    iface_cast IWindowManager → CreateWindow(APP_MAIN_WINDOW, token=null) → AddWindow →
+    UpdateProperty(fullscreen) + same-process RSSurfaceNode::Create(5-arg config) + GetSurface +
+    RSTransaction::FlushImplicitTransaction.
+  DT_NEEDED: libwm.z.so, libwmutil.z.so, librender_service_client.z.so, libc.so.
+  Toolchain: ~/a2oh-source-audit/ohos-sdk/native/llvm/bin/clang++ (OHOS clang 15.0.4; must pass --target aarch64 explicitly).
+  Build workarounds baked into code (missing-header closure):
+    - pointer_event.h (multimodalinput_input module entirely absent) → ABI stub.
+    - rs_iwindow_animation_finished_callback.h (absent, drags IME/session) → do NOT include full zidl;
+      declare a trimmed local IWindowManager IRemoteBroker (descriptor "OHOS.IWindowManager" + TRANS_IDs
+      copied from window_manager_interface.h) and hand-marshal parcels.
+    - securec.h (absent) → stub; device provides libsec_shared.z.so at runtime.
+  ABI-critical choice: use RSTransaction::FlushImplicitTransaction() (present) NOT
+    RSTransactionProxy::CommitTransaction (ABSENT, lives in librender_service_base — kept off app link line).
+  Verify (workflow, 3 adversarial): undef-closure PASS (0 real blockers), marshalling-ABI PASS (0 mismatch),
+    same-process+gating PASS (0 violations). HARD constraint (RSSurfaceNode::Create + Flush same app-child pid,
+    nodeId from this-process GetRealPid) confirmed baked.
+  UNVERIFIED (integration-time, not a build blocker): on-board load; CreateWindow returns WM_OK; visible
+    surface; non-NEEDED symbols (libsamgr_proxy/libipc_single/libutils/libhilog) resolve via in-process globals.
