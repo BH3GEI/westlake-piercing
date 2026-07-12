@@ -188,3 +188,27 @@ framework.patched.jar over stock.
     (audio), AudioProductStrategy/AudioVolumeGroup (audio), RuntimeInit_KillApplicationHandler.
   Recipe (re-runnable, isolated): compiler:~/b-route-stage/m2-fwpatch/apply-catalog-framework-patches.sh
     (+ env.sh, repack.py; new by-sig patchers PatchCmProxyGuard/PatchContentGuard/PatchS90.java). Java17 + dexlib2 3.0.3 forApi(34).
+
+================================================================================
+B-route same-source arm64 dex2oat (M3t) — COMPLETE 2026-07-12, exit 0 / 30 seg
+================================================================================
+Self-built arm64 dex2oat that runs NATIVELY on 5ce (route B) and produces a valid
+30-segment boot image. NOT committed (outside repo). No git files touched.
+  sha256                                                            binary
+  8646f712e2522913479ed68ae346329a6b4924cd1587a331aeaa04b54df7732c  dex2oat64-broute-20260712 (FINAL, exit 0)
+  7c43901f…(head)                                                   dex2oat64-broute-20260712-prev-noinit-nogc (fixes 1+2, exit 139 but artifacts complete)
+  Location: /Users/yao/b-route-stage/dex2oat-arm64/{binary, MANIFEST.txt}
+  Proof image (30 seg, 138MB, built w/ STOCK placeholder framework): /Users/yao/b-route-stage/dex2oat-arm64/boot-image-30seg-20260712/
+  Durable src trees: /Users/yao/westlake-art-build/durable/{b-route-dex2oat,aosp-art-15}/
+  Patched sources + build scripts: /Users/yao/westlake-art-build/fix/{compiler_driver.cc,image_writer.cc,compile-fix.sh,compile-iw.sh,link-fix3.sh}
+  On-device (5ce): /data/local/tmp/broute/{dex2oat_final,out10/,run10f.sh}
+  3 source patches (all isolated copies; live W-003 worktree never touched):
+    1. compiler_driver.cc — skip InitializeClasses during image-gen (transaction-abort garbage → GC-tail branch-to-null)
+    2. image_writer.cc:522 — drop explicit prune heap->CollectGarbage (same GC-tail null branch)
+    3. compiler_driver.cc GetMemoryUsageString — build string w/o std::ostream (teardown sentry SIGSEGV, fault -0x18)
+  BUILD PARAM (critical): -Xmx1g. 5ce has 7.5GB total but only ~1GB free; ART large-object-space reserves the ENTIRE
+    Xmx as one anon mmap at heap-create → -Xmx2g/3g OOM-fail before any compile. -Xmx1g (or 512m) works.
+  VERSION (corrects prior "v114"): image kImageVersion=118 (image.cc:38 observed), OAT version=247, instruction_set=kArm64.
+    M0 pairing constraint: deployed 5ce libart must accept v118. dex2oat linked from libart's own .o → same source → should
+    be v118; FINAL proof = boot image loads at M7. framework here is stock placeholder (5 clinit tolerated) — real M9 boot
+    image must rebuild with framework.patched.jar (M2, sha256 a369ebae).
