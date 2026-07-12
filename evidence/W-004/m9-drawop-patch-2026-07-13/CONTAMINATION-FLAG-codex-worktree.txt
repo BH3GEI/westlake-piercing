@@ -1,0 +1,47 @@
+⚠ SINGLE-WRITER VIOLATION FLAG — my prior-session ART build landed in codex's LIVE W-003-clean worktree — 2026-07-13
+====================================================================================================================
+Discovered 2026-07-13 ~01:0x (W-004 / Opus). SURFACING HONESTLY per the six-contract single-writer rule. I did NOT
+"clean up" (codex's tree is live+dirty with codex's own uncommitted lifecycle work — reverting/deleting there could
+clobber it). This note is for codex/dispatcher to review and decide.
+
+WHAT HAPPENED
+-------------
+My prior-session "isolated ART clone" was NOT isolated. Both paths I believed were a private copy —
+  /Users/yao/westlake-local-build/art-latest                         (symlink)
+  /Users/yao/.claude/jobs/00aef3d2/tmp/art-iso/art-latest            (symlink)
+— are SYMLINKS to the SAME directory (verified: identical inode 72241818):
+  /Users/yao/Desktop/code/westlake-piercing.worktrees/W-003-clean/local-build-adapters/art-latest
+which is codex's LIVE W-003-clean sibling worktree. So my "edit the copy + incremental build" actually edited and
+built INSIDE codex's worktree. `cp` refusing "are identical (not copied)" is what exposed it, before I made a second
+(drawBitmap/drawText) edit that would have hit codex's tree again.
+
+EXACT RESIDUE NOW SITTING IN codex's W-003-clean worktree (all from MY build, ~00:11–00:12 today)
+------------------------------------------------------------------------------------------------
+1. SOURCE (git-VISIBLE, shows in `git diff`): patches/runtime/interpreter/interpreter.cc is dirty +18/-0 = the
+   nDrawPath VJJJ arm (class-guarded BaseRecordingCanvas|BaseCanvas). interpreter.cc's ENTIRE uncommitted diff is
+   this one arm; codex did not independently modify interpreter.cc. Content is correct+coherent (ground-truth-
+   verified against BaseRecordingCanvas.nDrawPath(JJJ)V @FastNative) and is very likely what codex wants (codex hit
+   triangleApk drawPath SIGBUS, commit e343bfac). No merge-conflict markers; file compiles.
+2. BUILD ARTIFACTS (git-INVISIBLE — build-ohos-arm64/ is .gitignored, so `git status` does NOT show these):
+   - build-ohos-arm64/lib/libart.so                = sha256 a8b482ea…  (MY drawPath build; 28,463,024 B; Jul 13 00:12)
+     NOTE: this DIFFERS from codex baseline edec7332… and codex's last-deployed dc1d5e82…. If a deploy step copies
+     build-ohos-arm64/lib/libart.so to the board, it would ship MY drawPath build, not codex's intended one.
+   - build-ohos-arm64/runtime/interpreter/interpreter.o = recompiled Jul 13 00:12:10 (newer than interpreter.cc's
+     00:11 mtime, so a plain `make` will treat it up-to-date and NOT rebuild — codex would keep my interpreter.o).
+
+RECOMMENDED REVIEW (codex's call — do NOT let another lane mutate this worktree)
+-------------------------------------------------------------------------------
+- If you WANT drawPath (likely): keep the arm; rebuild from your own source of truth to refresh interpreter.o/libart.so
+  under your control, and re-confirm the deployed sha before the next board push (don't accidentally ship a8b482ea…
+  without meaning to).
+- If you do NOT want it yet: `git checkout -- patches/runtime/interpreter/interpreter.cc` reverts ONLY the drawPath
+  arm (interpreter.cc has no other uncommitted change) and `rm build-ohos-arm64/lib/libart.so build-ohos-arm64/
+  runtime/interpreter/interpreter.o` clears my artifacts so your next build is clean. (Your View/ViewGroup/
+  LayoutInflater/Typeface/probe uncommitted work is in OTHER files and is untouched by any of this.)
+
+PREVENTION (my side)
+--------------------
+I will treat /Users/yao/westlake-local-build/art-latest and any art-iso path as codex's live tree (read-only advisor
+only) from now on, and verify a real distinct inode before ever editing a supposed "copy". The drawBitmap/drawText
+arms I prepared this session are delivered as a REVIEW SPEC in this same directory (drawbitmap-drawtext-arms-SPEC.txt)
+— source only, written into the MAIN checkout's evidence/, NOT built and NOT placed in codex's tree.

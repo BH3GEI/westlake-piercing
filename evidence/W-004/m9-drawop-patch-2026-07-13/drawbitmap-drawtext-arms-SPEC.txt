@@ -1,0 +1,89 @@
+M9 leg (c) next two draw-op arms — drawBitmap + drawText — REVIEW SPEC (source only, unbuilt) — 2026-07-13 (5ce)
+================================================================================================================
+W-004 / Opus. The Catalog's icons (BitmapDrawable/ImageView) and labels (TextView) are the two remaining no-op
+draw-ops after drawPath. These are the exact arms to add to the interpreter.cc regular-static rail, right after the
+nDrawPath VJJJ arm (same file region, ~line 2482, just before the `} else {` unhandled-static default). Derived by
+the SAME method that produced the adopted drawPath arm — ground truth from substrate framework smali + arg-slot
+indexing confirmed against the working nDrawRoundRect (VJFFFFFFJ, interpreter.cc:2146) arm. NOT built here (I have no
+isolated ART tree — see CONTAMINATION-FLAG-codex-worktree.txt; the only ART tree on this Mac is codex's live one).
+Codex owns interpreter.cc; adopt + compile in your tree as you did drawPath.
+
+GROUND TRUTH (substrate smali, scratchpad-shared/agent-h/H-fw-decoded/smali/android/graphics/BaseCanvas.smali +
+BaseRecordingCanvas.smali):
+  nDrawBitmap(JJFFJIII)V           @FastNative   — canvas, bitmapHandle, left, top, paint, 3×density-int
+  nDrawTextRun(J[CIIIIFFZJJ)V      @FastNative   — canvas, char[] text, start, count, ctxStart, ctxCount, x, y,
+                                                    isRtl, paint, typeface   (char[] variant)
+Shorty mapping (ART collapses every reference — object OR array — to 'L'):
+  nDrawBitmap(JJFFJIII)V     -> shorty "VJJFFJIII"      (no reference args; all primitives)
+  nDrawTextRun(J[CIIIIFFZJJ)V-> shorty "VJLIIIIFFZJJ"   (the [C char[] becomes L)
+Arg-slot indexing (confirmed vs drawRoundRect VJFFFFFFJ @2146 and drawPath VJJJ @2464): long/double = 2 vreg slots,
+float/int/boolean = 1 slot, object/array reference = 1 slot. Marshal a reference with the rail's existing idiom
+soa.AddLocalReference<jXxx>(ObjArg(args[N])) (see the array args at interpreter.cc:1210-1212). @FastNative statics
+here use the NORMAL JNIEnv*/jclass ABI via GetEntryPointFromJni(), exactly like the drawRoundRect/drawPath arms.
+
+------------------------------------------------------------------------------------------------ ARM 1: drawBitmap
+    } else if (shorty == "VJJFFJIII" &&
+               (method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseRecordingCanvas;") ||
+                method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseCanvas;"))) {
+      // [DAYU600][drawop] BaseRecordingCanvas/BaseCanvas.nDrawBitmap(long canvas, long bitmapHandle, float left,
+      //   float top, long paintOrZero, int canvasDensity, int screenDensity, int bitmapDensity) — VJJFFJIII
+      //   (@FastNative). The left/top BitmapDrawable path = ImageView icons / raster PNGs. Regular-static rail,
+      //   NORMAL ABI via GetEntryPointFromJni() like nDrawRoundRect. Class-guarded so a bare shorty can't hijack an
+      //   unrelated static native whose entry may be a dlsym stub. End-to-end also needs a valid bitmap handle
+      //   (nativeCreate/decode) live on device — board-verify.
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jfloat, jfloat, jlong, jint, jint, jint);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      fn(soa.Env(), klass.get(),
+         *reinterpret_cast<jlong*>(&args[0]),    // canvas       (slots 0,1)
+         *reinterpret_cast<jlong*>(&args[2]),    // bitmapHandle (slots 2,3)
+         *reinterpret_cast<jfloat*>(&args[4]),   // left         (slot 4)
+         *reinterpret_cast<jfloat*>(&args[5]),   // top          (slot 5)
+         *reinterpret_cast<jlong*>(&args[6]),    // paintOrZero  (slots 6,7)
+         static_cast<jint>(args[8]),             // canvasDensity
+         static_cast<jint>(args[9]),             // screenDensity
+         static_cast<jint>(args[10]));           // bitmapDensity
+
+-------------------------------------------------------------------------------------------------- ARM 2: drawText
+    } else if (shorty == "VJLIIIIFFZJJ" &&
+               strcmp(method->GetName(), "nDrawTextRun") == 0 &&
+               (method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseRecordingCanvas;") ||
+                method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseCanvas;"))) {
+      // [DAYU600][drawop] BaseRecordingCanvas/BaseCanvas.nDrawTextRun(long canvas, char[] text, int start,
+      //   int count, int contextStart, int contextCount, float x, float y, boolean isRtl, long paint,
+      //   long typeface) — shorty VJLIIIIFFZJJ ([C -> L) (@FastNative). The char[] TextView/label path.
+      //   Name-guarded (VJLIIIIFFZJJ is a broad object-carrying shorty) AND class-guarded. Marshals the char[]
+      //   reference via the rail's ObjArg idiom. NOTE: this arm only stops the interpreter no-op so the native is
+      //   invoked; glyphs still require the device minikin/font + Typeface path to be live (codex's Typeface.java
+      //   work) — board-verify text actually shapes, not just that the call lands.
+      using fntype = void(JNIEnv*, jclass, jlong, jcharArray, jint, jint, jint, jint, jfloat, jfloat,
+                          jboolean, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      ScopedLocalRef<jcharArray> text(soa.Env(),
+          soa.AddLocalReference<jcharArray>(ObjArg(args[2])));
+      fn(soa.Env(), klass.get(),
+         *reinterpret_cast<jlong*>(&args[0]),    // canvas       (slots 0,1)
+         text.get(),                             // char[] text  (slot 2, reference)
+         static_cast<jint>(args[3]),             // start
+         static_cast<jint>(args[4]),             // count
+         static_cast<jint>(args[5]),             // contextStart
+         static_cast<jint>(args[6]),             // contextCount
+         *reinterpret_cast<jfloat*>(&args[7]),   // x
+         *reinterpret_cast<jfloat*>(&args[8]),   // y
+         static_cast<jboolean>(args[9]),         // isRtl
+         *reinterpret_cast<jlong*>(&args[10]),   // paint        (slots 10,11)
+         *reinterpret_cast<jlong*>(&args[12]));  // typeface     (slots 12,13)
+
+CROSS-CHECKS DONE
+-----------------
+- AOSP-11 BaseCanvas.java signatures match the smali arg order exactly (start/count/contextStart/contextCount for
+  text; canvasDensity/screenDensity/bitmapDensity for bitmap).
+- Slot arithmetic re-derived independently for both (drawBitmap: 2+2+1+1+2+1+1+1 = 11 slots; drawText: 2+1+1+1+1+1+
+  1+1+1+2+2 = 14 slots) and matches the args[] indices above.
+- ObjArg(args[N]) is the same helper the rail uses for array/object args (interpreter.cc:1171,1187,1210-1212); soa is
+  in scope in this rail (drawPath/drawRoundRect arms use it).
+REMAINING RISK (why codex must compile+board-verify, not blind-adopt): the char[] marshalling and the font/minikin
+shaping for drawText are the two things a source review can't fully prove — both are board-observable only.
