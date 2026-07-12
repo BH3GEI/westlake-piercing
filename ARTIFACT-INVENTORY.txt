@@ -212,3 +212,18 @@ Self-built arm64 dex2oat that runs NATIVELY on 5ce (route B) and produces a vali
     M0 pairing constraint: deployed 5ce libart must accept v118. dex2oat linked from libart's own .o → same source → should
     be v118; FINAL proof = boot image loads at M7. framework here is stock placeholder (5 clinit tolerated) — real M9 boot
     image must rebuild with framework.patched.jar (M2, sha256 a369ebae).
+
+================================================================================
+B-route REAL patched-framework arm64 boot image (M3) — built 2026-07-12 on 5ce
+================================================================================
+First arm64 boot image bearing the M2-patched framework (§C/§G/etc. guards). Built on-device
+(5ce) with dex2oat64-broute-20260712 (M3t, sha256 8646f712) over the 10-jar BCP whose framework.jar
+= framework.patched.jar (M2, sha256 a369ebae, verified on-device). NOT committed (device-ephemeral).
+  Location: 5ce:/data/local/tmp/broute/out10p/ (30 segments: boot{,-<jar>}.{art,oat,vdex})
+  Inputs:   5ce:/data/local/tmp/broute/jars10p/ (= jars10 with framework.jar→patched) + run10p.sh (=run10f.sh, J=jars10p/OUT=out10p)
+  Build param: -Xmx1g (per M3t OOM fix). dex2oat took 35.9s, exit clean, post-fixup 0 invalid entry points.
+  Validation (observed on-device): boot.art/boot-framework.art magic 'art\n' ver 118; boot.oat ELF e_machine 0xb7
+    (EM_AARCH64); embedded OAT header @0x1000 'oat\n' ver 247; 30 segs all non-zero; no fatal write errors.
+    boot-framework.vdex=44.8MB (M2 repack stored dexes uncompressed → full dex carried in vdex; not an error).
+  Reproducible: jars10p + run10p.sh + dex2oat_final all on device; framework.patched.jar re-derivable from M2 recipe.
+  REAL GATE (untested): M7 load — does deployed 5ce libart accept art v118 (M0 pairing) and reach app-child systemMain.
