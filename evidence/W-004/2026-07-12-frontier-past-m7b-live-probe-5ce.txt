@@ -1,0 +1,74 @@
+B-route frontier GROUND TRUTH — isolated live probe on 5ce — 2026-07-12
+==============================================================================
+Supersedes the M7b framing in 2026-07-12-m7b-wall-verify-5ce.txt and
+2026-07-12-m7cpre-native-fixpoint-5ce.txt. I ran an ISOLATED, non-destructive
+activityThreadStepProbe bring-up on 5ce (my own /data/local/tmp/wl-m7cpre dir,
+private mount ns, codex's overlay reused READ-ONLY, my own DEX bind-mounted
+ns-locally, stage=activityThreadStepProbe). The result corrects the stale model:
+the getService2 (M7b) wall is NO LONGER the frontier — codex has already advanced
+past it. My getService2 native patch (below) is therefore SUPERSEDED, not landed.
+
+WHAT THE ISOLATED RUN SHOWED (device, root; codex files untouched)
+------------------------------------------------------------------
+Baseline = codex's CURRENT unmodified .c (mtime 17:09) + codex's CURRENT probe DEX
+(244192 B, contains OHServiceManager + runTriangleApk). The bring-up's context path
+(inputVerify pre-check calling ActivityThread.systemMain().getSystemContext())
+reaches, PAST getService2:
+    systemMain -> ThreadedRenderer.initForSystemProcess -> ActivityManager.isHighEndGfx
+    -> Resources.getSystem -> AssetManager.getSystem -> OverlayConfig.getZygoteInstance
+    -> PackagePartitions...  (getService2 never fires => M7b already handled)
+The CURRENT wall is a CLUSTER of boot-image clinit / static-init gaps (the hand-built
+boot image left these statics null — the same class of defect OHServiceManager's
+repairProxyCache/repairProxyComparators fix, just for other statics):
+  1. java.util.Random null -> Math.random() NPE -> RateLimitingCache.<init>
+     -> android.app.ActivityManager.<clinit>   ["Tolerating clinit failure" — non-fatal]
+  2. java.security.Security providers Map null -> Security.getSpiClass
+     -> MessageDigest.getInstance -> SystemProperties.digestOf
+     -> PackagePartitions.getFingerprint -> PackagePartitions.<clinit>  [non-fatal]
+  3. java.io.File.fs null -> UnixFileSystem.resolve NPE -> File.getCanonicalPath
+     -> PackagePartitions.canonicalize -> OverlayConfig.<init>
+     -> AssetManager.getSystem   [THIS one propagates in the systemMain context path]
+These are the concrete next repairs on the systemMain/getSystemContext path (init the
+DefaultFileSystem/File.fs static, seed a java.util.Random for Math.random, seed the
+Security providers list) — analogous, small, boot-image static repairs.
+
+CODEX IS LIVE ON THIS FRONTIER (concurrent — I stopped)
+-------------------------------------------------------
+The shared marker log (/data/local/tmp/westlake-embedded-art-dlopen-probe.log) tail is
+CODEX's run, not mine: /data/local/tmp/wl-tri-codex paths, stage=uptodownProbe (the
+real-APK path that calls OHServiceManager.install @ probe:3883 then loads the app APK),
+finishing "Dayu600ApkStageProbe.embeddedMainNoExit rc=0" / "embedded vm probe rc=0".
+Shared-log mtime ~08:35 (board uptime clock) vs my run 08:30:46 vs now 08:38 => codex
+ran a real-APK bring-up ~3 min after mine. They own this frontier and are driving the
+real-APK lifecycle (runTriangleApk .java stage + a triangle-apk twin of my OH triangle).
+Per BOARDS.toml 5ce=W-004 + DISPATCH single-writer, I STOPPED board activity, removed
+only my own /data/local/tmp/wl-m7cpre (codex's wl-tri-codex left intact), did NOT run
+my patched .so a second time, and never touched codex's canonical .c or their board dirs.
+
+INFRA WIN — the native probe .so builds on THIS MAC (no WSL/Windows)
+-------------------------------------------------------------------
+build-dlopen-probe.ps1 uses WSL aarch64-linux-gnu-gcc. It is NOT needed: brew
+`musl-cross` ships aarch64-linux-musl-gcc, and the build is freestanding, so:
+    /opt/homebrew/opt/musl-cross/bin/aarch64-linux-musl-gcc \
+      -fPIC -shared -nostdlib -nodefaultlibs -fno-stack-protector \
+      -I/opt/homebrew/opt/openjdk/include \
+      -Wl,--unresolved-symbols=ignore-all \
+      -Wl,-soname,libwestlake_embedded_art_dlopen_probe.so \
+      -o out.so westlake_embedded_art_dlopen_probe.c
+Reproduced codex's baseline .so as a valid "ELF 64-bit LSB shared object, ARM aarch64"
+(142152 B) with correct JNI exports (Java_android_os_Trace_native*, westlake_*). musl is
+actually apt here (OH is musl-based) and -nostdlib links no libc. This removes the
+Windows/WSL dependency for every future .so rebuild — do it natively on the Mac.
+
+MY getService2 PATCH (built, validated, SUPERSEDED — kept as host artifact only)
+--------------------------------------------------------------------------------
+Inserted OHServiceManager.install() JNI call before attach @ .c:2085 (mirroring
+AndroidOs.install), on a COPY of the .c (canonical never touched); cross-compiled with
+the recipe above to a valid aarch64 ELF with the install strings present. Not deployed
+to codex's canonical .c: getService2 is already handled on the current setup, so the
+patch is moot. The insertion-point analysis stays valid if any getService2-hitting path
+resurfaces. Host artifacts under the job tmp; nothing committed to the probe sources.
+
+SCOPE: M9 (real Material Catalog Java UI on panel) still not demonstrated. It is codex's
+ACTIVE, LIVE lane, now a few boot-image static repairs (File.fs/Random/Security) past
+getService2 on the real-APK (uptodownProbe) path — not an M7b/M7c-pre problem anymore.
