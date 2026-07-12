@@ -297,3 +297,29 @@ clang 15.0.4. NOT committed (build artifact; source recipe on compiler).
     nodeId from this-process GetRealPid) confirmed baked.
   UNVERIFIED (integration-time, not a build blocker): on-board load; CreateWindow returns WM_OK; visible
     surface; non-NEEDED symbols (libsamgr_proxy/libipc_single/libutils/libhilog) resolve via in-process globals.
+
+================================================================================
+W-004 triangle-apk rich AA dashboard on 5ce panel - verified 2026-07-12 (task #18)
+================================================================================
+Generated binaries are .gitignore-excluded (test-fixtures/dayu600-*/out/, art *.so).
+Committed source + oracle + evidence in 5ffe1ab7. Staged on the 5ce ISOLATED lane
+/data/local/tmp/wl-tri-codex only (baseline substrate untouched). A real Android APK's
+OWN Canvas fill ops -> app RenderNode -> libhwui(skia) -> OHOS RSSurfaceNode(display0)
+-> panel; OH only composites. Pixels read back pre-swap via egl_interposer.
+
+ad404dbce5a8ce58936f6f45253f11bac11b88e1bd86e7adfb9e09deeaffb261  triangle.apk (dex container)
+eea33dcb2cf995bc5b6a648329004d899c62db3a06221dc3384cfc7f339b8d98  dayu600-apk-probe.dex (adds runTriangleApk)
+dc1d5e8239dc6fb4aeff6d70e21c12985fe7f85e6e02efcfa7f433cb3b257a83  libwestlake_art.so
+8f723ae0ffa72c0df61b773112ddd14d9ab0bf5bf4df3f93dd69425b96b45f05  TriangleView.java (source)
+
+Source: test-fixtures/dayu600-triangle-apk/ (build-triangle-apk.sh); driver runTriangleApk in
+test-fixtures/dayu600-apk-probe/Dayu600ApkStageProbe.java. Oracle: oracle/verify/triangle-smoke-5ce.sh
+(env WTRI_ART_SHA / WTRI_DEX_SHA; APK sha pinned) -> PASS. Device: oracle/device/run-triangle-5ce.sh.
+
+Verified 2026-07-12 (result: evidence/W-004/triangle-apk-panel-2026-07-12/triangle-result.txt):
+- fps=75.6~80.9 (70 frames, renderMs 865~926) > 60fps
+- centerProvenance=match provFrames=70/70 (every held frame's panel centre pixel == app mColor)
+- changed=yes distinctFrames=48 (int-field colour cycle painted live: colorA=ffff3b30 colorB=ff34c759)
+- cap-map (in-app probe, read back off panel): drawRect/drawOval/drawRoundRect/drawPaint=OK;
+  drawCircle/drawArc/drawPath/drawVertices=-- (dispatch-bound by JNI shorty-arm; scene is fill-only)
+- ladder=99-done (70-frame hold under the ~180-frame skia-atlas SIGBUS ceiling)
