@@ -1,0 +1,115 @@
+M9 leg delivered: real io.material.catalog APK built off-board + substrate draw-op verdict — 2026-07-12 (5ce)
+===========================================================================================================
+Independent W-004 work (Opus). Goal: advance the LITERAL M9 bar — real io.material.catalog
+(Material Catalog) Java-drawn UI VISIBLE on the 5ce panel via the full appspawn-x ->
+ActivityThread -> Activity.onCreate -> inflate -> ViewRootImpl.show() -> measure/draw lifecycle —
+by doing the maximum portion that is MOVABLE OFF THE BOARD (so it neither collides with codex's
+live single-writer 5ce lane nor risks a second concurrent bring-up, which rebooted the board once
+today; see no-concurrent-5ce-bringup memory). Two concrete results below: (1) the real Material
+Catalog APK is built and staged; (2) a precise, source-verified verdict on whether that app can
+render on THIS substrate at all.
+
+RESULT 1 — the real io.material.catalog APK is BUILT from source, entirely off-board
+-----------------------------------------------------------------------------------
+Built the genuine Material Catalog app (the exact app the M9 bar names), no board involved.
+  source repo : github.com/material-components/material-components-android
+  source commit: ac7e18efeefb331850c561faf9ab8bf81d27ba68 (Material Design Team, 2026-06-16)
+  toolchain   : JetBrains Runtime JDK 21.0.9 (PyCharm's JBR — Gradle 8.13 rejects JDK 25:
+                "Unsupported class file major version 69"; JBR 21 is the in-range JDK on this Mac)
+  gradle      : 8.13 (wrapper, --no-daemon), AGP resource+dex pipeline
+  sdk levels  : compileSdk 35, minSdk 23, targetSdk 33
+  command     : ./gradlew :catalog:assembleDebug   (exit 0)
+  output      : catalog/build/outputs/apk/debug/catalog-debug.apk
+OUTPUT ARTIFACT (verified real):
+  package        : io.material.catalog                        (aapt2 dump packagename)
+  launcher       : io.material.catalog.main.MainActivity      (aapt2 dump badging launchable-activity)
+  size           : 35,800,069 bytes (35.8 MB); 92.8 MB uncompressed; 1704 entries; 21 dex files
+                   (classes.dex .. classes21.dex; main classes.dex 38.8 MB)
+  sha256         : de13aa91d1c186d1fcd67e641bd922fc03a2dc5a929084c3c98fd231173dd37b
+  md5            : 7202ef9fb8aa911da177b2c6945b28b4
+  MainActivity   : Dagger-injected — MainActivity_MembersInjector,
+                   MainActivity_Module_ContributeMainActivity$MainActivitySubcomponent$Factory
+                   (this is the SAME Dagger DI that the old boot-image route needed MATCHED
+                   framework+libart generations for — catalog-newboard-WORKING-2026-06-27 memory.
+                   On the imageless 5ce substrate the same DI must resolve during
+                   Application.onCreate; that is part of the lifecycle wall, not the render wall.)
+STAGED (durable, NOT committed — *.apk is .gitignored, artifacts/ is .gitignored):
+  artifacts/mcat/io.material.catalog-debug.apk
+  (kept out of $CLAUDE_JOB_DIR/tmp so it survives job cleanup; provenance+hash recorded HERE
+   per the repo convention "large rebuildable binaries not committed, record md5+provenance".)
+=> The "specific complex app" leg of M9 is DELIVERED and reproducible off-board. It is ready to be
+   wired into the triangleApk/colorApk lifecycle harness (Dayu600ApkStageProbe) by whoever owns the
+   live 5ce lane; wiring MainActivity through ViewRootImpl.show() is the remaining lifecycle wall.
+
+RESULT 2 — substrate draw-op verdict: the catalog launch frame HOLDS but is EFFECTIVELY BLANK
+--------------------------------------------------------------------------------------------
+Source-level analysis of the catalog's launch screen (io.material.catalog @ ac7e18e) against the
+5ce substrate's documented Canvas-op binding (substrate-canvas-op-shorty-map memory: PAINTS =
+drawRect/drawOval/drawRoundRect/drawLine/drawPaint/drawColor; SILENT NO-OP = drawCircle/drawArc/
+drawPath/drawVertices/drawBitmap/drawText; shader-on-a-*working*-op = SIGSEGV).
+
+Launch path (file:line evidence):
+  - Launcher = MainActivity (catalog/.../AndroidManifest.xml MAIN/LAUNCHER), setContentView
+    R.layout.cat_main_activity = a bare FrameLayout container (MainActivity.java:55).
+  - First fragment = TocFragment (table-of-contents grid), DaggerFragment (TocFragment.java:59).
+    On a clean install getDefaultDemoLanding()="" (FeatureDemoUtils.java:112-115) => NO auto-jump
+    into a demo; the TOC grid IS the first screen.
+  - Theme.Catalog -> Theme.Material3Expressive.DayNight.NoActionBar; windowBackground = solid
+    ?attr/colorSurface (no gradient/bitmap window bg).
+  - TOC grid cells = R.layout.cat_toc_item = plain FrameLayout (NOT MaterialCardView — CORRECTION
+    to an earlier assumption; there are no rounded-rect cards, no card elevation in the launch
+    frame), each with an ImageView icon (raster PNG), a TextView title, and a
+    selectableItemBackground ripple foreground (drawn only on touch).
+
+What the FIRST FRAME actually does on this substrate:
+  RENDERS (supported ops):
+    - full-screen colorSurface background fill (ColorDrawable -> drawRect/drawColor)
+    - cat_toc_grid_top_divider bar (ColorDrawable -> drawRect)
+    - GridDividerDecoration separator lines between cells (plain Paint, no shader -> drawLine)
+    - (STATUS_WIP cells only) a rotated solid-color WIP banner rect (drawRect under a matrix)
+  SILENTLY DISAPPEARS (NO-OP, no crash):
+    - ALL text: logo title, every cell title, WIP text (drawText/drawTextRun)
+    - ALL grid icons (raster PNG BitmapDrawable -> drawBitmap)
+    - toolbar search/settings icons + logo mark (VectorDrawable -> drawPath)
+    - AppBar/Toolbar surface tint (Material3 MaterialShapeDrawable -> drawPath)
+    - elevation shadows (RenderThread outline shadow, not an app Canvas op)
+  HARD-CRASH (SIGSEGV): NONE at first draw. No shader is bound to a working op in the idle launch
+    frame — every shader-capable surface routes through drawPath/drawBitmap, which are NO-OPs, so a
+    shader there is silently dropped, not executed. The only residual crash risk is the
+    touch-triggered ripple, and only IF this runtime's RippleDrawable takes the BitmapShader-mask ->
+    drawRect path; with the default rectangular selectableItemBackground mask it stays on the
+    drawCircle NO-OP path and also does not crash. => interaction-triggered, not first-frame.
+
+VERDICT: On the 5ce imageless substrate the Material Catalog launch frame REACHES A STABLE, HELD
+FRAME (it does NOT SIGSEGV before presenting — correcting the earlier "drawPath/shader SIGBUS is
+the wall" framing, which was about codex's more-advanced gouraud triangle iteration, not the
+catalog). BUT the held frame is effectively EMPTY: a colored rectangle crossed by faint grid
+divider lines, with NO component labels, NO icons, NO logo, NO toolbar chrome. The blocking
+substrate limitation for THIS app is not a crash — it is that drawText, drawBitmap, and drawPath
+(VectorDrawable + MaterialShapeDrawable) are all no-ops, so every semantically meaningful pixel is
+invisible.
+
+HONEST M9 STATUS (three legs)
+-----------------------------
+(a) The specific app (io.material.catalog):        DONE off-board — real APK built, verified,
+                                                    staged, reproducible (Result 1).
+(b) Full Activity/ViewRootImpl.show() lifecycle:   OPEN — board-bound, codex's ACTIVE single-writer
+                                                    5ce lane (replaces direct-View-instantiation
+                                                    used by triangleApk/colorApk; must also resolve
+                                                    the catalog's Dagger DI in Application.onCreate).
+(c) Substrate draw-op support for the catalog:     OPEN — to make the catalog RECOGNIZABLY visible
+                                                    (labels/icons/shaped surfaces), the substrate
+                                                    ART must gain real drawText + drawBitmap +
+                                                    drawPath. This is interpreter.cc / JNI-shorty
+                                                    board-bound ART work (codex's lane). WITHOUT it,
+                                                    the fully-wired catalog would present a stable
+                                                    but blank screen.
+
+BOTTOM LINE: literal-M9 (recognizable Material Catalog UI visibly on the 5ce panel via the full
+lifecycle) is NOT achieved. I delivered the one leg that is movable without the board — the real
+io.material.catalog APK, built/verified/staged/reproducible — and pinned down exactly what the
+other two legs are: (b) the ViewRootImpl.show() lifecycle and (c) drawText/drawBitmap/drawPath in
+the substrate ART. Both are board-bound work on codex's live 5ce single-writer lane; I did not run
+anything on the board (read-only discipline, no concurrent bring-up). The render->panel rail itself
+is already proven (triangle-apk panel photos, oracle-PASS) — a wired catalog WOULD reach a held
+on-screen frame; the gap to "visible Material Catalog" is now precisely (b)+(c), not the rail.
