@@ -1,0 +1,59 @@
+M9 leg (b) sharpened — the DecorView/Paint.nSetFlags gate is board-bound + #49-gated, NOT an off-board arm — 2026-07-13 (5ce)
+============================================================================================================================
+Independent W-004 (Opus), read-only source dive into codex's canonical ART interpreter
+(/Users/yao/westlake-local-build/art-latest/patches/runtime/interpreter/interpreter.cc — read as an
+advisor, NOT edited; single-writer respected). Goal: test the hope that leg (b)'s realistic substitute
+path (real Activity.onCreate -> setContentView/inflate -> DecorView fed into the existing
+ViewRootImpl-BYPASS rail) is gated only by a STALE harness comment / an off-board-fixable interpreter
+arm — the same shape as leg (c)'s drawPath arm, which WAS off-board-buildable. Verdict: it is NOT.
+
+WHAT THE HARNESS SAYS (the hope): Dayu600ApkStageProbe.java:5545-5547 skips setContentView because
+"DecorView.<init> ... calls Paint.nSetFlags native method that SIGBUS crashes on OHOS trampoline";
+:1406-1407 says "<init> touches nSetFlags which is unbound here and throws ULE". Two DIFFERENT failure
+modes (SIGBUS vs catchable ULE) in two comments — a tell that both predate the current dispatch machinery.
+
+GROUND TRUTH (substrate framework smali, scratchpad-shared/agent-h/H-fw-decoded/.../graphics/Paint.smali):
+  Paint.nSetFlags(JI)V  is @CriticalNative, shorty "VJI"  (Paint.smali:770-772).
+
+HOW THE CURRENT INTERPRETER WOULD DISPATCH IT (interpreter.cc, traced line-by-line):
+  1. method->IsCriticalNative() == true -> enters the @CriticalNative block at :704.
+  2. First sub-block :712-714 is gated to XmlBlock/StringBlock/RenderNode ONLY. Paint is none -> skipped.
+  3. isParcelCritical gate :808-813 = Parcel | Canvas | strstr(desc,"android/graphics/") | Surface |
+     RecordingCanvas. desc="Landroid/graphics/Paint;" MATCHES via the "android/graphics/" substring
+     -> isParcelCritical=true -> does NOT goto regular_jni.
+  4. fn = jni_entry (:823). The VJI arm at :847-849 calls  reinterpret_cast<void(*)(jlong,jint)>(fn)(ptr,flags).
+     So there IS a matching shorty arm already — adding one is NOT the fix (unlike drawPath).
+  5. The ONLY question is what jni_entry resolved to, decided earlier at :632-698:
+       jni_entry = GetEntryPointFromJni();  if stub/null -> GetRegisteredNative(:662) ->
+       FindCodeForNativeMethod(:667) -> WlDlsymFrameworkNative(:673) -> else THROW ULE(:677).
+     - GetRegisteredNative returns real code ONLY IF libhwui's RegisterNatives for Paint "stuck" for this
+       @CriticalNative (the exact pointer-publish that is codex's OPEN wall #49 "binding != dispatch").
+     - FindCodeForNativeMethod / WlDlsymFrameworkNative look up a Java_android_graphics_Paint_nSetFlags
+       EXPORTED symbol; nSetFlags is registered via RegisterNatives with an INTERNAL (non-Java_) symbol,
+       so both miss.
+     - If all miss -> ULE (catchable), NOT SIGBUS.
+  6. WlCriticalNoop (the "survivable no-op for unregistered graphics void natives" the comments at :628-630
+     and :822 promise) is DECLARED at :105 but NEVER ASSIGNED anywhere in interpreter.cc (grep: only the
+     decl + two comments). It can only reach jni_entry if something OUTSIDE this file registered it into
+     the ClassLinker native map at graphics-init time. Whether that happened for Paint = again a runtime
+     registration fact, i.e. #49.
+
+CONCLUSION (leg b, sharpened): the DecorView/nSetFlags gate is NOT a stale comment we can ignore, and NOT
+an off-board interpreter-arm add (the VJI arm already exists). Its outcome — real libhwui impl (works) vs
+WlCriticalNoop no-op (survives, DecorView builds blank) vs ULE (catchable, inflation may abort) vs the
+older SIGBUS — is decided by libhwui-RegisterNatives-for-@CriticalNative pointer-publish state, which IS
+codex's open pipeline wall #49 ("binding != dispatch"). It is observable ONLY on the board and sits on
+codex's ACTIVE single-writer 5ce lane. So leg (b)'s realistic-substitute path has the SAME board-bound +
+#49-gated character as leg (c)'s on-panel proof — it is not independently advanceable off-board by me.
+
+NET (all three legs, after this round):
+  (a) app             : DONE off-board (real io.material.catalog APK, sha de13aa91, staged).
+  (b) lifecycle       : literal ViewRootImpl.show() = ARCHITECTURAL wall (no Surface source; needs the
+                        L05.A12 SurfaceFlinger/WMS/BLASTBufferQueue bridge subsystem). Realistic-substitute
+                        (onCreate->DecorView->bypass rail) = board-bound + codex-#49-gated (this note).
+  (c) draw-ops        : drawPath arm code+build DONE off-board (patch + libwestlake_art.so a8b482ea);
+                        on-panel proof board-bound + gated by codex's #49/R2/g214bb.
+Every residual piece is now either (i) board-bound on codex's live lane, or (ii) a deprioritized OS-subsystem
+build (L05.A12) that the user's north star (OH-native Tuanjie thin .hap; Route-B ART recompile off critical
+path) set aside. There is no further literal-M9 move I can make off-board without colliding with codex on the
+board or speculatively building a subsystem I cannot validate. Read-only throughout; nothing run on the board.
