@@ -26,7 +26,7 @@
 | M1 | arm64 libart(复用 v114,按需补 W 系) | host | compiler | M0 | 复用 dc1d5e82;Material 撞墙时再逐个补 |
 | M2a | 外源 stock A15 framework.jar + BCP core | host | compiler | M0 | **7/10 ✅ 已 staged**(GSI vic AP4A.241205.013 sdk35 REL,debugfs 免 root 抽,含真 classes.dex v039;`compiler:~/b-route-stage/substrate/`)。缺 3 origin adapter jar(见 M2b) |
 | M2b | 重建 3 origin adapter jar(A15) | host | compiler | M2a | **✅ 已建齐,10-jar substrate 完整**(`compiler:~/b-route-stage/substrate/`)。mainline-stubs=192 apex stub 类(dexlib2 ref 分析 framework 未解引用,超集 origin);arb=TransitionOptionsHolder(A14 smali 忠实)+PackageInfoBuilder(合成,签名待对齐);ohaf=OhImeBridge。**残留 → 风险#9/#10** |
-| M2 | arm64 patched BCP jars(dexlib2 重打 origin 配方) | host | compiler | M2a,M2b | 补丁在位(先 §B/§C/§G);core-oj→加 A15 fieldfix 改名;10-jar 序 == launcher kBootClasspath |
+| M2 | arm64 patched framework.jar(dexlib2 by-sig 重打 origin 配方) | host | compiler | M2a,M2b | **✅ host 验(dexlib2/baksmali 层)**:`framework.patched.jar`(sha256 a369ebae…,确定性可复跑,stock c3a06db5 原封不动)。首帧承重上:§C ConnectivityManager if-eqz 空守卫(handleBindApplication+updateHttpProxy)、§G ContentResolver register/unregisterContentObserver、SysServiceRegistry **$88→$90**(A15 按 createService 签名重认,唯一)、PendingIntent×4、ShortcutManager、DisplayManagerGlobal、MediaRouter。**关键发现**:ConnectivityManager **不在 stock A15 framework.jar**(在 Connectivity mainline 模块)→ origin 的 `new ConnectivityManager()` graft 既不可行也不必要,if-eqz 守卫已足(app 级需非空 CM 才是 M2b adapter 活)。缓打(M0 撞墙再打):audio(MediaSession/AudioStrategy)、AlarmManager fetcher、RuntimeInit。**真门=M3 dex2oat verify(未测)**。配方沉淀 `compiler:~/b-route-stage/m2-fwpatch/apply-catalog-framework-patches.sh` |
 | M3t | 自建同源 arm64 dex2oat | host+dev | mac→5ce | M1 | **≈90% ✅**:dex2oat/dex2oat_dyn 已建(mac OHOS clang 交叉,复用 v114 460 .o),5ce 原生跑通到写 boot.vdex;**剩 1 blocker=null GC collector**(编译线程池 Heap::CollectGarbageInternal 调空 collector,harness 为解释器-only stub 掉了 GC,须源码/构建配置修)。同源坐实:kImageVersion=114/kOatVersion=247。产物 `compiler:~/b-route-stage/dex2oat-arm64/` |
 | M3 | arm64 boot image(dex2oat 同源 AOT) | host+dev | mac→5ce | M3t,M2 | 段数/ISA/checksum;JARS 序 == launcher。**注**:route B=在 5ce 原生跑 dex2oat(非 host 交叉);M3t GC 修好即可产 30 段 |
 | M4 | arm64 libhwui 重建(折入 hwui_oh_abi_patch §1/§2/§3) | host | compiler | — | 零 undefined;真 app 走 updateDisplayInfo/LOG_ALWAYS_FATAL 不 abort |
@@ -36,7 +36,7 @@
 | M8 | 5ce 刷机集中步:落 /system 运行时(**RS pid 门补丁已削掉**,仅被迫跨 pid 才需) | device-flash | 5ce | M7 | 冷启起 app-child;**不碰 BMS**(见下);像素三墙#2/#6/#7 全零 /system(源级判定);/system 写只剩运行时 bring-up 本身;备份可回滚 |
 | M9 | 真 Material Catalog UI 上屏 | device-flash | 5ce | M8 | snapshot_display 见真 UI = GOAL |
 
-**关键路径**:M0✅→M2a✅→**[M2b · M3t-GC-fix 跑中]**→M2→M3→M5→M7→M8→M9(M1/M4 与图形并行;M6 早做)。当前双前沿=M2b(adapter jar)+ M3t(dex2oat GC 修)。
+**关键路径**:M0✅→M2a✅→M2b✅→**M2✅**→**[M3t dex2oat-GC-fix 跑中]**→M3→M5→M7→M8→M9(M1/M4 与图形并行;M6 早做)。**M2→M3 链只剩 M3t 一个前沿**;M3t 出可用 dex2oat 即可跑 `regen-boot-arm64.sh`(已自动拾取 framework.patched.jar+stock/fieldfix core-oj)出真 30 段 boot image。像素三墙#2/#6/#7 已判绿(零 /system);M5 client 就绪后一次性上板闭合(见 board_experiments)。
 
 ## 复用地图(我方 arm64 已有 vs 要造)
 - **直接复用(已验证)**:arm64 libhwui + 图形桥(egl/skia/rs_abi/anw shim + ohos_display_surface)已在 5ce 证红/绿满屏;v114 arm64 ART 到 systemMain;我方 dex2oat;art-latest/Makefile.ohos-arm64 全量交叉编译 harness;launcher。

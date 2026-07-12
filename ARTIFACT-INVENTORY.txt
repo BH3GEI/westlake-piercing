@@ -162,3 +162,29 @@ SHA256SUMS-M2b-adapters.txt there). Build scratch: compiler:~/b-route-stage/adap
 GAP: adapter/activity/ActivityManagerAdapter + InputMethodManagerAdapter have NO Java source (only native halves in
   liboh_adapter_bridge.so JNI_OnLoad); first-frame-blocking ONLY if B-route loads origin's prefork bridge (M0 bypasses it).
 DEFERRED: core-oj-fieldfix.jar (A15 libart field-offset skew derivative) — thinker call, M2.
+
+================================================================================
+B-route A15 patched framework.jar (M2) — built 2026-07-12, dexlib2 by-signature
+================================================================================
+Stock A15 framework.jar (M2a, GSI vic AP4A) patched with Material-Catalog first-frame
+recipe ported from origin (by method-signature, NOT by A14 line/ordinal). Host-validated
+(dexlib2/baksmali layer); real gate = M3 dex2oat boot-image verify (untested). NOT committed
+(staged compiler:~/b-route-stage/substrate/android/framework/). regen-boot-arm64.sh auto-picks
+framework.patched.jar over stock.
+  sha256                                                            jar
+  a369ebae07f4569763c315c652e925418a66b2611ee791179b7020d680265fd4  framework.patched.jar (deterministic re-run)
+  c3a06db5…(head)                                                   framework.jar (stock, UNTOUCHED — dif control)
+  Applied (first-frame): §C ConnectivityManager if-eqz null-guard @ActivityThread.handleBindApplication
+    + updateHttpProxy; §G ContentResolver register/unregisterContentObserver null-guard (:smfix_reg_ret);
+    SystemServiceRegistry$88→$90 (A15 re-id by createService(ContextImpl)ShortcutManager sig, unique) non-throw
+    fetcher; PendingIntent×4 (getIntentSenderWithFeature null→Stub.asInterface(new Binder())); ShortcutManager
+    get{Dynamic,Manifest}Shortcuts→new ArrayList; DisplayManagerGlobal.getWifiDisplayStatus→new WifiDisplayStatus;
+    MediaRouter$Static.<init> IMediaRouterService null→proxy.
+  KEY FINDING: android.net.ConnectivityManager is NOT defined in stock A15 framework.jar (Connectivity mainline
+    module/APEX; only referenced). origin's ContextImpl `new ConnectivityManager()` graft = non-viable+unnecessary;
+    if-eqz guard fully covers the §C handleBindApplication null-CM NPE. App-level non-null CM would be an M2b task.
+  A14→A15 anon-class map: SystemServiceRegistry$88→$90 (ShortcutManager fetcher); AlarmManager $7→$7 (deferred).
+  Deferred (M0 撞墙再打): unified-connectivity ContextImpl graft (non-viable), AlarmManager fetcher, MediaSession
+    (audio), AudioProductStrategy/AudioVolumeGroup (audio), RuntimeInit_KillApplicationHandler.
+  Recipe (re-runnable, isolated): compiler:~/b-route-stage/m2-fwpatch/apply-catalog-framework-patches.sh
+    (+ env.sh, repack.py; new by-sig patchers PatchCmProxyGuard/PatchContentGuard/PatchS90.java). Java17 + dexlib2 3.0.3 forApi(34).
