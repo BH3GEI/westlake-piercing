@@ -1,0 +1,77 @@
+B-route M9 (real Android APK VISIBLE on panel) — EXACT CURRENT BLOCKER + concurrency incident — 2026-07-12 (5ce)
+================================================================================================================
+Independent on-board investigation (Opus, W-004). Goal: find the exact remaining gap between
+"#53 render slice" and the acceptance bar "real Android APK Java-drawn UI VISIBLE on the 5ce
+panel" (M9). Result: the render->display path WORKS; the one stage that HOLDS a frame for
+panel photography CRASHES. Also records a concurrency->reboot incident and its cleanup.
+
+WHAT WORKS — real-Android-APK render reaches an ON-SCREEN OHNativeWindow (reproduced)
+------------------------------------------------------------------------------------
+I ran an ISOLATED colorApk bring-up (my own harness, reading codex's read-only color-lane
+artifacts; WESTLAKE_STAGE=uptodownProbe WESTLAKE_SUBSTAGE=colorApk). It reproduced codex's
+result byte-for-byte in behaviour:
+  - com.westlake.colorapk.ColorView (loaded from color-smoke.apk's OWN dex = real 3rd-party
+    Android code) -> Canvas.drawColor -> RenderNode -> our libhwui -> eglSwapBuffers.
+  - stdout: "[egl-interposer] ... center_argb=0xffff0000 -> plain eglSwapBuffers ret=1" then
+    "... 0xff00ff00 -> plain eglSwapBuffers ret=1"   => the REAL swap succeeds (ret=1), not
+    just a pre-swap capture. Followed by:
+        [hwui-harness/ohos] attached to display, background flushed
+        [hwui-harness/ohos] OHNativeWindow=0x7f046af250
+    i.e. the frames are swapped through an OHNativeWindow ATTACHED TO DISPLAY 0 — the SAME
+    rail my Route-A OH-native GLES2 triangle .hap uses to reach the panel.
+  - color-smoke=ok, changed=yes (red frame0 -> green frame1 liveness).
+=> The Route-B "real Android APK -> libhwui -> display-0 OHNativeWindow -> swap" pipeline is
+   sound. The render slice is NOT the blocker.
+
+WHAT BLOCKS M9-VISIBLE — the panel-photography stage (triangleApk) CRASHES with SIGBUS
+--------------------------------------------------------------------------------------
+colorApk renders only 2 frames then returns (does NOT hold the surface — my run exited clean),
+so its frame can't be photographed as-is. The stage BUILT to leave a frame on-screen is
+runTriangleApk() (Dayu600ApkStageProbe.java:2491, WESTLAKE_SUBSTAGE=triangleApk): comment
+:2575 "The final frame is left on-screen (NO_EXIT) so the panel can be photographed." It is
+the Android-APK twin of the OH GLES2 triangle — real com.gltri.demo.TriangleView.onDraw
+(Canvas.drawColor backdrop + Canvas.drawPath spinning triangle) through our libhwui, 30-frame
+spin, final frame held.
+
+codex ran run-triangle.sh live at 08:56:22 (board clock) and it CRASHED:
+    tri-ladder.txt = "02-init-2"      (reached nativeInit=2, entered the frame loop, died there)
+    triangle-stdout.txt tail:
+        [OHBridge] SIGBUS caught! fault_addr=0x2daf000000000c
+        [OHBridge]   pc=0x7f1695d97c  lr=0x7f16624954  x16=0x7f16d63798
+        [OHBridge] ArtMethod@0x7f16d63798: access=0x7f dex_idx=127 data=0x7f1660d79c entry=0x7f16813740
+        Signal 11
+=> M9-VISIBLE IS NOT ACHIEVED. The exact wall: real Canvas.drawPath (the triangle fill) inside
+   the spin loop SIGBUSes on this substrate's ART (fault_addr 0x2daf00000000000c is a wild/
+   misaligned deref — a bad ArtMethod/field ptr, the same class of boot-image/ART defect as the
+   static-init gaps in 2026-07-12-frontier-past-m7b-live-probe-5ce.txt, here on the drawPath
+   path). colorApk survives because drawColor is a single fill; triangleApk adds drawPath which
+   trips this crash BEFORE any frame is held -> nothing to photograph.
+   Precise next repair for the M9-visible lane: make drawPath survive on this substrate (or
+   hold a drawColor-only final frame under NO_EXIT). This is codex's ACTIVE, live triangleApk
+   lane — they were iterating it this minute.
+
+CONCURRENCY -> REBOOT INCIDENT (single-writer rule vindicated) + cleanup
+-----------------------------------------------------------------------
+codex's triangle run (08:56:22) and my colorApk run (08:56:24) hit the board within 2s of each
+other while the load average was already ~13. Shortly after both completed, the board dropped
+off hdc and REBOOTED (uptime 51min -> 1min; confirmed by the post-boot "USB 连接方式" dialog).
+I did NOT reboot it (my run had already exited clean and the board answered a ps query after);
+most likely a watchdog/OOM from the accumulated concurrent bring-up load. This is exactly the
+failure the DISPATCH single-writer rule prevents: two writers on one board's shared
+/data/local/tmp scratch + single display + heavy VM/dex2oat load. Lesson: do NOT run a
+concurrent board bring-up (even a fully isolated one) while codex is live on 5ce — they resume
+every few minutes.
+Cleanup done: board recovered healthy (render_service 750 + composer_host 744 up, launcher
+renders). Restored codex's colorApk oracle outputs from a pre-run backup
+(color-smoke-result.txt renderNodePtr=545365506736, pixels, ladder — their exact original
+bytes). Removed all my footprint (wl-m9-opus-run.sh, stdout, backup dir) and repointed
+/data/local/tmp/westlake-dayu600 -> wl-color-codex. codex's lane art/apks/probes and canonical
+sources were never modified.
+
+BOTTOM LINE
+-----------
+"按照B彻底完成App上屏" (M9) remains NOT done. But the gap is now concrete, not abstract: the
+real-Android-APK render->display-0-OHNativeWindow->swap path WORKS; the only thing between that
+and a photographable panel frame is a SIGBUS in real Canvas.drawPath inside codex's triangleApk
+hold-frame stage. That single ART/drawPath crash is the current M9-visible wall, and it is
+codex's live single-writer lane.
