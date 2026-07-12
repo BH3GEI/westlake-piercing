@@ -1,0 +1,45 @@
+LITERAL-M9 COMPLETION PACKAGE — turnkey handoff for the live 5ce worker (codex) — 2026-07-13
+=============================================================================================
+Purpose: consolidate every off-board W-004 asset so the remaining path to literal-M9 (real
+io.material.catalog UI visible on the 5ce panel via the full onCreate->inflate->measure->draw
+lifecycle) is reduced to codex's on-board execution + one dispatch decision. NOT a card (dispatcher
+owns board-lock allocation while codex is live); a recommendation + asset index. I hold read-only on
+codex's board and tree ([[art-latest-is-codex-live-worktree-symlink]]); this is the max I can do
+without colliding with a live, ahead worker.
+
+WHERE THINGS STAND (verified 2026-07-13)
+----------------------------------------
+Render->panel rail: PROVEN at high fidelity — a real Android APK draws a 60fps+ AA animated dashboard
+  on 5ce, center-pixel provenance 70/70 (task #18, commit 5ffe1ab7; NOTES in ../triangle-apk-panel-*/).
+Leg (a) app:        DONE. artifacts/mcat/io.material.catalog-debug.apk (sha de13aa91…, launcher
+                    io.material.catalog.main.MainActivity, Dagger-injected). Reproducible recipe in
+                    2026-07-12-m9-material-catalog-apk-built-and-drawop-verdict-5ce.txt.
+Leg (b) lifecycle:  IN PROGRESS by codex — W-003-clean worktree dirty on View.java/ViewGroup.java/
+                    LayoutInflater.java (real inflate->measure->draw via the ViewRootImpl-BYPASS rail,
+                    NOT a from-scratch Surface subsystem). Board-bound; codex's lane.
+Leg (c) draw-ops:   drawPath VJJJ = ADOPTED in codex's interpreter.cc (from my patch). drawBitmap +
+                    drawText = SPEC READY (drawbitmap-drawtext-arms-SPEC.txt), unbuilt, codex to adopt.
+
+REMAINING STEPS TO LITERAL-M9 (all on codex's 5ce lane; I cannot run them without colliding)
+--------------------------------------------------------------------------------------------
+1. Finish the leg-(b) inflate lifecycle codex is mid-edit (View/ViewGroup/LayoutInflater) so a real
+   R.layout inflates + measures + draws through the bypass rail (LEDGER #51 app-inflate + #53 show-path).
+2. Adopt the two draw-op arms (drawBitmap VJJFFJIII, drawText nDrawTextRun VJLIIIIFFZJJ) into
+   interpreter.cc — exact code + slot arithmetic + ground-truth cites in the SPEC file. Rebuild libart.
+   Text also needs the device minikin/font + Typeface path live (codex's Typeface.java work).
+3. Swap the app-under-test from triangle.apk to io.material.catalog: load
+   io.material.catalog.main.MainActivity through the runTriangleApk-style path; resolve the Catalog's
+   Dagger DI in Application.onCreate (same DI generation-match concern as the old boot-image route —
+   see catalog-newboard-WORKING memory). Expected first frame after (1)+(2): TOC grid with real labels
+   (drawText) + icons (drawBitmap) + Material shaped surfaces (drawPath), on colorSurface bg.
+4. Oracle / evidence: extend the color-smoke oracle to a catalog-frame check — provenance-verified
+   on-panel pixels of Catalog content + panel photo; land in evidence/W-004/. (Ref existing
+   oracle/verify/color-smoke-5ce.sh pattern.)
+
+BEFORE ANY BOARD PUSH — read CONTAMINATION-FLAG-codex-worktree.txt: my prior build left a rebuilt
+libart.so a8b482ea + interpreter.o in codex's build-ohos-arm64 (gitignored/git-invisible). Confirm the
+deployed libart.so sha is the one you intend; don't accidentally ship a8b482ea.
+
+THE ONE THING ONLY THE USER/DISPATCHER CAN DO: point the live 5ce worker at io.material.catalog with the
+full lifecycle (step 3) using these staged assets — I have no channel to codex and cannot take the shared
+board from a live, ahead worker without a reboot-risking collision. Everything movable off-board is done.
