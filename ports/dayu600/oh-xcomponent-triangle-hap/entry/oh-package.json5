@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "OH-native XComponent GLES2 entry module",
+  "main": "",
+  "author": "westlake",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

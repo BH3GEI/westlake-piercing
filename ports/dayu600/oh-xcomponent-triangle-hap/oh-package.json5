@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "glxc",
+  "version": "1.0.0",
+  "description": "OH-native XComponent GLES2 panel-rail smoke",
+  "main": "",
+  "author": "westlake",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

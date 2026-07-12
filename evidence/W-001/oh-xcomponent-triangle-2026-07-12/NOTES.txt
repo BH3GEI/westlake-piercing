@@ -1,0 +1,55 @@
+OH-native XComponent app v2 — rotating GLES2 triangle — on 5ce panel — 2026-07-12
+================================================================================
+A second, richer OH-native .hap (com.westlake.glxc2, "西湖 · GLES2 旋转三角"),
+built + signed + deployed on board 5ce (uis7885 / OH 6.1.0.31), rendering LIVE on
+the physical panel. Step-up from the v1 glClearColor smoke (com.westlake.glxc):
+
+WHAT'S NEW vs v1
+- Real geometry through a compiled GLES2 program: interleaved VBO (x,y,r,g,b),
+  vertex shader with a rotation matrix (uAngle) + aspect squish (uAspect),
+  fragment shader interpolating per-vertex colour. A per-vertex-coloured triangle
+  (red apex / green / blue) spins ~1 full turn / 5s at 60fps over a pulsing
+  dark-navy background that never reaches black.
+- ArkUI app chrome: Column with a header Text ("西湖 · GLES2 旋转三角") and footer
+  ("rotating triangle · OH-native rail · 5ce panel") around the XComponent, on a
+  0xFF0B1020 background — so the app has visible ArkUI text chrome, not just a
+  full-bleed GL canvas.
+- ROBUSTNESS the v1 smoke lacked: eglSwapBuffers is error-checked; on failure the
+  EGLSurface is torn down and REBUILT from the still-valid OHNativeWindow
+  (self-heal after a focus/window change invalidates the surface). v1 had no swap
+  error handling, so once its surface went stale it swapped into the void forever
+  and the panel overlay stuck black while the loop kept logging "frames".
+
+RAIL (unchanged, == the OH-native Tuanjie path)
+  ArkUI <XComponent type:SURFACE libraryname:'entry'> → libentry.so napi Init →
+  OnSurfaceCreated hands OHNativeWindow → EGL/GLES2 program draws → eglSwapBuffers
+  → render_service → composer_host → 5ce panel.
+
+PROOF (snapshot_display, display 0, 1200x1920)
+- glxc2-rotating-triangle-5ce-panel.jpeg: the panel showing header text, the
+  shaded triangle, footer text, OH status bar (83%, 08:08) + nav bar.
+- Liveness (rotation) — center-band pixel sampled across 3 snapshots ~1.3s apart,
+  header/footer held constant navy (13,16,31) == my ArkUI bg (proves it's MY app
+  on the panel, not launcher/teal 0,149,117, not black):
+    point c-up(h*0.42):  snap1 (95,193,110) green → snap2 (186,94,99) red → snap3 (93,141,190) blue
+    point c-dn(h*0.58):  snap1 (153,99,149)      → snap2 (82,175,156)   → snap3 (154,141,88)
+  i.e. the triangle's three vertex colours sweep past each point as it rotates.
+- hilog: "GL program built (aPos/aCol/uAngle/uAspect resolved)", frame counter
+  climbing steadily, no fail/crash/swap-error for tag wl-glxc2 (0xD00E).
+
+BUILD / SIGN (same headless recipe as v1; see memory oh-native-hap-first-frame-5ce)
+- hvigor 6.21.1 (HarmonyOS Command Line Tools) assembleHap, product default,
+  runtimeOS HarmonyOS, 6.0.1(21), abiFilter arm64-v8a → BUILD SUCCESSFUL.
+- Signed with OH cert chain (dev-cert leaf + CA + root), debug profile carrying
+  5ce UDID. bundle com.westlake.glxc2.
+- signed hap sha256 1b4c3d87a089da6c67d57ee8e4c5e9dd19e2b23f662525a72b8e42156b53ca66
+  (artifact, kept OUT of git per ARTIFACT rules; sources preserved at
+  ports/dayu600/oh-xcomponent-triangle-hap/).
+
+ISOLATION: only 5ce touched; new bundle installed alongside com.westlake.glxc
+(v1 left installed + untouched per user "留着"). No wipe/flash/reboot; no substrate
+change. render_service/composer_host never touched.
+
+SCOPE HONESTY: this is Route-A (OH-native app self-render, the Tuanjie rail). It is
+NOT the Route-B acceptance bar (unmodified Android APK self-draw via ART/imageless
+adapter) — that remains W-004's separate, already-oracle-PASS color path.
