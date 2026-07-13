@@ -32,7 +32,7 @@ program/aPos/uTime/uRes/uTouch resolved → frame … fps` ticking every 2 s, wi
 `shader compile FAILED` / `link FAILED` (the Star Nest shader compiled on Mali).
 
 ## Artifacts
-- Board-verified titled hap: `~/Downloads/westlake-starnest-5ce.hap`
+- Board-verified titled hap: `~/Desktop/code/_artifacts/westlake-starnest-5ce.hap`
   sha256 `31b520444ffe1a03f955edce62317f0adb9632153bb29f8bc00751ac30e9f06d`.
 - Turnkey build reproduces the identical payload `.so` (md5 match above); whole-hap sha
   varies only by the signature nonce/zip order.
@@ -61,5 +61,5 @@ gone, gradient app gone) and `starnest-clean-titled.jpeg` (in-app title **"GLES2
 实时"**, no 西湖, 60fps per the HiSmartPerf overlay). The rebrand is folded into
 `build-starnest-hap.sh` (via `patch_abc_title.py` + `patch_res_labels.py` + `starnest-icon.png`),
 which reproduces a clean-named hap from the pristine shell. Artifact:
-`~/Downloads/westlake-starnest-5ce.hap` sha256
+`~/Desktop/code/_artifacts/westlake-starnest-5ce.hap` sha256
 `325cd7e202ac7de1ce7cc24760b8008073d6fd783b819d95ecb0bc03de080a33`.

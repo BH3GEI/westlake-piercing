@@ -121,5 +121,5 @@ A5 实测(observed,`llvm-readelf` 的 NEEDED+dynsym):厂商随包给的 **`libtu
   - `libtuanjie(1).so`(26MB,arm64 **OH 原生 il2cpp** 引擎)
   - `MiniGame-android.apk(1).1`(27MB,32 位 armeabi-v7a **Mono** 版,含托管 DLL)
   - `bionic_musl_html_bundle_20260712(1).zip`(15 篇分析,解到 `/tmp/bmbundle`;源路径 `/opt/21.Game`、`02.unity.cardwords/adapter`)
-- 还在传:`~/Downloads/aosp.tar.zst`(20GB,AOSP 源树,已落)、`oh.tar.zst`(AirDrop 传输中)——同事 bionic→musl 工作的参照源树,落全后按需定点索引。
+- 参照源树(同事 bionic→musl 工作,已全部落盘,2026-07-13 从 ~/Downloads 归入 code/):`~/Desktop/code/_from-downloads-20260713/source-trees-ext/aosp.tar.zst`(20GB,AOSP 源树)、`oh.tar.zst`(72GB,OHOS 源树)——按需定点索引。
 - 我方已证上屏资产索引:见 `state/B-ROUTE-PLAN.md`(M5 `liboh_window_manager_client_min.so`、`ohos_display_surface`、`egl_interposer`/`skia_interposer`/`rs_abi_shims`、W-004 彩色 APK oracle PASS)。
