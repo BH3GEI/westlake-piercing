@@ -21,9 +21,11 @@ bash build-starnest-hap.sh [shell.hap] [out.hap]
 ```
 
 Pipeline: `clang++` (OH NDK) → `libentry.so` → unpack shell → swap `.so` →
-(optional) `patch_abc_title.py` re-titles the baked ArkTS strings → repack →
-`zipalign_hap.py` (4096) → `resign-oh-hap.sh` (5ce). Steps 2/6/7 are the proven ones
-reused from `../../tuanjie-fmt-fix`.
+**rebrand** (`patch_abc_title.py` re-titles the in-app ArkTS strings; `patch_res_labels.py`
+renames the launcher label in `resources.index`; `starnest-icon.png` overwrites the app
+icon) → repack → `zipalign_hap.py` (4096) → `resign-oh-hap.sh` (5ce). Steps 2/6/7 are the
+proven ones reused from `../../tuanjie-fmt-fix`. Set `STARNEST_TITLE_PATCH=0` to keep the
+shell's original identity.
 
 Deploy (only when 5ce is idle — no concurrent ART bring-up; see memory
 `no-concurrent-5ce-bringup`):
@@ -39,8 +41,13 @@ hdc -t 5ce2dcee00000000000000000923012c shell aa start -b com.westlake.glxc2 -a 
   so a finger steers the fly-through (autonomous slow orbit when untouched).
 - `build-starnest-hap.sh` — turnkey compile → swap → (title) → repack → align → resign.
 - `patch_abc_title.py` — equal-length in-place string edit of `modules.abc` + adler32
-  recompute, so the shell can be re-titled without an ArkTS build. Refuses any
+  recompute, so the in-app title can be changed without an ArkTS build. Refuses any
   length-changing or non-unique edit (offset-safety guard).
+- `patch_res_labels.py` — equal-length in-place string edit of `resources.index`
+  (RestoolV2, no checksum), so the **launcher name** (`app_name` / `EntryAbility_label`)
+  can be renamed without a restool recompile. Same offset-safety guard.
+- `starnest-icon.png` — 512×512 launcher icon; the demo's own golden-core frame (cropped
+  from `evidence/.../starnest-titled.jpeg`). Copied over `media/{icon,app_icon}.png`.
 
 ## Shader knobs (in `starnest_xcomponent.cpp`)
 `VOLSTEPS` (ray march steps) and `ITER` (fractal folds) trade FPS for depth/detail on

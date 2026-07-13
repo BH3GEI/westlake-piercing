@@ -68,11 +68,23 @@ echo "[2] unpack shell: $(basename "$SHELL_HAP")"
 echo "[3] swap libentry.so ($(ls -la "$U/libs/arm64-v8a/libentry.so" | awk '{print $5}')B -> $(ls -la "$W/libentry.so" | awk '{print $5}')B)"
 cp "$W/libentry.so" "$U/libs/arm64-v8a/libentry.so"
 
-if [ "$TITLE_PATCH" = "1" ] && [ -f "$U/ets/modules.abc" ]; then
-  echo "[4] patch ArkTS title/footer (equal-length, adler32 recompute)"
-  python3 "$HERE/patch_abc_title.py" "$U/ets/modules.abc" \
-    "旋转三角=星穹穿越" "rotating triangle=kali star-nest fx" 2>&1 | sed 's/^/    /' || \
-    echo "    (title strings not found in this shell — skipping, non-fatal)"
+if [ "$TITLE_PATCH" = "1" ]; then
+  echo "[4] rebrand: in-app title + launcher name + icon (all de-西湖, de-旋转三角)"
+  # in-app title (abc, equal-length + adler32). Whole-string swap drops 西湖 AND 旋转三角.
+  [ -f "$U/ets/modules.abc" ] && python3 "$HERE/patch_abc_title.py" "$U/ets/modules.abc" \
+    "西湖 · GLES2 旋转三角=GLES2 星穹穿越 · 实时" "rotating triangle=kali star-nest fx" \
+    2>&1 | sed 's/^/    abc: /' || echo "    (abc title strings not found — skipping)"
+  # launcher name (resources.index, equal-length, no checksum): app_name + ability label
+  [ -f "$U/resources.index" ] && python3 "$HERE/patch_res_labels.py" "$U/resources.index" \
+    "GL 旋转三角=星穹穿越 fx" "旋转三角=星穹穿越" \
+    2>&1 | sed 's/^/    idx: /' || echo "    (index labels not found — skipping)"
+  # icon: drop the star-nest core over both icon.png and app_icon.png
+  if [ -f "$HERE/starnest-icon.png" ]; then
+    for m in icon app_icon; do
+      [ -f "$U/resources/base/media/$m.png" ] && cp "$HERE/starnest-icon.png" "$U/resources/base/media/$m.png"
+    done
+    echo "    icon: star-nest core -> icon.png + app_icon.png"
+  fi
 fi
 
 echo "[5] repack"
