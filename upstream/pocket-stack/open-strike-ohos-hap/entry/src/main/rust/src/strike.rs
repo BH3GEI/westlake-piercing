@@ -40,8 +40,30 @@ pub struct P3dTexture {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
+pub struct SoldierMeshInfo {
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub body_index_count: u32,
+    pub idle_frames: u32,
+    pub walk_frames: u32,
+    pub idle_duration: f32,
+    pub walk_duration: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct SoldierTexture {
+    pub width: u32,
+    pub height: u32,
+    pub channels: u32,
+    pub pixels: *const u8,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
 pub struct BotSnapshot {
     pub x: f32, pub y: f32, pub z: f32, pub yaw: f32, pub death_time: f32,
+    pub anim_time: f32, pub anim_speed: f32,
     pub alive: u32,
 }
 
@@ -50,8 +72,18 @@ struct Runtime {
     map: CookedMap<'static>,
     rgba: Vec<Vec<u8>>,
     soldier_vertices: Vec<f32>,
+    soldier_uvs: Vec<f32>,
     soldier_indices: Vec<u16>,
     soldier_body_indices: u32,
+    soldier_vertex_count: u32,
+    soldier_idle_frames: u32,
+    soldier_walk_frames: u32,
+    soldier_idle_duration: f32,
+    soldier_walk_duration: f32,
+    soldier_texture_width: u32,
+    soldier_texture_height: u32,
+    soldier_texture_channels: u32,
+    soldier_texture: Vec<u8>,
 }
 
 unsafe impl Send for Runtime {}
@@ -101,18 +133,34 @@ fn runtime() -> &'static Mutex<Runtime> {
         } else if map.t_spawns.is_empty() { map.ct_spawns.clone() } else { map.t_spawns.clone() };
         let mut sim = StrikeSim::new(spawn.pos, spawn.yaw, bot_spawns, 3);
         sim.apply(Command::ConfigureBots(BotConfig { count: 3, speed: 150.0, attack_interval: 999.0, damage_min: 0, damage_max: 0 }), 0);
+        sim.spawn_bots(3);
         let rgba = map.textures.iter().map(decode_texture).collect();
         let soldier = include_bytes!("../assets/soldier.mesh");
-        assert_eq!(u32::from_le_bytes(soldier[0..4].try_into().unwrap()), 0x314d534f);
+        assert_eq!(u32::from_le_bytes(soldier[0..4].try_into().unwrap()), 0x324d534f);
         let vertex_count = u32::from_le_bytes(soldier[4..8].try_into().unwrap()) as usize;
         let index_count = u32::from_le_bytes(soldier[8..12].try_into().unwrap()) as usize;
         let soldier_body_indices = u32::from_le_bytes(soldier[12..16].try_into().unwrap());
-        let mut soldier_vertices = Vec::with_capacity(vertex_count * 3);
-        let mut offset = 16;
-        for _ in 0..vertex_count*3 { soldier_vertices.push(f32::from_le_bytes(soldier[offset..offset+4].try_into().unwrap())); offset += 4; }
+        let soldier_idle_frames = u32::from_le_bytes(soldier[16..20].try_into().unwrap());
+        let soldier_walk_frames = u32::from_le_bytes(soldier[20..24].try_into().unwrap());
+        let soldier_idle_duration = f32::from_le_bytes(soldier[24..28].try_into().unwrap());
+        let soldier_walk_duration = f32::from_le_bytes(soldier[28..32].try_into().unwrap());
+        let soldier_texture_width = u32::from_le_bytes(soldier[32..36].try_into().unwrap());
+        let soldier_texture_height = u32::from_le_bytes(soldier[36..40].try_into().unwrap());
+        let soldier_texture_channels = u32::from_le_bytes(soldier[40..44].try_into().unwrap());
+        let texture_len = u32::from_le_bytes(soldier[44..48].try_into().unwrap()) as usize;
+        let frame_count = (soldier_idle_frames + soldier_walk_frames) as usize;
+        let mut soldier_vertices = Vec::with_capacity(vertex_count * 3 * frame_count);
+        let mut offset = 48;
+        for _ in 0..vertex_count*3*frame_count { soldier_vertices.push(f32::from_le_bytes(soldier[offset..offset+4].try_into().unwrap())); offset += 4; }
+        let mut soldier_uvs = Vec::with_capacity(vertex_count * 2);
+        for _ in 0..vertex_count*2 { soldier_uvs.push(f32::from_le_bytes(soldier[offset..offset+4].try_into().unwrap())); offset += 4; }
         let mut soldier_indices = Vec::with_capacity(index_count);
         for _ in 0..index_count { soldier_indices.push(u16::from_le_bytes(soldier[offset..offset+2].try_into().unwrap())); offset += 2; }
-        Mutex::new(Runtime { sim, map, rgba, soldier_vertices, soldier_indices, soldier_body_indices })
+        let soldier_texture = soldier[offset..offset+texture_len].to_vec();
+        Mutex::new(Runtime { sim, map, rgba, soldier_vertices, soldier_uvs, soldier_indices, soldier_body_indices,
+            soldier_vertex_count: vertex_count as u32, soldier_idle_frames, soldier_walk_frames,
+            soldier_idle_duration, soldier_walk_duration, soldier_texture_width, soldier_texture_height,
+            soldier_texture_channels, soldier_texture })
     })
 }
 
@@ -140,11 +188,11 @@ pub extern "C" fn openstrike_snapshot(out:*mut OpenStrikeSnapshot){
     }}}
 }
 
-fn apply(cmd:Command){if let Ok(mut rt)=runtime().lock(){rt.sim.apply(cmd,0);}}
+fn apply(cmd:Command){if let Ok(mut rt)=runtime().lock(){rt.sim.apply(cmd,3);}}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_set_phase(p:u32){apply(Command::SetPhase(match p{1=>Phase::Live,2=>Phase::Ended{won:true},3=>Phase::Ended{won:false},_=>Phase::Starting}));}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_reset_round(){if let Ok(mut rt)=runtime().lock(){
     let state=rt.sim.player.state;let yaw=rt.sim.player.yaw;let pitch=rt.sim.player.pitch;
-    rt.sim.reset_round(0);rt.sim.player.state=state;rt.sim.player.prev_pos=state.pos;rt.sim.player.yaw=yaw;rt.sim.player.pitch=pitch;
+    rt.sim.reset_round(3);rt.sim.player.state=state;rt.sim.player.prev_pos=state.pos;rt.sim.player.yaw=yaw;rt.sim.player.pitch=pitch;
 }}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_add_win(){apply(Command::AddWin);}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_add_loss(){apply(Command::AddLoss);}
@@ -158,7 +206,10 @@ fn apply(cmd:Command){if let Ok(mut rt)=runtime().lock(){rt.sim.apply(cmd,0);}}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_p3d_batch(i:u32,out:*mut P3dBatch)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();let Some(b)=rt.map.batches.get(i as usize)else{return 0};unsafe{*out=P3dBatch{texture:b.texture as u32,kind:b.kind.as_u8() as u32,vert_base:b.vert_base,index_base:b.index_base,index_count:b.index_count}}1}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_p3d_texture_count()->u32{runtime().lock().unwrap().rgba.len() as u32}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_p3d_texture(i:u32,out:*mut P3dTexture)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();let Some(t)=rt.map.textures.get(i as usize)else{return 0};let rgba=&rt.rgba[i as usize];unsafe{*out=P3dTexture{width:t.width,height:t.height,masked:t.masked as u32,rgba:rgba.as_ptr()}}1}
-#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_vertices(count:*mut u32)->*const f32{let rt=runtime().lock().unwrap();unsafe{if !count.is_null(){*count=(rt.soldier_vertices.len()/3) as u32}}rt.soldier_vertices.as_ptr()}
-#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_indices(count:*mut u32,body:*mut u32)->*const u16{let rt=runtime().lock().unwrap();unsafe{if !count.is_null(){*count=rt.soldier_indices.len() as u32}if !body.is_null(){*body=rt.soldier_body_indices}}rt.soldier_indices.as_ptr()}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_info(out:*mut SoldierMeshInfo)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();unsafe{*out=SoldierMeshInfo{vertex_count:rt.soldier_vertex_count,index_count:rt.soldier_indices.len() as u32,body_index_count:rt.soldier_body_indices,idle_frames:rt.soldier_idle_frames,walk_frames:rt.soldier_walk_frames,idle_duration:rt.soldier_idle_duration,walk_duration:rt.soldier_walk_duration}}1}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_vertices()->*const f32{runtime().lock().unwrap().soldier_vertices.as_ptr()}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_uvs()->*const f32{runtime().lock().unwrap().soldier_uvs.as_ptr()}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_indices()->*const u16{runtime().lock().unwrap().soldier_indices.as_ptr()}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_soldier_texture(out:*mut SoldierTexture)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();unsafe{*out=SoldierTexture{width:rt.soldier_texture_width,height:rt.soldier_texture_height,channels:rt.soldier_texture_channels,pixels:rt.soldier_texture.as_ptr()}}1}
 #[unsafe(no_mangle)] pub extern "C" fn openstrike_bot_count()->u32{runtime().lock().unwrap().sim.bots.len() as u32}
-#[unsafe(no_mangle)] pub extern "C" fn openstrike_bot_snapshot(i:u32,out:*mut BotSnapshot)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();let Some(b)=rt.sim.bots.get(i as usize)else{return 0};unsafe{*out=BotSnapshot{x:b.state.pos.x,y:b.state.pos.y,z:b.state.pos.z,yaw:b.yaw,death_time:b.death_time,alive:b.alive() as u32}}1}
+#[unsafe(no_mangle)] pub extern "C" fn openstrike_bot_snapshot(i:u32,out:*mut BotSnapshot)->u32{if out.is_null(){return 0}let rt=runtime().lock().unwrap();let Some(b)=rt.sim.bots.get(i as usize)else{return 0};unsafe{*out=BotSnapshot{x:b.state.pos.x,y:b.state.pos.y,z:b.state.pos.z,yaw:b.yaw,death_time:b.death_time,anim_time:b.anim.time,anim_speed:b.anim.speed,alive:b.alive() as u32}}1}

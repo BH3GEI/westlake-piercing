@@ -70,9 +70,14 @@ uint32_t openstrike_p3d_batch_count();
 uint32_t openstrike_p3d_batch(uint32_t,P3dBatch*);
 uint32_t openstrike_p3d_texture_count();
 uint32_t openstrike_p3d_texture(uint32_t,P3dTexture*);
-struct BotSnapshot { float x,y,z,yaw,death_time; uint32_t alive; };
-const float* openstrike_soldier_vertices(uint32_t*);
-const uint16_t* openstrike_soldier_indices(uint32_t*,uint32_t*);
+struct BotSnapshot { float x,y,z,yaw,death_time,anim_time,anim_speed; uint32_t alive; };
+struct SoldierMeshInfo { uint32_t vertex_count,index_count,body_index_count,idle_frames,walk_frames; float idle_duration,walk_duration; };
+struct SoldierTexture { uint32_t width,height,channels; const uint8_t* pixels; };
+uint32_t openstrike_soldier_info(SoldierMeshInfo*);
+const float* openstrike_soldier_vertices();
+const float* openstrike_soldier_uvs();
+const uint16_t* openstrike_soldier_indices();
+uint32_t openstrike_soldier_texture(SoldierTexture*);
 uint32_t openstrike_bot_count();
 uint32_t openstrike_bot_snapshot(uint32_t,BotSnapshot*);
 }
@@ -117,9 +122,10 @@ struct RenderContext {
     GLint worldPos = -1, worldUv = -1, worldColor = -1, worldMvp = -1, worldMasked = -1;
     std::vector<GLuint> worldTextures;
     uint32_t worldBatchCount = 0;
-    GLuint botProgram = 0, botVbo = 0, botIbo = 0;
-    GLint botPos = -1, botMvp = -1, botColor = -1;
-    uint32_t botIndexCount = 0, botBodyIndexCount = 0;
+    GLuint botProgram = 0, botVbo = 0, botUvVbo = 0, botIbo = 0, botTexture = 0;
+    GLint botPos0 = -1, botPos1 = -1, botUv = -1, botMvp = -1, botBlend = -1, botTint = -1, botSampler = -1;
+    uint32_t botVertexCount = 0, botIndexCount = 0, botIdleFrames = 0, botWalkFrames = 0;
+    float botIdleDuration = 0, botWalkDuration = 0;
     std::atomic<bool> running{false};
     pthread_t thread{};
     float downX = 0;
@@ -305,14 +311,19 @@ bool setupWorld(RenderContext& c){
     uint32_t tc=openstrike_p3d_texture_count();c.worldTextures.resize(tc);glGenTextures((GLsizei)tc,c.worldTextures.data());
     for(uint32_t i=0;i<tc;i++){P3dTexture t{};if(!openstrike_p3d_texture(i,&t))continue;glBindTexture(GL_TEXTURE_2D,c.worldTextures[i]);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,(GLsizei)t.width,(GLsizei)t.height,0,GL_RGBA,GL_UNSIGNED_BYTE,t.rgba);}
     c.worldBatchCount=openstrike_p3d_batch_count();
-    const char* bvs="attribute vec3 aPos;uniform mat4 uMvp;void main(){gl_Position=uMvp*vec4(aPos,1.0);}";
-    const char* bfs="precision mediump float;uniform vec4 uColor;void main(){gl_FragColor=uColor;}";
+    const char* bvs="attribute vec3 aPos0;attribute vec3 aPos1;attribute vec2 aUv;uniform mat4 uMvp;uniform float uBlend;varying vec2 vUv;void main(){vUv=aUv;gl_Position=uMvp*vec4(mix(aPos0,aPos1,uBlend),1.0);}";
+    const char* bfs="precision mediump float;varying vec2 vUv;uniform sampler2D uTex;uniform vec4 uTint;void main(){gl_FragColor=texture2D(uTex,vUv)*uTint;}";
     GLuint bv=compileShader(GL_VERTEX_SHADER,bvs),bf=compileShader(GL_FRAGMENT_SHADER,bfs);c.botProgram=glCreateProgram();glAttachShader(c.botProgram,bv);glAttachShader(c.botProgram,bf);glLinkProgram(c.botProgram);glDeleteShader(bv);glDeleteShader(bf);
-    c.botPos=glGetAttribLocation(c.botProgram,"aPos");c.botMvp=glGetUniformLocation(c.botProgram,"uMvp");c.botColor=glGetUniformLocation(c.botProgram,"uColor");
-    uint32_t bvc=0;const float* bverts=openstrike_soldier_vertices(&bvc);const uint16_t* bidx=openstrike_soldier_indices(&c.botIndexCount,&c.botBodyIndexCount);
-    glGenBuffers(1,&c.botVbo);glBindBuffer(GL_ARRAY_BUFFER,c.botVbo);glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)bvc*12,bverts,GL_STATIC_DRAW);
+    c.botPos0=glGetAttribLocation(c.botProgram,"aPos0");c.botPos1=glGetAttribLocation(c.botProgram,"aPos1");c.botUv=glGetAttribLocation(c.botProgram,"aUv");c.botMvp=glGetUniformLocation(c.botProgram,"uMvp");c.botBlend=glGetUniformLocation(c.botProgram,"uBlend");c.botTint=glGetUniformLocation(c.botProgram,"uTint");c.botSampler=glGetUniformLocation(c.botProgram,"uTex");
+    SoldierMeshInfo bi{};if(!openstrike_soldier_info(&bi))return false;c.botVertexCount=bi.vertex_count;c.botIndexCount=bi.index_count;c.botIdleFrames=bi.idle_frames;c.botWalkFrames=bi.walk_frames;c.botIdleDuration=bi.idle_duration;c.botWalkDuration=bi.walk_duration;
+    const float* bverts=openstrike_soldier_vertices();const float* buvs=openstrike_soldier_uvs();const uint16_t* bidx=openstrike_soldier_indices();
+    const uint32_t totalFrames=c.botIdleFrames+c.botWalkFrames;
+    glGenBuffers(1,&c.botVbo);glBindBuffer(GL_ARRAY_BUFFER,c.botVbo);glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)c.botVertexCount*totalFrames*12,bverts,GL_STATIC_DRAW);
+    glGenBuffers(1,&c.botUvVbo);glBindBuffer(GL_ARRAY_BUFFER,c.botUvVbo);glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)c.botVertexCount*8,buvs,GL_STATIC_DRAW);
     glGenBuffers(1,&c.botIbo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,c.botIbo);glBufferData(GL_ELEMENT_ARRAY_BUFFER,(GLsizeiptr)c.botIndexCount*2,bidx,GL_STATIC_DRAW);
-    LOGI("p3d gpu verts=%{public}u indices=%{public}u batches=%{public}u textures=%{public}u soldier=%{public}u/%{public}u",vc,ic,c.worldBatchCount,tc,bvc,c.botIndexCount);return glGetError()==GL_NO_ERROR;
+    SoldierTexture bt{};if(!openstrike_soldier_texture(&bt))return false;const GLenum pixelFormat=bt.channels==4?GL_RGBA:GL_RGB;
+    glGenTextures(1,&c.botTexture);glBindTexture(GL_TEXTURE_2D,c.botTexture);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);glPixelStorei(GL_UNPACK_ALIGNMENT,1);glTexImage2D(GL_TEXTURE_2D,0,pixelFormat,(GLsizei)bt.width,(GLsizei)bt.height,0,pixelFormat,GL_UNSIGNED_BYTE,bt.pixels);glGenerateMipmap(GL_TEXTURE_2D);glPixelStorei(GL_UNPACK_ALIGNMENT,4);
+    LOGI("p3d gpu verts=%{public}u indices=%{public}u batches=%{public}u textures=%{public}u soldier=%{public}u/%{public}u frames=%{public}u+%{public}u skin=%{public}ux%{public}u",vc,ic,c.worldBatchCount,tc,c.botVertexCount,c.botIndexCount,c.botIdleFrames,c.botWalkFrames,bt.width,bt.height);return glGetError()==GL_NO_ERROR;
 }
 
 bool setupEgl(RenderContext& c) {
@@ -341,9 +352,19 @@ void drawWorld(RenderContext& c,const OpenStrikeSnapshot& s){
     glBindBuffer(GL_ARRAY_BUFFER,c.worldVbo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,c.worldIbo);
     glEnableVertexAttribArray(c.worldPos);glEnableVertexAttribArray(c.worldUv);glEnableVertexAttribArray(c.worldColor);
     for(uint32_t i=0;i<c.worldBatchCount;i++){P3dBatch b{};if(!openstrike_p3d_batch(i,&b)||b.texture>=c.worldTextures.size())continue;const uintptr_t base=(uintptr_t)b.vert_base*20;glVertexAttribPointer(c.worldUv,2,GL_FLOAT,GL_FALSE,20,(const void*)(base+0));glVertexAttribPointer(c.worldColor,4,GL_UNSIGNED_BYTE,GL_TRUE,20,(const void*)(base+8));glVertexAttribPointer(c.worldPos,3,GL_SHORT,GL_FALSE,20,(const void*)(base+12));glUniform1f(c.worldMasked,b.kind==1?1.0f:0.0f);glBindTexture(GL_TEXTURE_2D,c.worldTextures[b.texture]);glDrawElements(GL_TRIANGLES,(GLsizei)b.index_count,GL_UNSIGNED_SHORT,(const void*)((uintptr_t)b.index_base*2));}
-    glUseProgram(c.botProgram);glBindBuffer(GL_ARRAY_BUFFER,c.botVbo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,c.botIbo);glEnableVertexAttribArray(c.botPos);glVertexAttribPointer(c.botPos,3,GL_FLOAT,GL_FALSE,12,(const void*)0);
+    glUseProgram(c.botProgram);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,c.botTexture);glUniform1i(c.botSampler,0);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,c.botIbo);
+    glBindBuffer(GL_ARRAY_BUFFER,c.botUvVbo);glEnableVertexAttribArray(c.botUv);glVertexAttribPointer(c.botUv,2,GL_FLOAT,GL_FALSE,8,(const void*)0);
+    glBindBuffer(GL_ARRAY_BUFFER,c.botVbo);glEnableVertexAttribArray(c.botPos0);glEnableVertexAttribArray(c.botPos1);
     const uint32_t botCount=openstrike_bot_count();
-    for(uint32_t i=0;i<botCount;i++){BotSnapshot b{};if(!openstrike_bot_snapshot(i,&b))continue;const float fall=std::min(b.death_time*3.0f,1.0f);const float ease=1.0f-(1.0f-fall)*(1.0f-fall);Mat4 model=mmul(trans(b.x,b.y-36.0f+(2.0f-2.0f*ease),b.z),mmul(rotY(b.yaw),rotX(-ease*1.47655f)));Mat4 mvp=mmul(vp,model);glUniformMatrix4fv(c.botMvp,1,GL_FALSE,mvp.m);const float dead=b.alive?1.0f:0.55f;glUniform4f(c.botColor,.30f*dead,.42f*dead,.25f*dead,1);glDrawElements(GL_TRIANGLES,(GLsizei)c.botBodyIndexCount,GL_UNSIGNED_SHORT,(const void*)0);glUniform4f(c.botColor,.18f*dead,.75f*dead,.86f*dead,1);glDrawElements(GL_TRIANGLES,(GLsizei)(c.botIndexCount-c.botBodyIndexCount),GL_UNSIGNED_SHORT,(const void*)((uintptr_t)c.botBodyIndexCount*2));}
+    const uintptr_t frameBytes=(uintptr_t)c.botVertexCount*12;
+    for(uint32_t i=0;i<botCount;i++){BotSnapshot b{};if(!openstrike_bot_snapshot(i,&b))continue;
+        uint32_t base=0,count=c.botIdleFrames;float clock=s.time+(float)i*.173f,duration=c.botIdleDuration;
+        if(b.alive&&b.anim_speed>.01f&&c.botWalkFrames){base=c.botIdleFrames;count=c.botWalkFrames;clock=b.anim_time;duration=c.botWalkDuration;}
+        if(!b.alive){base=0;count=1;clock=0;duration=1;}
+        const float cycle=duration>0?std::fmod(std::max(clock,0.0f),duration)/duration*(float)count:0;const uint32_t step=(uint32_t)std::floor(cycle);const uint32_t f0=base+(step%std::max(count,1u));const uint32_t f1=base+((step+1)%std::max(count,1u));const float blend=cycle-std::floor(cycle);
+        glVertexAttribPointer(c.botPos0,3,GL_FLOAT,GL_FALSE,12,(const void*)((uintptr_t)f0*frameBytes));glVertexAttribPointer(c.botPos1,3,GL_FLOAT,GL_FALSE,12,(const void*)((uintptr_t)f1*frameBytes));glUniform1f(c.botBlend,blend);
+        const float fall=std::min(b.death_time*3.0f,1.0f);const float ease=1.0f-(1.0f-fall)*(1.0f-fall);Mat4 model=mmul(trans(b.x,b.y-36.0f+(2.0f-2.0f*ease),b.z),mmul(rotY(b.yaw),rotX(-ease*1.47655f)));Mat4 mvp=mmul(vp,model);glUniformMatrix4fv(c.botMvp,1,GL_FALSE,mvp.m);const float dead=b.alive?.80f:.42f;glUniform4f(c.botTint,dead,b.alive?.80f:.36f,b.alive?.80f:.34f,1);glDrawElements(GL_TRIANGLES,(GLsizei)c.botIndexCount,GL_UNSIGNED_SHORT,(const void*)0);
+    }
 }
 
 void* renderLoop(void*) {

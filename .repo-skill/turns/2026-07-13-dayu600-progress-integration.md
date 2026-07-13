@@ -38,7 +38,8 @@ then report after completion. No push was requested.
 ## Verification
 
 - shell syntax checks for the triangle oracle/device runner and HAP scripts.
-- captured artboot source byte-equal to the external source checkpoint.
+- captured artboot source content-equal to the external checkpoint after
+  trailing blank-line normalization.
 - `git diff --check`.
 - repo handoff structure check.
 - final staged diff and status inspected before commit.

@@ -384,4 +384,3 @@ static napi_module g_module = {
 };
 
 __attribute__((constructor)) void RegisterEntryModule(void) { napi_module_register(&g_module); }
-

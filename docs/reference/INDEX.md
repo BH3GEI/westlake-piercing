@@ -50,6 +50,9 @@
 - **`unity-floors-and-atom-list.html`** (37K)
   Unity 构造楼层 B0–B5 × 上屏楼层 L01–L07 双坐标对齐 + 测试完善清单(P1/P2/P3 泛化缺口)。
 
+- **`unity-tls-aperture-L03A15-five-stage-design.html`** (40K)
+  同事的 L03.A15(BIONIC-TLS-PTHREAD-GUARD)架构合同：让**未修改**的 Unity ARM64 APK 的内联 TLS 读(`MRS TPIDR_EL0; ldr x8,[x20,#0x28]`,即 Bionic stack-guard 槽)在 OH/musl 上不改字节地跑通。五阶段(安装认证→appspawn→线程创建→typed callback gate→实际内联访问)+ 裁决码字典(APERTURE_NATIVE/TLS_ISLAND/DBT/REWRITE/REJECT)+ 并发发布顺序(修 A07 TOCTOU)+ 硬指标计数。**这是把"musl TLS 死锁"从"硬墙"变成"可认证兼容窗口"的设计投影**——做安卓-Unity(W-004/Route-B)那条线、或需要 TP-relative/pthread-guard 兼容方案时读它。Early design,**未真机验证**;现场证据:CardWords 4 DSO 已冻结、3896 处 MRS TPIDR_EL0 静态站点(libunity 2070/libil2cpp 1825)、TP+0x28/8B/只读 高度符合 Bionic guard。
+
 ## 方法论
 
 - **`a1-pthread-operate-in-place.html`** (15K)

@@ -18,4 +18,3 @@ target_link_libraries(entry PUBLIC
   ${hilog-lib}
   ${napi-lib}
   ${rawfile-lib})
-

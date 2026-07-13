@@ -47,7 +47,7 @@ struct Index {
           this.controlKey('FIRE', 0x0200)
           this.controlKey('JUMP', 0x4000)
           this.controlKey('RELOAD', 0x8000)
-        }
+        }.translate({ x: 24 })
       }
       .width('100%').height('100%').padding({ left: 18, right: 18 })
       .alignItems(VerticalAlign.Center)
