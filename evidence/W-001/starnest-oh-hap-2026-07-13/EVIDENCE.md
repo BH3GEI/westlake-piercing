@@ -42,3 +42,24 @@ Recon established we cannot author new Unity content on this Mac (no editor). Bu
 control the OH-native GLES rail — the same one the real game rides. This demo turns that
 control into something unmistakably ours and unmistakably live, and the touch path
 exercises `OH_NativeXComponent` input on that rail.
+
+## Rebrand (2026-07-13) — remove 西湖, fix launcher name + icon
+Swapping only `libentry.so` left the shell's baked identity stale: the launcher showed the
+app as **旋转三角** with a generic icon, and the in-app title carried **西湖**. Fixed without
+an ArkTS/restool rebuild:
+- **in-app title** (`ets/modules.abc`): `"西湖 · GLES2 旋转三角"` → `"GLES2 星穹穿越 · 实时"`
+  (equal-length 28 B, adler32 recomputed) — 西湖 gone.
+- **launcher name** (`resources.index`, RestoolV2, no checksum): `app_name` `"GL 旋转三角"` →
+  `"星穹穿越 fx"` (15 B), `EntryAbility_label` `"旋转三角"` → `"星穹穿越"` (12 B), both
+  equal-length so no offset shift. Home screen now reads **星穹穿越**.
+- **icon** (`resources/base/media/{icon,app_icon}.png`, 512×512): replaced with the actual
+  golden-core frame cropped from `starnest-titled.jpeg` — the icon IS the demo's own output.
+- decluttered: uninstalled the stray gradient app `com.westlake.glxc` ("GL三角").
+
+On-panel proof: `launcher-after.jpeg` (home screen: **星穹穿越** + golden-core icon, old name
+gone, gradient app gone) and `starnest-clean-titled.jpeg` (in-app title **"GLES2 星穹穿越 ·
+实时"**, no 西湖, 60fps per the HiSmartPerf overlay). The rebrand is folded into
+`build-starnest-hap.sh` (via `patch_abc_title.py` + `patch_res_labels.py` + `starnest-icon.png`),
+which reproduces a clean-named hap from the pristine shell. Artifact:
+`~/Downloads/westlake-starnest-5ce.hap` sha256
+`325cd7e202ac7de1ce7cc24760b8008073d6fd783b819d95ecb0bc03de080a33`.
