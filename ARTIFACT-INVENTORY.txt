@@ -323,3 +323,21 @@ Verified 2026-07-12 (result: evidence/W-004/triangle-apk-panel-2026-07-12/triang
 - cap-map (in-app probe, read back off panel): drawRect/drawOval/drawRoundRect/drawPaint=OK;
   drawCircle/drawArc/drawPath/drawVertices=-- (dispatch-bound by JNI shorty-arm; scene is fill-only)
 - ladder=99-done (70-frame hold under the ~180-frame skia-atlas SIGBUS ceiling)
+
+================================================================================
+W-004 installed HAP extension checkpoint - built/signed/installed 2026-07-13
+================================================================================
+Generated HAPs and bundled runtime binaries remain outside Git. Reviewable glue/interface source is
+captured under ports/dayu600/oh-apkhost-hap/probe/.
+
+d7fab292a778e6ea9c00562ba31c4d69de3c6d80565f7e2d1c7d33804d968e6e  unsigned HAP (111220074 B)
+aa818e7bbae5b0d44734bd85eba6e755714d5c1c5a0ca0da0fbfc00552807fb2  signed HAP (111530071 B)
+0e4a3b173bb5abee9ec912b079c36492fe1f37dca95e0a6538aaacada3b98a9c  packaged libentry.so
+577d5099b9985265454a70d2ec8dd76a2adbbf0404bbd4dc92fe3045293664d0  packaged renderer.so
+c9ed61d0a8b3fc1f70322019cb2e2cd20f9cdd4cb548d05ef59aa9fc4259efad  packaged libhwui.so
+d9865cdfb0a0df70878b4bbebce57c7d579c4f39262848c85da90d91ab11faf5  packaged triangle.apk
+eea33dcb2cf995bc5b6a648329004d899c62db3a06221dc3384cfc7f339b8d98  packaged probe dex
+
+External path: /Users/yao/wl-artboot-probe-hvigor/artboot-icon-5ce.hap
+Host clean build PASS; codesign verify PASS; inherited 5ce session reported install success.
+Android render inside the installed HAP remains UNVERIFIED; do not use this checkpoint as #53 proof.

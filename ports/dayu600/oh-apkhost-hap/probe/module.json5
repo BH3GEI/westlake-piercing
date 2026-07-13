@@ -1,0 +1,31 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "Embedded-ART JVM bring-up sandbox probe",
+    "mainElement": "EntryAbility",
+    "deviceTypes": ["default", "tablet", "phone"],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "GL XComponent smoke ability",
+        "icon": "$media:icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:icon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "entities": ["entity.system.home"],
+            "actions": ["action.system.home"]
+          }
+        ]
+      }
+    ]
+  }
+}
+

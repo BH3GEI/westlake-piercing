@@ -1,27 +1,26 @@
 <!-- 前沿必须 ≤30 行；历史细节在 evidence/，不要在这里长成白板。 -->
 
-# FRONTIER · APK 自绘变色上屏
+# FRONTIER · installed OH HAP 承载真 Android APK 渲染
 
-**更新**：2026-07-12 · 前沿卡 **W-004 / color APK** · 目标交接：`evidence/W-004/2026-07-12-handoff-wip.txt`
+**更新**：2026-07-13 · 前沿卡 **W-004 extension / apkhost HAP** · host checkpoint：`evidence/W-004/2026-07-13-installed-hap-host-checkpoint.md`
 
 ## 用户验收线
 
-真 Android APK 的 `ColorView.onDraw → Canvas.drawColor` 逐帧改变颜色，经 RenderNode/libhwui 生成 buffer；
-OpenHarmony 只合成/扫描出。拒绝 OH 直接填色、静态色块、`setBackgroundColor` 代替。
+Launcher 可安装/点击的 OH HAP 在自身进程启动 embedded ART，加载真 Android APK 自有 dex/Canvas；
+最终 buffer 必须进入可证明的新鲜面板帧。拒绝把 VM 起板、旧结果文件或 OH 原生 GLES 当 Android UI PASS。
 
 ## 当前硬墙
 
-- color APK 源与确定性构建脚本已落 `test-fixtures/dayu600-color-apk/`；产物 hash 以本班次双构建验证为准。
-- W-003 clean relink 已在 5583 通过 atom-49 值验证与 atom-43 回退闸；交付提交 `2854df46`，待 thinker 合入。
-- color 上屏仍需三门同时成立：#49 指针发布、R2 同源 libhwui、`g214bb_raw_read_pixel` 红/绿两帧回读。
-- 用户指定本线完全改用 5ce；私有根 `/data/local/tmp/wl-color-codex` 已建，原 substrate 未覆盖。
-- W-004 独立 ART 已构建但未部署；hash `dc1d5e82…`。尚无 color record、R2 或面板像素 PASS。
+- Critical-native delivery `2854df46` 已在 main，atom-49 + atom-43 PASS；5583 锁已释放。
+- W-004 color slice 已在 5ce PASS；triangle APK rich dashboard render-only 证据/源码已并 main。
+- installed-HAP host checkpoint 已 clean build + codesign + install；大产物 hash 锁在 `REPO_LOCK.toml`，二进制不进 Git。
+- `probe/artboot.c` 已收编；它驱动 triangle stage，但当前仍走 renderer RSSurfaceNode overlay，尚未证明 XComponent surface。
+- `triangle-smoke-5ce.sh` 已修掉“只读旧结果也能 PASS”漏洞；fresh-run 板验仍待执行。
 
 ## 已证基线与安全边界
 
-- #43：5583 `atom-43.sh` PASS ×4；旧基线 ART `3ea7b69d…`，证据见对应 evidence 目录。
-- 5583 当前只读对账：ART `958117a4…`、dex `d7c420a8…`、sidecar `e5a38c85…`；均属未提交 prototype，须重新验收。
-- #46 的旧 lottery 口径已证伪为未测量传闻并 blocked；四板共用 USB hub，禁止诱发掉线/重启实验。
-- 不 wipe/flash，不碰 stock `/system/bin/appspawn`，不碰两块 small 板；发布/部署前锁 5583 给 W-003。
+- #53 DecorView/ViewRootImpl 全路径仍未达；render-only slice 不得改写为完整首帧。
+- 旧 worker dirty tree 的 #51/#53 View/Typeface/LayoutInflater 实验未验证，未并 main；只收编三次板证的 drawPath arm。
+- 不 wipe/flash/reboot，不覆盖原 substrate；5ce 仍由 W-004 占用，其他会话不得并发 bring-up。
 
-**下一动作**：在 W-004 接 color stage + R2 + 像素回读 → 仅部署 5ce 私有根 → 跑 `color-smoke-5ce.sh`。
+**下一动作**：给 installed HAP 增加 fresh launch nonce + XComponent/窗口归属证明，再在独占 5ce 跑安装→点击→新帧 oracle。

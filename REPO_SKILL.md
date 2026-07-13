@@ -84,6 +84,12 @@ at that dated milestone was the aarch64 adapter path toward Android `ViewRoot` /
 `Surface` rendering. Do not use this paragraph as the live frontier; read
 `state/FRONTIER.md` and its referenced card.
 
+The 2026-07-13 installed-HAP checkpoint is source-captured under
+`ports/dayu600/oh-apkhost-hap/probe/`. Host build, signing and installation are
+recorded, but Android rendering inside that HAP is not a promoted oracle PASS.
+Use the live frontier and require a fresh launch/result pair before advancing
+the first-frame claim.
+
 Thinker read order:
 
 1. `AGENTS.md`

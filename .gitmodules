@@ -1,0 +1,8 @@
+[submodule "upstream/pocket-stack/open-strike"]
+	path = upstream/pocket-stack/open-strike
+	url = https://github.com/pocket-stack/open-strike.git
+	ignore = all
+[submodule "upstream/pocket-stack/pocket-figma"]
+	path = upstream/pocket-stack/pocket-figma
+	url = https://github.com/pocket-stack/pocket-figma.git
+	ignore = all

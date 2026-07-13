@@ -14,6 +14,8 @@
 | 2026-07-10 | W-001 #43 | hash-locked oracle FAIL | 5583f5be | sha256 623d7aac… | `W001_TIMEOUT_SECONDS=45 oracle/verify/atom-43.sh <serial>` | `evidence/W-001/2026-07-10-hashlocked-ill-baseline.txt` |
 | 2026-07-12 | W-004 color APK | WIP handoff | 5ce2dcee | ART dc1d5e82… | oracle not run | `evidence/W-004/2026-07-12-handoff-wip.txt` |
 | 2026-07-12 | W-003 #49 | oracle PASS + #43 | 5583f5be | art 0742f1c4… | `oracle/verify/atom-49.sh 5583…` | `evidence/W-003/2026-07-12-atom-49-clean-relink-pass.txt` |
+| 2026-07-12 | W-004 triangle APK | panel/readback PASS | 5ce2dcee | APK d9865cdf… | `oracle/verify/triangle-smoke-5ce.sh 5ce…` | `evidence/W-004/triangle-apk-panel-2026-07-12/` |
+| 2026-07-13 | W-004 installed HAP extension | host build/sign/install checkpoint | 5ce2dcee | HAP aa818e7b… | fresh Android-frame oracle pending | `evidence/W-004/2026-07-13-installed-hap-host-checkpoint.md` |
 
 ## 什么算证据(该留)
 

@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Unity Inline TLS Aperture 五阶段实施设计｜WestLake</title>
+  <style>
+    :root {
+      --ink: #17212b;
+      --muted: #586574;
+      --paper: #f4f1e9;
+      --card: #fffdf8;
+      --line: #d9d2c4;
+      --navy: #0e2d3f;
+      --blue: #176b87;
+      --cyan: #2aa7a1;
+      --amber: #c67a18;
+      --red: #b54435;
+      --green: #26765d;
+      --shadow: 0 18px 48px rgba(26, 40, 51, .10);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 92% 3%, rgba(42,167,161,.14), transparent 25rem),
+        radial-gradient(circle at 8% 12%, rgba(198,122,24,.10), transparent 24rem),
+        var(--paper);
+      font: 15px/1.72 var(--sans);
+    }
+    a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    code, pre { font-family: var(--mono); }
+    code { font-size: .92em; background: #e9eee9; padding: .12rem .35rem; border-radius: 4px; }
+    .hero {
+      color: #f7fbfc;
+      background:
+        linear-gradient(115deg, rgba(14,45,63,.98), rgba(15,74,88,.94)),
+        var(--navy);
+      border-bottom: 5px solid var(--cyan);
+      padding: 56px max(24px, calc((100vw - 1180px) / 2)) 46px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "TP+0x28";
+      position: absolute;
+      right: 4vw;
+      bottom: -30px;
+      font: 800 clamp(54px, 9vw, 130px)/1 var(--mono);
+      color: rgba(255,255,255,.055);
+      letter-spacing: -.08em;
+    }
+    .eyebrow { letter-spacing: .16em; text-transform: uppercase; color: #8ee0d9; font-weight: 750; font-size: 12px; }
+    h1 { max-width: 850px; margin: 12px 0 14px; font-size: clamp(34px, 5vw, 64px); line-height: 1.06; letter-spacing: -.035em; }
+    .hero p { max-width: 850px; margin: 0; font-size: 17px; color: #cfdee3; }
+    .meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 25px; position: relative; z-index: 1; }
+    .pill { border: 1px solid rgba(255,255,255,.24); border-radius: 99px; padding: 5px 11px; font-size: 12px; background: rgba(255,255,255,.07); }
+    .pill.warn { color: #ffe1a8; border-color: rgba(255,205,118,.5); }
+    .layout { max-width: 1240px; margin: 0 auto; padding: 34px 24px 80px; display: grid; grid-template-columns: 230px minmax(0,1fr); gap: 30px; }
+    nav { position: sticky; top: 18px; align-self: start; background: rgba(255,253,248,.86); backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); }
+    nav strong { display: block; margin-bottom: 8px; font-size: 13px; color: var(--navy); }
+    nav a { display: block; padding: 6px 8px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 13px; }
+    nav a:hover { color: var(--navy); background: #e8f2f1; }
+    main { min-width: 0; }
+    section { scroll-margin-top: 22px; margin-bottom: 42px; }
+    h2 { margin: 0 0 17px; color: var(--navy); font-size: 29px; line-height: 1.25; letter-spacing: -.025em; }
+    h3 { margin: 25px 0 11px; color: var(--navy); font-size: 19px; }
+    h4 { margin: 18px 0 8px; font-size: 15px; color: var(--blue); }
+    .lede { font-size: 18px; color: #344754; max-width: 880px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 23px; box-shadow: var(--shadow); }
+    .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+    .grid.three { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .metric { padding: 17px; border-left: 4px solid var(--cyan); background: #f5faf8; border-radius: 0 10px 10px 0; }
+    .metric b { display: block; color: var(--navy); font-size: 15px; }
+    .metric span { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .verdict { border: 1px solid #e1b363; border-left: 7px solid var(--amber); background: #fff8e9; border-radius: 14px; padding: 20px 22px; }
+    .verdict strong { color: #74430a; }
+    .invariant { color: white; background: linear-gradient(135deg, #15394b, #176b70); border-radius: 16px; padding: 25px; box-shadow: var(--shadow); }
+    .invariant .formula { margin-top: 13px; overflow-x: auto; font: 700 15px/1.7 var(--mono); color: #c9fff4; white-space: pre; }
+    .status-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 16px; }
+    .status-box { border-radius: 10px; padding: 12px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); }
+    .status-box span { display: block; color: #a8c4cc; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .status-box b { display: block; margin-top: 3px; color: #fff; font-size: 13px; }
+    .flow { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; counter-reset: stage; }
+    .stage-link { counter-increment: stage; min-height: 170px; color: inherit; text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 17px; position: relative; transition: transform .15s ease, border-color .15s ease; }
+    .stage-link:hover { transform: translateY(-3px); border-color: var(--cyan); }
+    .stage-link::before { content: "0" counter(stage); display: block; color: var(--cyan); font: 800 20px/1 var(--mono); margin-bottom: 15px; }
+    .stage-link strong { display: block; color: var(--navy); }
+    .stage-link small { display: block; color: var(--muted); margin-top: 7px; }
+    .phase { overflow: hidden; padding: 0; }
+    .phase-head { color: white; background: var(--navy); padding: 20px 23px; display: flex; gap: 18px; align-items: center; }
+    .phase-num { display: grid; place-items: center; flex: 0 0 46px; height: 46px; border-radius: 50%; background: var(--cyan); font: 800 18px var(--mono); }
+    .phase-head h3 { color: white; margin: 0; font-size: 22px; }
+    .phase-head p { margin: 2px 0 0; color: #bcd1d8; font-size: 13px; }
+    .phase-body { padding: 23px; }
+    .contract { display: grid; grid-template-columns: 130px 1fr; border-top: 1px solid var(--line); }
+    .contract > div { padding: 10px 5px; border-bottom: 1px solid var(--line); }
+    .contract .key { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    pre { margin: 16px 0; padding: 18px; overflow-x: auto; color: #e9ffff; background: #102936; border-radius: 12px; font-size: 12.5px; line-height: 1.65; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 13px; }
+    th, td { padding: 11px 13px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: var(--navy); background: #eaf2f0; font-size: 12px; letter-spacing: .02em; }
+    tr:last-child td { border-bottom: 0; }
+    .ok { color: var(--green); font-weight: 750; }
+    .risk { color: var(--red); font-weight: 750; }
+    .unknown { color: var(--amber); font-weight: 750; }
+    .stop { border: 1px solid #e4b4ad; background: #fff1ef; border-radius: 12px; padding: 17px; }
+    .stop strong { color: var(--red); }
+    .note { border-left: 4px solid var(--blue); padding: 12px 16px; background: #edf5f8; border-radius: 0 10px 10px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: .35rem; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { padding: 9px 12px 9px 36px; margin: 7px 0; border: 1px solid var(--line); border-radius: 9px; position: relative; background: var(--card); }
+    .checklist li::before { content: "□"; position: absolute; left: 13px; color: var(--cyan); font-weight: 900; }
+    footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 48px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { position: static; display: grid; grid-template-columns: repeat(3,1fr); }
+      nav strong { grid-column: 1/-1; }
+      .flow { grid-template-columns: 1fr; }
+      .stage-link { min-height: auto; }
+      .grid.three { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      .grid, .status-row { grid-template-columns: 1fr; }
+      nav { grid-template-columns: 1fr 1fr; }
+      .contract { grid-template-columns: 1fr; }
+      .contract .key { padding-bottom: 0; border-bottom: 0; }
+      th, td { padding: 9px; }
+    }
+    @media print {
+      body { background: white; font-size: 11pt; }
+      .hero { padding: 28px; print-color-adjust: exact; }
+      .layout { display: block; padding: 24px; }
+      nav { display: none; }
+      .card, .invariant { box-shadow: none; break-inside: avoid; }
+      section { break-before: auto; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">WestLake · L03.A15 · Architecture Contract</div>
+    <h1>Unity Inline TLS Aperture<br>五阶段实施设计</h1>
+    <p>面向原始、未修改 Unity ARM64 APK，在 Bionic 编译约定与 OpenHarmony/Musl 线程模型之间建立可认证、可撤销、可验证的每线程兼容窗口。</p>
+    <div class="meta">
+      <span class="pill warn">Early Design / NOT device verified</span>
+      <span class="pill">CardWords · Unity 2022.3.62f2</span>
+      <span class="pill">OpenHarmony 6.1.0.31 · AOSP 14 · AArch64</span>
+      <span class="pill">原 APK / DSO 字节不修改</span>
+      <span class="pill">Claude headless 红队 6/6 已裁决</span>
+      <span class="pill">更新：2026-07-12 HKT</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="文档导航">
+      <strong>实施导航</strong>
+      <a href="#decision">结论与边界</a>
+      <a href="#invariant">核心不变量</a>
+      <a href="#overview">五阶段总览</a>
+      <a href="#stage-1">01 安装 / 认证</a>
+      <a href="#stage-2">02 AppSpawn 启动</a>
+      <a href="#stage-3">03 Unity 线程</a>
+      <a href="#stage-4">04 OH / Musl 回调</a>
+      <a href="#stage-5">05 实际内联访问</a>
+      <a href="#async">Signal / fork</a>
+      <a href="#dynamic">动态 .so / JIT</a>
+      <a href="#mechanisms">机制字典</a>
+      <a href="#verification">验证与 PASS</a>
+      <a href="#evidence">证据状态</a>
+    </nav>
+
+    <main>
+      <section id="decision">
+        <h2>一页结论</h2>
+        <div class="verdict">
+          <strong>早期技术判断：</strong>当前 CardWords 四个 ARM64 DSO 中已识别出的 Unity TP-relative 行为是确定性的 stack-guard 型读取，技术上可解；但轻量 TLS aperture 是否可用，仍取决于目标 Musl 对 <code>TP+0x28..0x2f</code> 的全生命周期非重叠证明。证明失败时必须升级到独立 Bionic TLS island、DBT，或拒绝该 generation，不能继续试写 Musl TCB。
+        </div>
+        <div class="grid three" style="margin-top:16px">
+          <div class="metric"><b>不是随机问题</b><span>机器码可静态枚举，动态代码可由装载与可执行映射门控。</span></div>
+          <div class="metric"><b>不是函数替换</b><span>内联读取没有 PLT/GOT 或统一调用边界，不能等发生后再 hook。</span></div>
+          <div class="metric"><b>不是安装时写 TLS</b><span>安装只分析和签证；TLS 必须在每次进程、每个线程存在后建立。</span></div>
+        </div>
+        <h3>产品边界</h3>
+        <table>
+          <thead><tr><th>保持不变</th><th>西湖新增能力</th><th>明确不做</th></tr></thead>
+          <tbody><tr>
+            <td>APK 签名与字节；Unity DSO；真实 stack protector fatal 语义</td>
+            <td>安装认证、目标 generation 证书、运行期 entry gate、per-thread aperture、撤销审计</td>
+            <td>修改 Unity/Musl 内部；扩大符号 shim；零 guard；忽略 mismatch；未认证可执行代码</td>
+          </tr></tbody>
+        </table>
+      </section>
+
+      <section id="invariant">
+        <h2>核心不变量：第一条 guest 指令之前 READY</h2>
+        <div class="invariant">
+          <strong>任何线程执行第一条 Unity/Bionic 指令之前，该线程所需的兼容状态必须已经完整写入，并以正确内存序发布。</strong>
+          <div class="formula">ExecuteGuestInstruction(thread, generation)
+  =&gt; CertificateValid(generation)
+  &amp;&amp; ProcessGuardReady(generation, epoch)
+  &amp;&amp; ThreadApertureReady(thread, generation, epoch)</div>
+          <div class="status-row">
+            <div class="status-box"><span>Artifact</span><b>APK / DSO 精确身份</b></div>
+            <div class="status-box"><span>Target</span><b>OH / Musl / Loader 同代</b></div>
+            <div class="status-box"><span>Process</span><b>Guard value 已发布</b></div>
+            <div class="status-box"><span>Thread</span><b>Aperture slot 已发布</b></div>
+          </div>
+        </div>
+        <p class="note">第一条访问可能在 DSO constructor、线程 start routine 的函数序言，或异步 signal handler 中发生。此时尚无可依赖的普通函数边界，所以“先运行、看到访问后再补”在构造上不成立。</p>
+      </section>
+
+      <section id="overview">
+        <h2>五阶段总览</h2>
+        <div class="flow">
+          <a class="stage-link" href="#stage-1"><strong>安装 / 认证</strong><small>发现行为、选机制、签发兼容证书；不写 TLS。</small></a>
+          <a class="stage-link" href="#stage-2"><strong>AppSpawn 启动</strong><small>fork 后、guest constructor 前准备主线程。</small></a>
+          <a class="stage-link" href="#stage-3"><strong>Unity 线程创建</strong><small>统一 pthread broker，在 start routine 前准备。</small></a>
+          <a class="stage-link" href="#stage-4"><strong>OH / Musl 回调</strong><small>typed callback gate 验证 generation / epoch。</small></a>
+          <a class="stage-link" href="#stage-5"><strong>实际内联访问</strong><small>原机器码直接读已准备槽；不逐次拦截。</small></a>
+        </div>
+        <table style="margin-top:18px">
+          <thead><tr><th>阶段</th><th>发生时间</th><th>运行硬门（受证书前提约束）</th><th>热路径成本</th></tr></thead>
+          <tbody>
+            <tr><td>安装 / 认证</td><td>发布、安装、版本变化时</td><td><code>inline_unknown_count == 0</code></td><td>不进入游戏热路径</td></tr>
+            <tr><td>AppSpawn 启动</td><td>每次 child fork 后</td><td>guest DSO 尚未执行</td><td>每进程一次</td></tr>
+            <tr><td>Unity 线程创建</td><td>每个 guest thread start 前</td><td>静态/动态代码闭包成立时的唯一 pthread provider / broker</td><td>每线程一次</td></tr>
+            <tr><td>OH / Musl 回调</td><td>每次 host → guest 边界</td><td>同 generation、同 epoch、READY</td><td>READY 快路径 O(1)</td></tr>
+            <tr><td>实际内联访问</td><td>函数序言 / 尾声</td><td>第一条指令前已 READY</td><td>零新增调用与跳转</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="stage-1" class="card phase">
+        <div class="phase-head"><div class="phase-num">01</div><div><h3>安装 / 认证：Native ABI Admission Center</h3><p>把未知二进制变成绑定具体 generation 的可执行裁决</p></div></div>
+        <div class="phase-body">
+          <div class="contract">
+            <div class="key">进入条件</div><div>原始 APK、签名摘要、全部 native payload；精确 OH/Musl/loader/kernel/adapter 目标清单。</div>
+            <div class="key">唯一 owner</div><div>西湖 Native ABI Admission Center；安装器只消费签名结果，不自行猜测兼容性。</div>
+            <div class="key">核心动作</div><div>冻结身份 → 递归 DSO 闭包 → 扫描 TP/原子/syscall/sysreg/PT_TLS → 恢复语义 → 对拍目标布局 → 选机制 → 签证。</div>
+            <div class="key">阶段产物</div><div>签名兼容证书、inline ledger、DSO/Build-ID manifest、target generation、机制与拒绝原因。</div>
+            <div class="key">失败行为</div><div><span class="risk">QUARANTINE / REJECT</span>；任何 UNKNOWN、目标不明或 overlap 未证明都不得进入运行期。</div>
+          </div>
+
+          <h4>扫描闭包</h4>
+          <pre>Freeze APK + signature + every DSO SHA-256 / Build-ID
+  → close recursive DT_NEEDED and provider identity
+  → enumerate PT_TLS / TLS relocations / executable segments
+  → scan TPIDR_EL0 and TP-derived load/store/atomic sequences
+  → scan direct svc, sysregs, opaque-object atomics and generated code policy
+  → classify offset / width / read-write / semantic / thread role
+  → audit exact target Musl source/binary: every read/write to the candidate range
+  → prove owner across initial TLS, dlopen TLS, thread, fork, signal and destructor
+  → APERTURE | TLS_ISLAND | DBT | RIGHTS_GATED | REJECT
+  → sign certificate</pre>
+
+          <h4>证书必须绑定的身份</h4>
+          <div class="grid">
+            <ul>
+              <li>APK SHA-256、签名证书摘要、package、ABI。</li>
+              <li>每个 DSO 的路径、SHA-256、Build-ID、GNU properties。</li>
+              <li>递归 <code>DT_NEEDED</code> 与唯一 provider。</li>
+            </ul>
+            <ul>
+              <li>OH build、Musl/loader SHA 与 Build-ID、kernel generation。</li>
+              <li>adapter generation 与 compatibility profile。</li>
+              <li>动态代码政策、线程入口合同、证据摘要、撤销序号。</li>
+            </ul>
+          </div>
+          <h4>证书信任与离线撤销</h4>
+          <ul>
+            <li>签发私钥由受控构建/签证服务保管；设备 trust store 只固定公钥与允许的 certificate schema。</li>
+            <li>证书携带单调递增 <code>policy_epoch</code>、签发/到期时间、target fingerprint 与撤销序号；不得只依赖“签名数学有效”。</li>
+            <li>AppSpawn 每次 fork 都核对本机最低允许 policy epoch、证书时效与精确 target fingerprint。target 任一字节变化，即使未联网，也会本地失配。</li>
+            <li>离线设备只允许在受控短有效期内使用已 stapled 的撤销状态；超过最大离线时限即 fail closed，不以可用性为由继续放行。</li>
+          </ul>
+          <div class="stop"><strong>停止线：</strong>“当前字节看起来未使用”不是地址所有权证明。必须覆盖 initial/static TLS、后续 <code>dlopen</code> TLS、线程创建/复用/退出、fork、signal、TLS destructor 与 Musl 运行期写。若 exact Musl 把该范围用于 <code>dtv</code>、<code>self</code> 或其他活跃字段，这是结构性冲突：立即淘汰 <code>APERTURE_NATIVE</code>；只有独立 TLS island/DBT 的边界也能闭合时才升级，否则拒绝该 generation。</div>
+        </div>
+      </section>
+
+      <section id="stage-2" class="card phase">
+        <div class="phase-head"><div class="phase-num">02</div><div><h3>AppSpawn 启动：主线程 aperture</h3><p>每次 fork 都创建新的运行期 epoch；安装证书不能替代线程初始化</p></div></div>
+        <div class="phase-body">
+          <div class="contract">
+            <div class="key">进入条件</div><div>appspawn child 已 fork；证书和当前 target generation 可验证；尚未加载或执行 guest constructor。</div>
+            <div class="key">唯一 owner</div><div>appspawn-x child 中的 native compatibility gate / app-native-loader 前置门。</div>
+            <div class="key">核心动作</div><div>重置 child-local epoch → 验证证书 → 建立 process guard → 发布 PROCESS_READY → 写主线程 slot → 发布 THREAD_READY。</div>
+            <div class="key">阶段产物</div><div>主线程 <code>READY(generation, epoch)</code>；结构化启动审计记录。</div>
+            <div class="key">失败行为</div><div>在 <code>dlopen</code> 前终止 native load；不得默认成功、不得执行 constructor。</div>
+          </div>
+          <pre>fork child
+  → reset inherited locks, registries and child epoch
+  → verify certificate + APK/DSO/target/adapter identity
+  → prove no guest instruction has executed
+  → compute and write process guard value
+  → release-publish PROCESS_READY
+  → acquire PROCESS_READY; write main-thread aperture slot
+  → release-publish THREAD_READY
+  → only now: map guest DSO → constructors → JNI_OnLoad</pre>
+          <ul>
+            <li><code>PrepareCurrentThreadAperture()</code> 自身必须是 Musl-compatible host 代码，不能依赖 guest stack guard。</li>
+            <li>必须早于 <code>dlopen</code>，因为 constructor 在 <code>dlopen</code> 返回前执行。</li>
+            <li>fork 后 guard 是继承还是重播种，只能由目标 Bionic oracle 决定。</li>
+            <li>parent appspawn 不得预执行 app-private Unity constructor。</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="stage-3" class="card phase">
+        <div class="phase-head"><div class="phase-num">03</div><div><h3>Unity 线程创建：唯一 pthread broker</h3><p>不是拦截线程里的每次读取，而是在 start routine 第一条 guest 指令前准备一次</p></div></div>
+        <div class="phase-body">
+          <div class="contract">
+            <div class="key">进入条件</div><div>静态 DSO 与所有允许的动态代码闭包成立；Unity 可见的 <code>pthread_create</code> 全部解析到唯一受控 provider；证书声明该线程角色可准备。</div>
+            <div class="key">唯一 owner</div><div>L03.A15 pthread broker + host trampoline。</div>
+            <div class="key">核心动作</div><div>创建前由 broker 屏蔽 guest signal → 子线程从内核原子继承掩码 → 准备 slot → 二次核对 process token → 发布 READY → 才调用 Unity start routine。</div>
+            <div class="key">阶段产物</div><div>每线程 generation/epoch/role 状态、entry/exit/destructor 计数。</div>
+            <div class="key">失败行为</div><div>不调用 guest start routine；标记 QUARANTINED。直接 clone 绕过无法闭合则撤销 aperture profile。</div>
+          </div>
+          <pre>Unity pthread_create(..., guest_start, arg)
+  → validate attributes + start pointer ownership
+  → broker blocks the certified guest-signal set before pthread_create
+  → create host/Musl thread with host_trampoline
+  → child atomically inherits blocked mask; parent restores its old mask
+  → child acquires PROCESS_READY(generation, epoch, policy_epoch)
+  → write this thread's certified aperture slot
+  → re-read process token; any change means QUARANTINED
+  → CAS PREPARING → THREAD_READY with the same token
+  → unmask allowed guest signals
+  → branch to guest_start(arg)</pre>
+          <h4>退出与复用</h4>
+          <ul>
+            <li>先禁止新 callback，再完成 guest TLS destructor 合同并标记 <code>RETIRED(epoch)</code>。</li>
+            <li>只有 callback/signal 引用为零时，才能释放 side metadata。</li>
+            <li>线程池复用必须核对 generation/epoch；退休状态不得被继承为 READY。</li>
+            <li>认证发现 direct <code>clone/clone3</code> 或直接 syscall 绕过 broker 时，必须纳入受控 child trampoline、升级 DBT/island，或拒绝。</li>
+            <li>若存在不可枚举的 JIT、自修改代码或 executable mapping，所谓“唯一 broker”证明立即失效，必须转入动态代码门或拒绝，不能只依赖静态扫描。</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="stage-4" class="card phase">
+        <div class="phase-head"><div class="phase-num">04</div><div><h3>OH / Musl 回调：Typed Callback Gate</h3><p>任意 host 线程进入 Unity 前，先证明它属于同一证书 generation 与 epoch</p></div></div>
+        <div class="phase-body">
+          <div class="contract">
+            <div class="key">进入条件</div><div>guest function pointer 在注册时已绑定 owner、签名、generation、epoch 和生命周期。</div>
+            <div class="key">唯一 owner</div><div>每个跨界 bridge 的 typed callback trampoline，统一遵守 L03.A15 guest-entry contract。</div>
+            <div class="key">核心动作</div><div>host trampoline 查 registry → 验 process/thread token → READY 快路径；仅在尚未解引用/调用 guest pointer 且满足可准备合同的 HOST_ONLY 线程上执行受控准备 → 二次核对 token → 进入 guest。</div>
+            <div class="key">阶段产物</div><div>callback registry、entry depth、miss/reject counters 与可追溯 owner。</div>
+            <div class="key">失败行为</div><div>fail closed；raw guest pointer 逃逸使 <code>missing_thread_entry_count</code> 非零并撤销证书。</div>
+          </div>
+          <pre>OH callback arrives on thread T
+  → execution is still inside a Musl-compatible host trampoline
+  → block certified guest signals; do not dereference/call guest code
+  → verify callback registry + owner + generation
+  → inspect T aperture state
+  → READY for same epoch ? O(1) fast path
+  → HOST_ONLY and certificate says PREPARABLE ? CAS to PREPARING
+  → prepare slot; revalidate process token; publish THREAD_READY
+  → otherwise reject
+  → increment nested guest-entry depth
+  → invoke Unity callback
+  → decrement depth; restore host boundary state</pre>
+          <div class="stop"><strong>这里不是“发生内联后再补”：</strong>允许准备的唯一位置是尚未执行、解引用或调用任何 guest 地址的 host trampoline，并且使用与 pthread broker 相同的 PREPARING/CAS、signal mask、token 二次核对和 release-publish 协议。signal handler、loader/allocator lock 持有期间、raw guest pointer 路径、已进入 guest prologue 后，或线程地址布局不满足证书时，一律不能准备。</div>
+        </div>
+      </section>
+
+      <section id="stage-5" class="card phase">
+        <div class="phase-head"><div class="phase-num">05</div><div><h3>实际内联访问：直接读取，不再拦截</h3><p>性能收益来自把确定性工作前移到认证与线程入口，而不是让每次读取过 helper</p></div></div>
+        <div class="phase-body">
+          <div class="contract">
+            <div class="key">进入条件</div><div>证书有效；process/thread READY；当前代码页属于证书闭包；generation/epoch 一致。</div>
+            <div class="key">唯一 owner</div><div>原始 Unity/Bionic 机器码；运行期 auditor 仅观察边界计数，不改写每次访问。</div>
+            <div class="key">核心动作</div><div>原样执行 <code>MRS TPIDR_EL0</code> 与固定偏移 load；stack protector 正常比较 guard。</div>
+            <div class="key">阶段产物</div><div>原生访问性能；真实 mismatch 仍进入 <code>__stack_chk_fail</code>。</div>
+            <div class="key">失败行为</div><div>guard/canary mismatch 保留 fatal 语义并采证；禁止零值、固定常量或屏蔽失败。</div>
+          </div>
+          <pre>mrs x20, TPIDR_EL0
+ldr x8, [x20, #0x28]
+
+No function hook
+No GOT / PLT lookup
+No helper call per access
+No page-fault lazy initialization
+No Unity binary patch</pre>
+          <p class="note">Aperture 成功时，每次内联读取与原 Android ARM64 机器码等价，新增成本集中在每进程、每线程和 callback 边界。它仍只解决证书声明的 TLS 行为，不自动解决 pthread 对象快路径、signal frame 或 C++ unwind ABI。</p>
+        </div>
+      </section>
+
+      <section id="async">
+        <h2>异步闭包：signal 与 post-fork</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Signal</h3>
+            <pre>slot written
+  → THREAD_READY published
+  → guest-owned signal unmasked
+  → handler may execute</pre>
+            <ul>
+              <li>PREPARING 期间屏蔽 guest-owned signal。</li>
+              <li>process-directed signal 只投递到 READY 线程，或经唯一 signal broker 转发。</li>
+              <li>handler 只能读取预发布状态，不 malloc、加锁、dlopen 或初始化。</li>
+              <li>altstack、ucontext、sigset 是独立 signal ABI 合同。</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>post-fork</h3>
+            <ul>
+              <li>child 创建新 epoch，清理继承锁、registry 与线程状态。</li>
+              <li>guard 继承/重播种由 exact Bionic oracle 决定。</li>
+              <li>重新发布 PROCESS/THREAD READY 前禁止 guest 执行。</li>
+              <li>parent/child 证据按 PID、boot、generation 分开记录。</li>
+            </ul>
+            <div class="stop"><strong>关键风险：</strong>继承到 child 的“看似 READY”状态不能自动代表 fork 后状态完整。</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="dynamic">
+        <h2>游戏内刷新 `.so`：可处理，但必须先认证后执行</h2>
+        <p class="lede">普通 loader 可见路径有机会统一管控；绕过 loader 的 executable mapping 则需要更低层的映射门、DBT 或拒绝。产品默认采用新进程 generation，不做未经证明的进程内热换。</p>
+        <pre>download / update
+  → non-executable quarantine
+  → open exact file; hash / signature / fstat
+  → recursively close DT_NEEDED + PT_TLS
+  → scan inline ABI and recompute aperture overlap
+  → issue incremental certificate
+  → promote and load the same immutable / sealed FD
+  → restart into a new process generation
+  → verify again before mapping and constructor</pre>
+        <table>
+          <thead><tr><th>加载路径</th><th>普通 loader gate</th><th>产品处理</th></tr></thead>
+          <tbody>
+            <tr><td>ClassLoader / NativeLoader</td><td class="ok">可管控</td><td>统一 backend，核对 namespace、证书、same-FD。</td></tr>
+            <tr><td><code>dlopen</code> / nested <code>dlopen</code></td><td class="ok">有条件可管控</td><td>app namespace 只能解析到唯一受控 provider。</td></tr>
+            <tr><td><code>android_dlopen_ext</code> / FD load</td><td class="ok">有条件可管控</td><td>验证并加载同一个 sealed FD，禁止重新按 path 解析。</td></tr>
+            <tr><td><code>DT_NEEDED</code></td><td class="ok">可管控</td><td>root constructor 前闭合全部递归依赖。</td></tr>
+            <tr><td><code>memfd</code> + executable mapping</td><td class="unknown">不充分</td><td>sealed FD + executable-map gate；否则拒绝。</td></tr>
+            <tr><td><code>mmap/mprotect(PROT_EXEC)</code></td><td class="risk">不可仅靠 loader</td><td>kernel/SELinux/LSM 或 mapping broker；否则拒绝。</td></tr>
+            <tr><td>direct <code>svc</code> / JIT / self-modifying</td><td class="risk">不可见</td><td>DBT、专用 JIT policy + W^X + attestation，或拒绝。</td></tr>
+          </tbody>
+        </table>
+        <p class="note">即使新 DSO 自身没有 TP 读取，只要它带 <code>PT_TLS</code> 或改变 loader TLS 分配，旧 aperture 非重叠证明也可能失效，必须重新计算并撤销旧证书。</p>
+      </section>
+
+      <section id="mechanisms">
+        <h2>解决机制字典与升级路线</h2>
+        <table>
+          <thead><tr><th>裁决码</th><th>适用条件</th><th>访问成本</th><th>改二进制 / 权利风险</th><th>停止条件</th></tr></thead>
+          <tbody>
+            <tr><td><strong>APERTURE_NATIVE</strong></td><td>固定 slot；exact Musl 全读写点已审计；目标地址所有权和永久非重叠已证明；入口全闭合。</td><td class="ok">内联热路径 P0</td><td>不改 APK/DSO</td><td>活跃 Musl 字段、任何 overlap、unknown 或 entry miss 都立即淘汰此机制</td></tr>
+            <tr><td><strong>PER_APP_TLS_ISLAND</strong></td><td>host/guest TP 状态冲突，但所有跨界与异步边界可控制。</td><td class="unknown">边界切换 P2</td><td>通常不改 guest 字节</td><td>raw callback/signal/clone 无法闭合</td></tr>
+            <tr><td><strong>DBT / NATIVE_BRIDGE</strong></td><td>需虚拟 guest TP 或翻译任意 TP-relative 指令。</td><td class="unknown">全量翻译 P2/P3</td><td>运行期转换需法务审查</td><td>指令、signal、内存模型或性能门失败</td></tr>
+            <tr><td><strong>BINARY_REWRITE</strong></td><td>全部站点可证明地改写到 helper / 新地址。</td><td>可低至 P0/P1</td><td class="risk">RIGHTS_GATED</td><td>无书面授权、签名/反篡改冲突</td></tr>
+            <tr><td><strong>REJECT_GENERATION</strong></td><td>同址双状态冲突，且 island/DBT/rewrite/隔离均不允许。</td><td>不运行</td><td>无额外变更</td><td>产品约束下的明确拒绝</td></tr>
+          </tbody>
+        </table>
+        <p class="note">“技术上可解”与“当前产品路线可接受”是两件事。性能、系统权限、二进制变更和权利门必须独立记录，不能把高成本或未授权简化成抽象的“无解”。</p>
+      </section>
+
+      <section id="publication">
+        <h2>并发状态机与正确发布顺序</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Process</h3>
+            <pre>UNINITIALIZED
+  → INITIALIZING
+  → READY(generation, epoch, policy_epoch, guard)
+  → RETIRING → RETIRED
+
+any error → FAILED</pre>
+          </div>
+          <div class="card">
+            <h3>Thread</h3>
+            <pre>HOST_ONLY
+  → PREPARING
+  → READY(generation, epoch, policy_epoch)
+  → IN_GUEST(depth ≥ 1)
+  → READY → RETIRED
+
+any error → QUARANTINED</pre>
+          </div>
+        </div>
+        <h3>修复历史 A07 的 TOCTOU</h3>
+        <table>
+          <thead><tr><th>禁止顺序</th><th>本设计顺序</th></tr></thead>
+          <tbody><tr>
+            <td><code>ready=1</code> → write guard；读者可能在窗口内读到 0/旧值。</td>
+            <td>compute/validate → write guard → release PROCESS_READY → acquire → write slot → release THREAD_READY → acquire 后进 guest。</td>
+          </tr></tbody>
+        </table>
+        <h3>防止 generation / epoch ABA</h3>
+        <ol>
+          <li><code>generation + epoch + policy_epoch</code> 组成单调 process token；同一 token 不复用。</li>
+          <li>线程从 PROCESS_READY acquire token，写 slot 后必须再次 acquire process state；token 或 READY 状态变化即进入 QUARANTINED。</li>
+          <li>只有以同一 token 完成 <code>CAS(PREPARING → THREAD_READY)</code> 才可发布；callback gate 在调用 guest 前再次同时核对 process/thread token。</li>
+          <li>Process 进入 RETIRING 时先关闭新 entry，原子阻止 PREPARING 线程继续发布，等待 IN_GUEST/entry lease 排空后才退休旧 generation。</li>
+        </ol>
+        <p>ARM64 弱内存序必须由 target litmus/stress 证明；x86 host 或 QEMU PASS 不能替代真机 acquire/release 证据。</p>
+      </section>
+
+      <section id="verification">
+        <h2>验证阶梯与 PASS 合同</h2>
+        <ol>
+          <li><strong>Host/static：</strong>双扫描器站点集合一致，unknown 为 0；证书 mutation、target mismatch、duplicate provider、unknown DSO 全部 fail closed。</li>
+          <li><strong>Target minimal fixture：</strong>constructor-first、main、new thread、callback、pool、post-fork、signal 六入口；PT_TLS 动态 DSO 正负控；canary 与弱内存序 stress。</li>
+          <li><strong>Unity device gate：</strong>exact APK/DSO/target manifest，production listener，Enforcing，reboot + NO_JIT 第一个 truly-cold child，两个不同 boot ID。</li>
+          <li><strong>后续楼层：</strong>TLS PASS 只允许进入 signal ABI → EGL/Surface → 首帧，不得冒充 Unity 已上屏。</li>
+        </ol>
+        <h3>硬指标</h3>
+        <pre>inline_unknown_count == 0
+musl_tcb_unproven_overlap_count == 0
+missing_thread_entry_count == 0
+guest_before_ready_count == 0
+signal_before_ready_count == 0
+unexpected_tp_write_count == 0
+canary_mismatch_count == 0
+generation_epoch_mismatch_count == 0
+certificate_identity_mismatch_count == 0
+certificate_policy_epoch_mismatch_count == 0
+certificate_expired_or_stale_revocation_count == 0
+unknown_executable_mapping_count == 0</pre>
+        <p class="stop"><strong>“日志里没看见”不等于计数为 0。</strong>每项必须来自结构化、可重复、与 artifact/boot/generation 绑定的证据。</p>
+      </section>
+
+      <section id="evidence">
+        <h2>当前证据状态：不把设计写成实现</h2>
+        <div class="grid">
+          <div class="card">
+            <h3 class="ok">Proven · host/static</h3>
+            <ul>
+              <li>CardWords 四个 ARM64 DSO 已冻结并可按 SHA/Build-ID 识别。</li>
+              <li>扫描识别 <strong>3896</strong> 个 <code>MRS TPIDR_EL0</code> 静态站点：libmain 1、libunity 2070、libil2cpp 1825、Burst 0。</li>
+              <li>当前已抽取模式首先导向 <code>TP+0x28</code>、8 字节、只读，高度符合 Bionic stack guard。</li>
+              <li>函数 shim 无法拦截已编入机器码的 TP 读取。</li>
+              <li>历史 A07 的 ready-before-value 发布存在真实 TOCTOU。</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3 class="unknown">Not Proven</h3>
+            <ul>
+              <li>exact target Musl 对 <code>TP+0x28..0x2f</code> 的物理所有权和全生命周期非重叠。</li>
+              <li>guard source、fork 继承/重播种的 exact Bionic oracle。</li>
+              <li>六类线程与异步入口在产品 build 中全部可控。</li>
+              <li>aperture 产品代码、ARM64 target fixture、性能与 truly-cold 稳定性。</li>
+              <li>TP 之外的 direct syscall、opaque atomics、signal/JIT 全量 ABI 闭包。</li>
+            </ul>
+          </div>
+        </div>
+        <h3>下一份最小证据</h3>
+        <ul class="checklist">
+          <li>冻结 D600 exact OH build 与 live Musl path / SHA / Build-ID。</li>
+          <li>生成 target <code>TP[-N,+N]</code> owner/write map，证明 <code>+0x28..+0x2f</code>。</li>
+          <li>以 A07 TOCTOU 为负控，完成 correct-publication ARM64 fixture。</li>
+          <li>完成 constructor-first + 六入口 + 动态 PT_TLS 正负控。</li>
+          <li>全部为绿后，才申请一次 sealed Unity truly-cold 确认实验。</li>
+        </ul>
+      </section>
+
+      <section id="references">
+        <h2>正本与参考</h2>
+        <ul>
+          <li><a href="UNITY_INLINE_TLS_APERTURE_DESIGN.md">完整 Markdown 设计正本</a></li>
+          <li><a href="CLAUDE_HEADLESS_REVIEW_20260712.md">独立 Claude Headless 红队审查与逐项裁决</a></li>
+          <li><a href="COMPARISON_DATA.md">L03.A15 六路比较资料</a></li>
+          <li><a href="../../../architecture-six-way/specs/L03-RUNTIME-NATIVE-BOUNDARY-SPEC.md">L03 Runtime / Native Boundary 总体设计</a></li>
+          <li><a href="https://android.googlesource.com/platform/bionic/+/refs/heads/main/libc/platform/bionic/tls_defines.h">AOSP Bionic TLS slot 定义</a></li>
+          <li><a href="https://android.googlesource.com/platform/frameworks/libs/native_bridge_support/+/dcbff3fe489feb2a1e2dead858ad8cd7afeb6ec3/linker/__libc_init_main_thread.cpp">AOSP Native Bridge guest TCB/TLS 实现参考</a></li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    WestLake / Unity Inline ABI Closure · 主责任原子 L03.A15 BIONIC-TLS-PTHREAD-GUARD · 本 HTML 是可实施设计投影，不是 build、产品实现或 device verification 证明。
+  </footer>
+</body>
+</html>

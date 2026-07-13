@@ -1,0 +1,13 @@
+.hvigor/
+entry/.cxx/
+entry/build/
+entry/src/main/rust/target/
+sign/
+local.properties
+*.hap
+
+# Rebuilt by build-all.sh from the pinned official sources.
+entry/src/main/ets/pocket/*.js
+entry/src/main/resources/rawfile/*.js
+entry/src/main/resources/rawfile/*.pak
+entry/src/main/rust/assets/soldier.mesh

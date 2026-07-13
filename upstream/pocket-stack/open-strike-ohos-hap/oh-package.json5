@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "lightgames",
+  "version": "1.0.0",
+  "description": "PocketJS light game arcade for OpenHarmony",
+  "main": "",
+  "author": "westlake",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

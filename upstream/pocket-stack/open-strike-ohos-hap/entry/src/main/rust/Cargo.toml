@@ -1,0 +1,19 @@
+[package]
+name = "openstrike-ohos-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+pocketjs-core = { path = "../../../../../open-strike/vendor/pocketjs/core", features = ["std"] }
+openstrike-core = { path = "../../../../../open-strike/crates/openstrike-core" }
+pocket3d-bsp = { path = "../../../../../open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp" }
+glam = "0.33"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+panic = "abort"
+codegen-units = 1

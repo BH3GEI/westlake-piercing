@@ -47,7 +47,21 @@ remote_sha() { printf '%s\n' "$hashes" | awk -v p="$1" '$2==p {print $1}'; }
 [ "$WTRI_DEX_SHA" = "$(remote_sha "$P/apks/dayu600-apk-probe.dex")" ] || fail "probe dex hash mismatch"
 [ "$APK_SHA" = "$(remote_sha "$P/apks/triangle.apk")" ] || fail "triangle APK hash mismatch"
 
+# A PASS must come from this invocation.  The original oracle only read the
+# existing result files, so a later broken deployment could inherit an older
+# PASS.  Remove them first, execute the pinned lane runner, and require it to
+# recreate both files successfully.
+runner="$P/run-triangle-5ce.sh"
+$HDC -t "$SERIAL" shell "test -f $runner" >/dev/null 2>&1 || fail "missing device runner: $runner"
+$HDC -t "$SERIAL" shell "rm -f /data/local/tmp/triangle-result.txt /data/local/tmp/triangle-pixels.txt" \
+  >/dev/null 2>&1 || fail "could not clear stale triangle results"
+run_out="$($HDC -t "$SERIAL" shell "cd $P && sh $runner" 2>&1 | tr -d '\r')"
+run_rc=$?
+printf '%s\n' "$run_out"
+[ "$run_rc" -eq 0 ] || fail "fresh triangle run failed rc=$run_rc"
+
 out="$($HDC -t "$SERIAL" shell "cat /data/local/tmp/triangle-result.txt 2>/dev/null; cat /data/local/tmp/triangle-pixels.txt 2>/dev/null" | tr -d '\r')"
+[ -n "$out" ] || fail "fresh run produced no result files"
 printf '%s\n' "$out"
 
 # 1) render marker + 2) live colour cycle

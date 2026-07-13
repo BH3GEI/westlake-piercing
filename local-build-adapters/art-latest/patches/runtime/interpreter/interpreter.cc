@@ -2461,6 +2461,22 @@ static void InterpreterJni(Thread* self,
       fn(soa.Env(), klass.get(), *reinterpret_cast<jlong*>(&args[0]),
          *reinterpret_cast<jlong*>(&args[2]), static_cast<jint>(args[4]),
          static_cast<jboolean>(args[5]));
+    } else if (shorty == "VJJJ" &&
+               (method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseRecordingCanvas;") ||
+                method->GetDeclaringClass()->DescriptorEquals("Landroid/graphics/BaseCanvas;"))) {
+      // [DAYU600][drawop] BaseRecordingCanvas/BaseCanvas.nDrawPath(long canvas, long path, long paint) — VJJJ.
+      // Ground truth (substrate framework smali): BaseRecordingCanvas.nDrawPath(JJJ)V is @FastNative,
+      // BaseCanvas.nDrawPath(JJJ)V is a plain native — both are dispatched in this regular-static rail via
+      // GetEntryPointFromJni(), exactly like the working nDrawRoundRect (VJFFFFFFJ) arm above. Class-guarded
+      // so a bare 3-long shorty cannot hijack an unrelated static native whose entry may be a dlsym stub.
+      using fntype = void(JNIEnv*, jclass, jlong, jlong, jlong);
+      fntype* const fn = reinterpret_cast<fntype*>(method->GetEntryPointFromJni());
+      ScopedLocalRef<jclass> klass(soa.Env(),
+                                   soa.AddLocalReference<jclass>(method->GetDeclaringClass()));
+      jlong arg0 = *reinterpret_cast<jlong*>(&args[0]);
+      jlong arg1 = *reinterpret_cast<jlong*>(&args[2]);
+      jlong arg2 = *reinterpret_cast<jlong*>(&args[4]);
+      fn(soa.Env(), klass.get(), arg0, arg1, arg2);
     } else {
       LOG(WARNING) << "InterpreterJni: unhandled static shorty '" << shorty << "' for " << method->PrettyMethod();
       // [DAYU600] Return a type-correct default instead of leaving garbage in the

@@ -256,6 +256,17 @@ claim = "APK-owned ColorView.onDraw -> Canvas.drawColor cycling palette; not yet
 verified = "host build repeated twice with identical hash on 2026-07-11"
 bad_build_note = "331568b2 (foreign WSL, mixed 81cdec3c+bb5cdf0f clang) → native_get unbound → #43 FAIL"
 
+[artifacts.dayu600_apkhost_hap_checkpoint]
+source = "ports/dayu600/oh-apkhost-hap/probe/"
+external_signed_hap = "/Users/yao/wl-artboot-probe-hvigor/artboot-icon-5ce.hap"
+signed_hap_sha256 = "aa818e7bbae5b0d44734bd85eba6e755714d5c1c5a0ca0da0fbfc00552807fb2"
+signed_hap_bytes = 111530071
+unsigned_hap_sha256 = "d7fab292a778e6ea9c00562ba31c4d69de3c6d80565f7e2d1c7d33804d968e6e"
+host_build = "PASS: clean hvigor build; codesign verification PASS"
+device_install = "observed inherited session PASS on 5ce"
+render_status = "UNVERIFIED: no fresh installed-HAP Android-frame oracle"
+verified_date = "2026-07-13"
+
 [artifacts.w001_oracle_checkpoint]
 device_launcher_sha256 = "b2dd0ac9ef53f80d0da4bbcd591a8228a4f7adeb4f1add937025c7dbcd39a235"
 apk_probe_dex_sha256 = "931e8a6beaf7b3c5a5d1e5bbfc1b0a7ba8b04165047278c094f44dc3eff7dbb3"

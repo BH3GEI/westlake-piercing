@@ -3,8 +3,7 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-11(晚)· 前沿转向 **color-apk 上屏**(用户线:APK 自绘变色,拒 OH 直接填色),已交接
-`state/HANDOFF-2026-07-11-color-apk-onscreen.md`。#49/W-003 经 codex 定案**重写**(根因=class_linker 发布 bug,非 ABI)。
+**更新**：2026-07-13 · W-003/#49 与 W-004 render-only 成果已进 main；前沿转向 installed OH HAP 承载真 Android APK 渲染。
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -15,8 +14,8 @@
 | 卡 | 墙 | 状态 | 板需求 | 备注 |
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
-| **W-003** | #49 @CriticalNative 绑定发布修复 | **oracle PASS·待合入** | big-clean | clean relink `2854df46`;atom-49 值验证 + atom-43 回退闸 PASS |
-| **W-004** | APK 自绘变色上屏(color-apk) | **doing·WIP handoff** | 5ce only | 私有根 `wl-color-codex`;ART 已构建未部署；待 color stage + R2 + 红/绿像素回读 |
+| **W-003** | #49 @CriticalNative 绑定发布修复 | **done·已合入** | big-clean | clean relink `2854df46`;atom-49 值验证 + atom-43 回退闸 PASS |
+| **W-004** | color/triangle render-only → installed apkhost HAP | **doing·host checkpoint** | 5ce only | color + triangle 已证；HAP build/sign/install 已证，Android 新帧/XComponent 归属未证 |
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
 
