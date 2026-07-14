@@ -80,7 +80,7 @@ asserts the pre-patch adler, and refuses via an `n==1` guard if the abc layout d
 
 Pipeline: unpack → `patch_abc.py ets/modules.abc` → (fmt-shim inject as before) → repack →
 page-align 4096 → resign for 5ce. Combined build:
-`~/Desktop/code/_artifacts/tuanjie-ohmin-upright-5ce.hap` sha256 `448f3c5ec517a06f6081c4e1a83bfb7664fd213827d99abea8e1aea673eaded1`.
+`~/Desktop/code/harmony/_artifacts/tuanjie-ohmin-upright-5ce.hap` sha256 `448f3c5ec517a06f6081c4e1a83bfb7664fd213827d99abea8e1aea673eaded1`.
 
 Board-verified: installed on 5ce, `snapshot_display` → `panel-game-rendered-upright.jpeg` —
 status bar at top, nav bar at bottom, 「鸿蒙游戏 / 点击/触摸小球得分 / Tap the spheres! /
