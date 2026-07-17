@@ -60,7 +60,12 @@ public final class WestlakeUpscreen {
         // beginRecording(w,h) sizes the recording canvas but NOT the node bounds; set them
         // explicitly or an unbounded root clips to nothing. clipToBounds stays default(true):
         // it clips children to (0,0,w,h)==full screen, correct for a full-screen first frame.
-        sRoot.setPosition(0, 0, w, h);
+        // W-005/#49: RenderNode.setPosition dispatches through @CriticalNative
+        // nSetLeftTopRightBottom, UNBOUND on this imageless stack (UnsatisfiedLinkError).
+        // The renderer's nativeInit already sets the bounds DIRECTLY in C++ (the W-004
+        // workaround), so the Java-side call is best-effort only.
+        try { sRoot.setPosition(0, 0, w, h); }
+        catch (Throwable ignored) { /* bounds are set natively in nativeInit */ }
         RecordingCanvas c = sRoot.beginRecording(w, h);
         try {
             v.draw(c); // flat display list (null AttachInfo => software child-draw branch)
