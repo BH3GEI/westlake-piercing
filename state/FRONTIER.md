@@ -23,5 +23,8 @@ Launcher 可安装/点击的 OH HAP 在自身进程启动 embedded ART，加载�
   nonce 链 WLAUNCH(启动)→WELD(窗口归属)→WLTRI(像素命中)，旧帧/旧日志无法冒充。
 - 不 wipe/flash/reboot；HAP 之外不进板。
 
-**下一动作**：编译机重建 arm64 四 .so（art/renderer/libhwui/oh_android_runtime）→ `artboot/stage-runtime.sh`
-→ hvigor 打包 → `wl-tools/resign.sh`（5583 UDID）→ `oracle/verify/apkhost-fresh-frame.sh`。
+**当前墙**：管线已全通至 `record()`（VM rc=0、subset failures=0、TriangleView 已载）；
+剩「libhwui↔framework 同源」墙——A14 jar=Canvas registrar assert；A15 jar=`new RenderNode`
+FindClassDef SIGSEGV（详见 evidence/W-005/2026-07-17-…md）。
+**下一动作**：编译机重出「framework 同源 + OHOS 适配」libhwui（或修 ART 对 A15 dex 解析），
+再跑 `oracle/verify/apkhost-fresh-frame.sh`（判据链已就位）。
