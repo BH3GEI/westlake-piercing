@@ -23,8 +23,8 @@ Launcher 可安装/点击的 OH HAP 在自身进程启动 embedded ART，加载�
   nonce 链 WLAUNCH(启动)→WELD(窗口归属)→WLTRI(像素命中)，旧帧/旧日志无法冒充。
 - 不 wipe/flash/reboot；HAP 之外不进板。
 
-**当前墙**：管线已全通至 `record()`（VM rc=0、subset failures=0、TriangleView 已载）；
-剩「libhwui↔framework 同源」墙——A14 jar=Canvas registrar assert；A15 jar=`new RenderNode`
-FindClassDef SIGSEGV（详见 evidence/W-005/2026-07-17-…md）。
-**下一动作**：编译机重出「framework 同源 + OHOS 适配」libhwui（或修 ART 对 A15 dex 解析），
-再跑 `oracle/verify/apkhost-fresh-frame.sh`（判据链已就位）。
+**当前墙**：管线已全通至 `record()`（VM rc=0、selective binder bound=355、TriangleView 已载）；
+死于 ART 对象创建（adeb764f 在 `new RenderNode`/字段解析处 `0x0001007e…` 崩，证据链见
+evidence/W-005/2026-07-18-…md）。#44 Canvas 分类已落（crit≤2）。
+**下一动作**：编译机重建 westlake ART（LineageOS-22.2 树 + westlake 补丁移植，子代理在跑）
+→ `artboot/redeploy-art.sh` 一键换件 → `oracle/verify/apkhost-fresh-frame.sh`。
