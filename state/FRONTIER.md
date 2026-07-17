@@ -2,7 +2,7 @@
 
 # FRONTIER · installed OH HAP 承载真 Android APK 渲染
 
-**更新**：2026-07-13 · 前沿卡 **W-004 extension / apkhost HAP** · host checkpoint：`evidence/W-004/2026-07-13-installed-hap-host-checkpoint.md`
+**更新**：2026-07-17 · 前沿卡 **W-005 / apkhost fresh-frame** · 靶板 **5583f5be**（板刷新后 5ce 离线）
 
 ## 用户验收线
 
@@ -11,16 +11,17 @@ Launcher 可安装/点击的 OH HAP 在自身进程启动 embedded ART，加载�
 
 ## 当前硬墙
 
-- Critical-native delivery `2854df46` 已在 main，atom-49 + atom-43 PASS；5583 锁已释放。
-- W-004 color slice 已在 5ce PASS；triangle APK rich dashboard render-only 证据/源码已并 main。
-- installed-HAP host checkpoint 已 clean build + codesign + install；大产物 hash 锁在 `REPO_LOCK.toml`，二进制不进 Git。
-- `probe/artboot.c` 已收编；它驱动 triangle stage，但当前仍走 renderer RSSurfaceNode overlay，尚未证明 XComponent surface。
-- `triangle-smoke-5ce.sh` 已修掉“只读旧结果也能 PASS”漏洞；fresh-run 板验仍待执行。
+- color/triangle render-only 已 PASS（5ce，07-12/13）交卷（卡见 tasks/done/）；installed-HAP 仍差「新帧+窗口归属」。
+- 用户 2026-07-16/17 全面刷新板子：5583 在线但 lane 全清、5ce 离线、dd011a41 序列迁移为 …07c6ac00。
+- 运行时恢复来源已盘点：编译机 adapter-20260706-tree（origin 中性 jars）+ art-latest 重建（art-build-recipes）
+  + gfx-smoke 配方（renderer/libhwui）+ Mac 重打探针 dex（`dbd4e082`，含 nonce 帧，已出）。
 
 ## 已证基线与安全边界
 
-- #53 DecorView/ViewRootImpl 全路径仍未达；render-only slice 不得改写为完整首帧。
-- 旧 worker dirty tree 的 #51/#53 View/Typeface/LayoutInflater 实验未验证，未并 main；只收编三次板证的 drawPath arm。
-- 不 wipe/flash/reboot，不覆盖原 substrate；5ce 仍由 W-004 占用，其他会话不得并发 bring-up。
+- #53 DecorView/ViewRootImpl 全路径仍未达；W-005 只证「installed HAP 窗口内 APK 自绘新帧」，不越报全路径。
+- 焊接法定案：libwlweld.so 拦截 `westlake_ohos_make_display_window`（PLT，零改已验 renderer 二进制）；
+  nonce 链 WLAUNCH(启动)→WELD(窗口归属)→WLTRI(像素命中)，旧帧/旧日志无法冒充。
+- 不 wipe/flash/reboot；HAP 之外不进板。
 
-**下一动作**：给 installed HAP 增加 fresh launch nonce + XComponent/窗口归属证明，再在独占 5ce 跑安装→点击→新帧 oracle。
+**下一动作**：编译机重建 arm64 四 .so（art/renderer/libhwui/oh_android_runtime）→ `artboot/stage-runtime.sh`
+→ hvigor 打包 → `wl-tools/resign.sh`（5583 UDID）→ `oracle/verify/apkhost-fresh-frame.sh`。

@@ -3,7 +3,7 @@
 
 # 任务队列概览 (QUEUE)
 
-**更新**：2026-07-13 · W-003/#49 与 W-004 render-only 成果已进 main；前沿转向 installed OH HAP 承载真 Android APK 渲染。
+**更新**：2026-07-17 · 板刷新后重建：W-004 交卷（color/triangle 已 PASS），前沿转 W-005（installed HAP 新帧+窗口归属，靶板 5583f5be）。
 
 两条队列并行，互不抢脑子：
 - **穿刺队列**：卡从墙上长，thinker/用户亲自拆，一次开一道墙，吃 big-clean 板。
@@ -15,7 +15,8 @@
 |---|---|---|---|---|
 | W-001 | #43 AppCompatTheme 真 WAB oracle | **done** | big-clean | 验收板 5583 `atom-43.sh` PASS ×4;LEDGER ✅;产物 hash-locked(dex 696dd3cb + ART 3ea7b69d) |
 | **W-003** | #49 @CriticalNative 绑定发布修复 | **done·已合入** | big-clean | clean relink `2854df46`;atom-49 值验证 + atom-43 回退闸 PASS |
-| **W-004** | color/triangle render-only → installed apkhost HAP | **doing·host checkpoint** | 5ce only | color + triangle 已证；HAP build/sign/install 已证，Android 新帧/XComponent 归属未证 |
+| **W-004** | color/triangle render-only | **done** | 5ce(已离线) | color PASS(07-12)+triangle dashboard PASS(07-12)+installed-HAP build/sign/install checkpoint(07-13) |
+| **W-005** | installed HAP 新帧 nonce + XComponent 窗口归属 | **doing** | big-clean(5583) | 胶+dex+oracle 已落地；运行时件重建中（编译机）；oracle `apkhost-fresh-frame.sh` |
 | (待铸) | #51 inflate `R.layout.main`(窄 Factory2 只替 ImageView→AppCompatImageView) | todo | big-clean | 布局极简零自定义 View;**风险闸=Typeface/Minikin 字体 bootstrap**,先打字体冒烟探针再铸 |
 | (待铸) | #53 手动 draw 进 RenderNode → 货架 RenderProxy → 面板像素 r==2 | todo | big-clean | 首帧引擎(gfx-smoke)已实测存在,不走 ViewRootImpl(死胡同)。依赖 #49+#51 |
 

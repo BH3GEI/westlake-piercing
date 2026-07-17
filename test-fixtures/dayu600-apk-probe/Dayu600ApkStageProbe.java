@@ -2619,6 +2619,41 @@ public final class Dayu600ApkStageProbe {
                        .append(':').append(String.valueOf(capT.getMessage())).append('\n');
                 }
 
+                // (B0) LAUNCH-NONCE frame (installed-HAP provenance, W-004 ext):
+                // the HAP glue exports WESTLAKE_LAUNCH_NONCE(_COLOR) before VM create;
+                // draw ONE scene-mode frame whose hub fill IS that fresh per-launch
+                // colour and prove the pre-swap panel pixel matches it. This binds the
+                // on-panel frame to THIS launch of THIS installed HAP (no stale-result
+                // replay). Skipped entirely in the shell lane (env absent), so
+                // triangle-smoke-5ce semantics are unchanged.
+                try {
+                    String ln = System.getenv("WESTLAKE_LAUNCH_NONCE");
+                    String lc = System.getenv("WESTLAKE_LAUNCH_NONCE_COLOR");
+                    if (ln != null && lc != null && ln.length() > 0 && lc.length() > 0) {
+                        int nc = (int) Long.parseLong(
+                                lc.trim().replace("0x", "").replace("0X", ""), 16);
+                        colorF.setInt(view, nc);
+                        record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+                        nDraw.invoke(null);
+                        long np = readSwapArgb(nSwap);
+                        boolean nok = (np >= 0L) && (((int) np) == nc);
+                        String nl = "launchNonce=" + ln
+                                + " nonceColor=" + hex8(nc)
+                                + " noncePixel=" + hex8((int) np)
+                                + (nok ? " nonceMatch=yes" : " nonceMatch=no");
+                        res.append(nl).append('\n');
+                        try { android.util.Log.e("WLAUNCH", nl); } catch (Throwable ig2) {}
+                        String rd = System.getenv("WESTLAKE_RESULT_DIR");
+                        if (rd != null && rd.length() > 0) {
+                            try { writeText(rd + "/wl-triangle-result.txt", nl + "\n"); }
+                            catch (Throwable ig3) {}
+                        }
+                    }
+                } catch (Throwable nT) {
+                    res.append("nonce-frame FAIL ").append(nT.getClass().getName())
+                       .append(':').append(String.valueOf(nT.getMessage())).append('\n');
+                }
+
                 // (B) DISPLAY/HOLD phase. The app's OWN nextFrame() advances BOTH the (int) angle
                 // and the (int) colour — both int fields, which this substrate writes correctly.
                 // Render the live dashboard slowly (~120ms/frame) so the panel visibly displays it

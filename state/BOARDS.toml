@@ -2,7 +2,7 @@
 # 锁 = tasks/doing 里领了此板的卡 id;dispatcher 领卡时写,交卡时清。
 # 恢复命令 = oracle/board-recover.sh <serial>:bark 用户手动断电重插 + 守着等板回来重挂。
 
-updated = "2026-07-13 W-003 已验收合入并释放 5583；W-004 installed-HAP extension 继续独占 5ce"
+updated = "2026-07-17 用户全面刷新板子：5583 lane 全清、5ce 离线、dd011a41 序列迁移；运行时件须重建"
 
 # ---- 等级定义 ----
 # big-clean : 打墙/前沿验证主战场,最稳,一次一卡(5583f5be)
@@ -14,38 +14,38 @@ updated = "2026-07-13 W-003 已验收合入并释放 5583；W-004 installed-HAP 
 serial   = "5583f5be00000000000000000323012c"
 alias    = "5583f5be"
 tier      = "big-clean"
-role      = "渲染/窗口/主线首帧主力板;#43/#49 已验收，当前空闲"
-online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
-lock     = ""
+role      = "渲染/窗口/主线首帧主力板;W-005 前沿验收靶板"
+online   = true          # 2026-07-17 hdc list + param get 实测
+lock     = "W-005"
 forbidden = ["wipe", "flash"]
-note     = "W-003 atom-49 + atom-43 clean relink 已验收合入 main；未授权新任务不得沿用旧锁"
+note     = "UDID 3F740326…60E9。2026-07-16/17 用户全面刷新后旧 lane 全清(/data/local/tmp 无 westlake 痕迹)；arm64 运行时件在编译机重建中,重铺前只承担已打包 HAP 的装/起/验。"
 
 [[board]]
 serial   = "5ce2dcee00000000000000000923012c"
 alias    = "5ce2dcee"
 tier      = "big-any"
-role      = "退化板；#46 原 ~50% lottery 口径已被 W-002 证伪为未测量传闻"
-online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
-lock     = "W-004"
+role      = "退化板;板刷新后离线"
+online   = false         # 2026-07-17 hdc list 不见
+lock     = ""
 forbidden = ["wipe", "flash", "framework jar 替换", "原 substrate 覆盖", "reboot"]
-note     = "用户 2026-07-12 明确指定 color 线完全用本板；只允许 /data/local/tmp/wl-color-codex 私有 runtime/probe，原 substrate 保持不动"
+note     = "原 W-004 占用锁随板离线作废;wl-color-codex/wl-tri-codex/substrate lane 状态不明(大概率随刷新丢失)。回来时先只读盘点再决定能否复用。"
 
 [[board]]
-serial   = "dd011a414436314130101220085cac00"
-alias    = "085cac00"
+serial   = "dd011a41443631413010122007c6ac00"
+alias    = "07c6ac00"
 tier      = "small"
-role      = "32 位小板,uptodown 修复旁支"
-online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
+role      = "32 位小板,辅助调试旁支"
+online   = true          # 2026-07-17 hdc list + param get 实测
 lock     = ""
 forbidden = ["wipe", "flash", "擦除 blob 16e08711"]
-note     = "🔴 不可重建 blob 16e08711 只在此板,绝不擦不刷。原登记 serial …0971ac00 于 2026-07-11 失联;同前缀现枚举为 …085cac00,按同一物理板迁入台账(旧 alias 0971ac00 作废)。"
+note     = "UDID DC5DF4BE…C360。2GB/19G。serial 同前缀迁移链:…0971ac00→…085cac00→**…07c6ac00**(2026-07-17 实测),按同一物理板迁入。/system/android 已无 substrate;blob 16e08711 存否未盘点,仍按不可重建处理。"
 
 [[board]]
 serial   = "dd011a4144363141301012500404ac00"
 alias    = "0404ac00"
 tier      = "small"
 role      = "32 位小板"
-online   = true          # 2026-07-11 00:22 hdc list + keep-awake OK
+online   = false         # 2026-07-17 hdc list 不见
 lock     = ""
 forbidden = ["wipe", "flash"]
 note     = ""
