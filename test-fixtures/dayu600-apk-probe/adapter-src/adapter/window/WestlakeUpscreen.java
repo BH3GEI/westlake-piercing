@@ -30,14 +30,23 @@ import android.view.View;
  * rejected provenance path (the color must come from the app's Canvas.drawColor).
  */
 public final class WestlakeUpscreen {
-    static { System.loadLibrary("westlake_upscreen_renderer"); }
+    // NO System.loadLibrary here (5583): this class is BOOT-classpath loaded
+    // (upscreen-render.dex.jar on -Xbootclasspath), so its <clinit> loadLibrary
+    // resolves a null ldLibraryPath and DIES NATIVELY before record() runs
+    // (silent, no faultlog — 2026-07-18). The probe dlopens the renderer
+    // RTLD_GLOBAL + JNI_OnLoad BEFORE the dex runs (heavy bridge beforeStage),
+    // so the natives below are already bound by the time record() executes.
+    static { step("clinit ok"); }
 
     // Registered by JNI_OnLoad in libwestlake_upscreen_renderer.so on THIS class.
-    static native long nativeRenderNodePtr(RenderNode node); // reads RenderNode.mNativeRenderNode (native, no hidden-API check)
-    static native int  nativeInit(long rootNodePtr, int w, int h);
-    static native void nativeDrawFrame();
-    static native void nativeTeardown();
-    static native long nativeLastSwapArgb(); // egl_interposer's pre-swap center pixel (ARGB); -1 if no swap yet
+    // public (2026-07-18): the 5583 dex now calls them DIRECTLY — Method.invoke
+    // dispatch into this boot-classpath class silently kills the process there
+    // (reflection bisect: direct-call variant proves/dispels the mechanism).
+    public static native long nativeRenderNodePtr(RenderNode node); // reads RenderNode.mNativeRenderNode (native, no hidden-API check)
+    public static native int  nativeInit(long rootNodePtr, int w, int h);
+    public static native void nativeDrawFrame();
+    public static native void nativeTeardown();
+    public static native long nativeLastSwapArgb(); // egl_interposer's pre-swap center pixel (ARGB); -1 if no swap yet
 
     private static RenderNode sRoot;
     private static int sW, sH;
@@ -56,7 +65,9 @@ public final class WestlakeUpscreen {
      * native ptr stays stable across frames (beginRecording updates the SAME native node).
      */
     public static RenderNode record(View v, int w, int h) {
+        step("r0 enter");
         if (sRoot == null) sRoot = new RenderNode("westlake-upscreen-root");
+        step("r1 nCreate");
         // beginRecording(w,h) sizes the recording canvas but NOT the node bounds; set them
         // explicitly or an unbounded root clips to nothing. clipToBounds stays default(true):
         // it clips children to (0,0,w,h)==full screen, correct for a full-screen first frame.
@@ -66,13 +77,35 @@ public final class WestlakeUpscreen {
         // workaround), so the Java-side call is best-effort only.
         try { sRoot.setPosition(0, 0, w, h); }
         catch (Throwable ignored) { /* bounds are set natively in nativeInit */ }
+        step("r2 setPosition");
         RecordingCanvas c = sRoot.beginRecording(w, h);
+        step("r3 beginRecording");
         try {
             v.draw(c); // flat display list (null AttachInfo => software child-draw branch)
+            step("r4 draw");
         } finally {
             sRoot.endRecording();
+            step("r5 endRecording");
         }
         return sRoot;
+    }
+
+    /** Live breadcrumb -> $WESTLAKE_RESULT_DIR/wl-triangle-result.txt (mirrored to hilog
+     *  by the glue as WLTRI|), for pinpointing silent deaths inside record() on 5583. */
+    private static void step(String tag) {
+        try {
+            String rd = System.getenv("WESTLAKE_RESULT_DIR");
+            if (rd == null || rd.length() == 0) return;
+            java.io.FileOutputStream out = new java.io.FileOutputStream(rd + "/wl-triangle-result.txt", true);
+            byte[] b = new byte[tag.length() + 1];
+            for (int i = 0; i < tag.length(); i++) {
+                char ch = tag.charAt(i);
+                b[i] = (byte) (ch <= 0x7f ? ch : '?');
+            }
+            b[tag.length()] = '\n';
+            out.write(b);
+            out.close();
+        } catch (Throwable ignored) {}
     }
 
     /** One-shot: measure + layout + record + attach OHOS surface + first frame. 2 == on panel. */

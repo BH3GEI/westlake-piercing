@@ -16,6 +16,7 @@
 | 2026-07-12 | W-003 #49 | oracle PASS + #43 | 5583f5be | art 0742f1c4… | `oracle/verify/atom-49.sh 5583…` | `evidence/W-003/2026-07-12-atom-49-clean-relink-pass.txt` |
 | 2026-07-12 | W-004 triangle APK | panel/readback PASS | 5ce2dcee | APK d9865cdf… | `oracle/verify/triangle-smoke-5ce.sh 5ce…` | `evidence/W-004/triangle-apk-panel-2026-07-12/` |
 | 2026-07-13 | W-004 installed HAP extension | host build/sign/install checkpoint | 5ce2dcee | HAP aa818e7b… | fresh Android-frame oracle pending | `evidence/W-004/2026-07-13-installed-hap-host-checkpoint.md` |
+| 2026-07-17 | W-005 #53 | 六墙修复链 + 当前墙定性(ART 解析抽签) | 5583f5be | HAP da21f117… | `oracle/verify/apkhost-fresh-frame.sh 5583… <hap>` | `evidence/W-005/2026-07-17-5583-progress-chain.md` |
 
 ## 什么算证据(该留)
 

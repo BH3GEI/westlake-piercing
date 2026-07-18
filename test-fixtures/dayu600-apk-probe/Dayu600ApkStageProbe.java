@@ -1,4 +1,5 @@
 public final class Dayu600ApkStageProbe {
+    private static volatile ClassLoader mNoiceLoader;
     private static boolean embeddedNoExit;
     private static int embeddedLastExitCode;
     private static int loaderStatus;
@@ -27,6 +28,7 @@ public final class Dayu600ApkStageProbe {
     private static native void nativeW001BindTrace(Object assetManager);
     /** W-003 atom-49: normal GenericJni path — shorty DFF (not in interpreter if-else). */
     private static native double nativeGenericJniDffProbe(float a, float b);
+    private static native int nativeRegisterHwuiRender();
 
     private static Class<?> tryNativeFindClass(String name) {
         try {
@@ -107,9 +109,160 @@ public final class Dayu600ApkStageProbe {
         public int getInteger(int id) {
             try { return super.getInteger(id); } catch (Throwable t) { return 0; }
         }
+        public float getDimension(int id) {
+            try { return super.getDimension(id); } catch (Throwable t) { return 0f; }
+        }
+        public int getDimensionPixelSize(int id) {
+            try { return super.getDimensionPixelSize(id); } catch (Throwable t) { return 0; }
+        }
+        public int getDimensionPixelOffset(int id) {
+            try { return super.getDimensionPixelOffset(id); } catch (Throwable t) { return 0; }
+        }
+        public int getColor(int id) {
+            try { return super.getColor(id); } catch (Throwable t) { return 0; }
+        }
+        public int getColor(int id, android.content.res.Resources.Theme theme) {
+            try { return super.getColor(id, theme); } catch (Throwable t) { return 0; }
+        }
+        public android.content.res.ColorStateList getColorStateList(int id) {
+            try { return super.getColorStateList(id); }
+            catch (Throwable t) { return android.content.res.ColorStateList.valueOf(0); }
+        }
+        public android.content.res.ColorStateList getColorStateList(int id,
+                android.content.res.Resources.Theme theme) {
+            try { return super.getColorStateList(id, theme); }
+            catch (Throwable t) { return android.content.res.ColorStateList.valueOf(0); }
+        }
+        public android.graphics.drawable.Drawable getDrawable(int id) {
+            try { return super.getDrawable(id); }
+            catch (Throwable t) { return new android.graphics.drawable.ColorDrawable(0); }
+        }
+        public android.graphics.drawable.Drawable getDrawable(int id,
+                android.content.res.Resources.Theme theme) {
+            try { return super.getDrawable(id, theme); }
+            catch (Throwable t) { return new android.graphics.drawable.ColorDrawable(0); }
+        }
+        public android.content.res.XmlResourceParser getAnimation(int id) {
+            return new WlLinearInterpolatorParser(id);
+        }
+        public android.content.res.XmlResourceParser getXml(int id) {
+            if (id == 0x7f100002) {
+                try {
+                    java.lang.reflect.Method open = android.content.res.AssetManager.class
+                            .getMethod("openXmlResourceParser", String.class);
+                    return (android.content.res.XmlResourceParser) open.invoke(
+                            super.getAssets(), "res/navigation/main.xml");
+                } catch (Throwable ignored) {}
+            }
+            return super.getXml(id);
+        }
+        public void getValue(int id, android.util.TypedValue outValue, boolean resolveRefs) {
+            try {
+                super.getValue(id, outValue, resolveRefs);
+            } catch (Throwable t) {
+                if (outValue != null) {
+                    outValue.type = 16; // TYPE_INT_DEC
+                    outValue.data = 0;
+                    outValue.resourceId = id;
+                    outValue.density = 0;
+                }
+            }
+        }
+        public void getValueForDensity(int id, int density, android.util.TypedValue outValue,
+                boolean resolveRefs) {
+            getValue(id, outValue, resolveRefs);
+        }
         public String getString(int id, Object... fmt) {
             try { return super.getString(id, fmt); } catch (Throwable t) { return ""; }
         }
+    }
+
+    static final class WlLinearInterpolatorParser implements android.content.res.XmlResourceParser {
+        private int event = org.xmlpull.v1.XmlPullParser.START_DOCUMENT;
+        private final int resId;
+        WlLinearInterpolatorParser(int resId) { this.resId = resId; }
+        public void close() {}
+        public void setFeature(String name, boolean state) {}
+        public boolean getFeature(String name) { return false; }
+        public void setProperty(String name, Object value) {}
+        public Object getProperty(String name) { return null; }
+        public void setInput(java.io.Reader in) {}
+        public void setInput(java.io.InputStream inputStream, String inputEncoding) {}
+        public String getInputEncoding() { return null; }
+        public void defineEntityReplacementText(String entityName, String replacementText) {}
+        public int getNamespaceCount(int depth) { return 0; }
+        public String getNamespacePrefix(int pos) { return null; }
+        public String getNamespaceUri(int pos) { return null; }
+        public String getNamespace(String prefix) { return null; }
+        public int getDepth() {
+            return (event == org.xmlpull.v1.XmlPullParser.START_TAG
+                    || event == org.xmlpull.v1.XmlPullParser.END_TAG) ? 1 : 0;
+        }
+        public String getPositionDescription() {
+            return "westlake-linear-interpolator:#0x" + Integer.toHexString(resId);
+        }
+        public int getLineNumber() { return 1; }
+        public int getColumnNumber() { return 1; }
+        public boolean isWhitespace() { return false; }
+        public String getText() { return null; }
+        public char[] getTextCharacters(int[] holderForStartAndLength) {
+            if (holderForStartAndLength != null && holderForStartAndLength.length >= 2) {
+                holderForStartAndLength[0] = 0; holderForStartAndLength[1] = 0;
+            }
+            return new char[0];
+        }
+        public String getNamespace() { return null; }
+        public String getName() {
+            return (event == org.xmlpull.v1.XmlPullParser.START_TAG
+                    || event == org.xmlpull.v1.XmlPullParser.END_TAG)
+                    ? "linearInterpolator" : null;
+        }
+        public String getPrefix() { return null; }
+        public boolean isEmptyElementTag() { return true; }
+        public int getAttributeCount() { return 0; }
+        public String getAttributeNamespace(int index) { return null; }
+        public String getAttributeName(int index) { return null; }
+        public String getAttributePrefix(int index) { return null; }
+        public String getAttributeType(int index) { return "CDATA"; }
+        public boolean isAttributeDefault(int index) { return false; }
+        public String getAttributeValue(int index) { return null; }
+        public String getAttributeValue(String namespace, String name) { return null; }
+        public int getEventType() { return event; }
+        public int next() {
+            if (event == org.xmlpull.v1.XmlPullParser.START_DOCUMENT) {
+                event = org.xmlpull.v1.XmlPullParser.START_TAG;
+            } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG) {
+                event = org.xmlpull.v1.XmlPullParser.END_TAG;
+            } else {
+                event = org.xmlpull.v1.XmlPullParser.END_DOCUMENT;
+            }
+            return event;
+        }
+        public int nextToken() { return next(); }
+        public void require(int type, String namespace, String name) throws org.xmlpull.v1.XmlPullParserException {
+            if (event != type || (name != null && !name.equals(getName()))) {
+                throw new org.xmlpull.v1.XmlPullParserException("westlake parser require mismatch");
+            }
+        }
+        public String nextText() { return ""; }
+        public int nextTag() { return next(); }
+        public int getAttributeNameResource(int index) { return 0; }
+        public int getAttributeListValue(String ns, String attr, String[] opts, int def) { return def; }
+        public boolean getAttributeBooleanValue(String ns, String attr, boolean def) { return def; }
+        public int getAttributeResourceValue(String ns, String attr, int def) { return def; }
+        public int getAttributeIntValue(String ns, String attr, int def) { return def; }
+        public int getAttributeUnsignedIntValue(String ns, String attr, int def) { return def; }
+        public float getAttributeFloatValue(String ns, String attr, float def) { return def; }
+        public int getAttributeListValue(int index, String[] opts, int def) { return def; }
+        public boolean getAttributeBooleanValue(int index, boolean def) { return def; }
+        public int getAttributeResourceValue(int index, int def) { return def; }
+        public int getAttributeIntValue(int index, int def) { return def; }
+        public int getAttributeUnsignedIntValue(int index, int def) { return def; }
+        public float getAttributeFloatValue(int index, float def) { return def; }
+        public String getIdAttribute() { return null; }
+        public String getClassAttribute() { return null; }
+        public int getIdAttributeResourceValue(int def) { return def; }
+        public int getStyleAttribute() { return 0; }
     }
 
     // A ContextWrapper subclass that intercepts getResources()/getTheme() to return
@@ -385,14 +538,342 @@ public final class Dayu600ApkStageProbe {
         return null;  // void
     }
 
+    public static final class WestlakeServiceManager extends android.os.Binder
+            implements android.os.IServiceManager {
+        private final android.os.IBinder binder = new android.os.Binder();
+        public android.os.IBinder getService(String name) { return binder; }
+        public android.os.IBinder checkService(String name) { return binder; }
+        public void addService(String name, android.os.IBinder service,
+                boolean allowIsolated, int dumpPriority) {}
+        public String[] listServices(int dumpPriority) { return new String[0]; }
+        public void registerForNotifications(String name, android.os.IServiceCallback callback) {}
+        public void unregisterForNotifications(String name, android.os.IServiceCallback callback) {}
+        public boolean isDeclared(String name) { return false; }
+        public String[] getDeclaredInstances(String iface) { return new String[0]; }
+        public String updatableViaApex(String name) { return null; }
+        public String[] getUpdatableNames(String apexName) { return new String[0]; }
+        public android.os.ConnectionInfo getConnectionInfo(String name) { return null; }
+        public void registerClientCallback(String name, android.os.IBinder service,
+                android.os.IClientCallback callback) {}
+        public void tryUnregisterService(String name, android.os.IBinder service) {}
+        public android.os.ServiceDebugInfo[] getServiceDebugInfo() {
+            return new android.os.ServiceDebugInfo[0];
+        }
+        public android.os.IBinder asBinder() { return this; }
+    }
+
+    static final class FrameworkLayoutInflater extends android.view.LayoutInflater {
+        FrameworkLayoutInflater(android.content.Context context) {
+            super(context);
+        }
+        public android.view.LayoutInflater cloneInContext(android.content.Context newContext) {
+            return new FrameworkLayoutInflater(newContext);
+        }
+    }
+
+    static final class NoiceLayoutInflater extends android.view.LayoutInflater {
+        private final android.content.Context ctx;
+        NoiceLayoutInflater(android.content.Context context) {
+            super(context);
+            this.ctx = context;
+        }
+        public android.view.LayoutInflater cloneInContext(android.content.Context newContext) {
+            return new NoiceLayoutInflater(newContext);
+        }
+        public android.view.View inflate(int resource, android.view.ViewGroup root, boolean attachToRoot) {
+            if (resource == 0x7f0c0055) {
+                android.view.View v = buildNoiceMainActivity();
+                if (root != null && attachToRoot) root.addView(v);
+                return v;
+            }
+            if ((resource & 0xffff0000) == 0x01090000) {
+                android.view.View v = buildFrameworkDecor();
+                if (root != null && attachToRoot) root.addView(v);
+                return v;
+            }
+            FrameworkLayoutInflater delegate = new FrameworkLayoutInflater(ctx);
+            try {
+                java.lang.reflect.Method m = android.view.LayoutInflater.class.getMethod(
+                        "inflate", int.class, android.view.ViewGroup.class, boolean.class);
+                return (android.view.View) m.invoke(delegate, Integer.valueOf(resource), root,
+                        Boolean.valueOf(attachToRoot));
+            } catch (Throwable ignored) {}
+            return delegate.inflate(resource, root);
+        }
+        public android.view.View inflate(int resource, android.view.ViewGroup root) {
+            return inflate(resource, root, root != null);
+        }
+        private android.view.View buildFrameworkDecor() {
+            android.widget.LinearLayout decor = new android.widget.LinearLayout(ctx);
+            call(decor, "setOrientation", new Class[] { int.class },
+                    new Object[] { Integer.valueOf(1) });
+            setLayoutParams(decor, -1, -1, 0f);
+            android.widget.FrameLayout content = new android.widget.FrameLayout(ctx);
+            call(content, "setId", new Class[] { int.class },
+                    new Object[] { Integer.valueOf(0x01020002) });
+            setLayoutParams(content, -1, 0, 1f);
+            decor.addView(content);
+            return decor;
+        }
+        private android.view.View buildNoiceMainActivity() {
+            try {
+                android.widget.LinearLayout ll = new android.widget.LinearLayout(ctx);
+                call(ll, "setOrientation", new Class[] { int.class }, new Object[] { Integer.valueOf(1) });
+                call(ll, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f090168) });
+                setLayoutParams(ll, -1, -1, 0f);
+
+                Object fm = ctx.getClass().getMethod("getSupportFragmentManager").invoke(ctx);
+                ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                if (cl == null) cl = ctx.getClass().getClassLoader();
+                Class<?> fcvCls = Class.forName("androidx.fragment.app.FragmentContainerView", true, cl);
+                android.view.View nav = (android.view.View) fcvCls
+                        .getConstructor(android.content.Context.class).newInstance(ctx);
+                call(nav, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f090167) });
+                setLayoutParams(nav, -1, 0, 1f);
+                ll.addView(nav);
+
+                // The framework View constructor cannot recover android:id from our synthetic
+                // AttributeSet because this ART bridge does not yet expose a complete TypedArray.
+                // Mirror FragmentContainerView(Context, AttributeSet, FragmentManager) after the
+                // id has been assigned: install the real NavHostFragment synchronously so Noice's
+                // MainActivity can immediately resolve getFragment()/NavController.
+                Object existing = fm.getClass().getMethod("C", int.class)
+                        .invoke(fm, Integer.valueOf(0x7f090167));
+                if (existing == null) {
+                    Class<?> fragmentCls = Class.forName("androidx.fragment.app.Fragment", true, cl);
+                    Class<?> navHostCls = Class.forName(
+                            "androidx.navigation.fragment.NavHostFragment", true, cl);
+                    Class<?> navigatorProviderCls = Class.forName("h2.h0", true, cl);
+                    for (java.lang.reflect.Field field : navigatorProviderCls.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                                && java.util.Map.class.isAssignableFrom(field.getType())) {
+                            field.setAccessible(true);
+                            java.util.Map names = (java.util.Map) field.get(null);
+                            names.put(Class.forName("h2.s", true, cl), "navigation");
+                            names.put(Class.forName("androidx.navigation.a", true, cl), "activity");
+                            names.put(Class.forName("j2.d", true, cl), "dialog");
+                            names.put(Class.forName("androidx.navigation.fragment.b", true, cl), "fragment");
+                        }
+                    }
+                    Class<?> uuidHolder = Class.forName("java.util.UUID$Holder");
+                    java.lang.reflect.Field uuidRandom = uuidHolder.getDeclaredField("numberGenerator");
+                    uuidRandom.setAccessible(true);
+                    if (uuidRandom.get(null) == null) {
+                        java.security.SecureRandom fragmentRandom = new java.security.SecureRandom(
+                                new java.security.SecureRandomSpi() {
+                                    private long state = 0x4e6f6963654cL;
+                                    protected void engineSetSeed(byte[] seed) {}
+                                    protected void engineNextBytes(byte[] bytes) {
+                                        for (int i = 0; i < bytes.length; i++) {
+                                            state = state * 6364136223846793005L + 1442695040888963407L;
+                                            bytes[i] = (byte) (state >>> 56);
+                                        }
+                                    }
+                                    protected byte[] engineGenerateSeed(int count) {
+                                        byte[] bytes = new byte[count];
+                                        engineNextBytes(bytes);
+                                        return bytes;
+                                    }
+                                }, null) {};
+                        wlSetStaticFinal(uuidRandom, fragmentRandom);
+                    }
+                    Object fragment = navHostCls.getConstructor().newInstance();
+                    android.os.Bundle args = new android.os.Bundle();
+                    args.getClass().getMethod("putBoolean", String.class, boolean.class).invoke(
+                            args, "android-support-nav:fragment:defaultHost", Boolean.TRUE);
+                    fragmentCls.getMethod("setArguments", android.os.Bundle.class)
+                            .invoke(fragment, args);
+                    java.lang.reflect.Field containerF = fragmentCls.getDeclaredField("mContainer");
+                    containerF.setAccessible(true);
+                    containerF.set(fragment, nav);
+
+                    Class<?> txCls = Class.forName("androidx.fragment.app.a", true, cl);
+                    Class<?> fmBaseCls = Class.forName("androidx.fragment.app.u0", true, cl);
+                    Object tx = txCls.getConstructor(fmBaseCls).newInstance(fm);
+                    txCls.getMethod("d", int.class, fragmentCls, String.class, int.class)
+                            .invoke(tx, Integer.valueOf(0x7f090167), fragment, null,
+                                    Integer.valueOf(1));
+                    Class<?> opCls = Class.forName("androidx.fragment.app.r0", true, cl);
+                    fm.getClass().getMethod("z", opCls, boolean.class)
+                            .invoke(fm, tx, Boolean.TRUE);
+
+                    Object controller = navHostCls.getMethod("m").invoke(fragment);
+                    Object provider = null;
+                    for (Class<?> owner = controller.getClass(); owner != null && provider == null;
+                            owner = owner.getSuperclass()) {
+                        for (java.lang.reflect.Field field : owner.getDeclaredFields()) {
+                            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                                    && "h2.h0".equals(field.getType().getName())) {
+                                field.setAccessible(true);
+                                provider = field.get(controller);
+                                break;
+                            }
+                        }
+                    }
+                    if (provider == null) throw new IllegalStateException("NavController provider missing");
+                    Object graphNavigator = provider.getClass().getMethod("b", String.class)
+                            .invoke(provider, "navigation");
+                    Class<?> navigatorCls = Class.forName("androidx.navigation.h", true, cl);
+                    Class<?> destinationCls = Class.forName("androidx.navigation.g", true, cl);
+                    Class<?> graphCls = Class.forName("h2.r", true, cl);
+                    Object graph = graphCls.getConstructor(navigatorCls).newInstance(graphNavigator);
+                    java.lang.reflect.Field destinationId = null;
+                    for (java.lang.reflect.Field field : destinationCls.getDeclaredFields()) {
+                        if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                                && field.getType() == int.class) {
+                            destinationId = field;
+                            destinationId.setAccessible(true);
+                            break;
+                        }
+                    }
+                    if (destinationId == null) throw new IllegalStateException("destination id field missing");
+                    destinationId.setInt(graph, 0x7f090166);
+                    Object fragmentNavigator = provider.getClass().getMethod("b", String.class)
+                            .invoke(provider, "fragment");
+                    Object home = fragmentNavigator.getClass().getMethod("a").invoke(fragmentNavigator);
+                    destinationId.setInt(home, 0x7f09012c);
+                    for (java.lang.reflect.Field field : home.getClass().getDeclaredFields()) {
+                        if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                                && field.getType() == String.class) {
+                            field.setAccessible(true);
+                            field.set(home, "com.github.ashutoshgngwr.noice.fragment.HomeFragment");
+                            break;
+                        }
+                    }
+                    graphCls.getMethod("h", destinationCls).invoke(graph, home);
+                    graphCls.getMethod("l", int.class).invoke(graph, Integer.valueOf(0x7f09012c));
+                    Class<?> controllerBase = Class.forName("androidx.navigation.d", true, cl);
+                    controllerBase.getMethod("v", graphCls, android.os.Bundle.class)
+                            .invoke(controller, graph, null);
+                    earlyWriteLiteral("/data/local/tmp/noice-navhost.txt",
+                            "navHost=attached graph=programmatic-home");
+                }
+
+                android.widget.TextView tv = new android.widget.TextView(ctx);
+                call(tv, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f0901b7) });
+                tv.setVisibility(8);
+                setLayoutParams(tv, -1, -2, 0f);
+                ll.addView(tv);
+                return ll;
+            } catch (Throwable t) {
+                earlyWriteStack(probeLogPath("noice-layout-err.txt"), t);
+                throw new RuntimeException("Noice NavHost setup failed", t);
+                /*
+                android.widget.LinearLayout ll = new android.widget.LinearLayout(ctx);
+                android.view.View nav;
+                try {
+                    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                    if (cl == null) cl = ctx.getClass().getClassLoader();
+                    Class<?> fcvCls = Class.forName("androidx.fragment.app.FragmentContainerView", true, cl);
+                    nav = (android.view.View) fcvCls.getConstructor(android.content.Context.class)
+                            .newInstance(ctx);
+                } catch (Throwable ignored) {
+                    nav = new android.view.View(ctx);
+                }
+                call(nav, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f090167) });
+                ll.addView(nav);
+                android.widget.TextView tv = new android.widget.TextView(ctx);
+                call(tv, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f0901b7) });
+                ll.addView(tv);
+                return ll;
+                */
+            }
+        }
+        private static void setLayoutParams(android.view.View v, int w, int h, float weight) {
+            try {
+                Class<?> lpCls = Class.forName("android.widget.LinearLayout$LayoutParams");
+                Object lp;
+                try {
+                    lp = lpCls.getConstructor(int.class, int.class, float.class)
+                            .newInstance(Integer.valueOf(w), Integer.valueOf(h), Float.valueOf(weight));
+                } catch (Throwable t) {
+                    lp = lpCls.getConstructor(int.class, int.class)
+                            .newInstance(Integer.valueOf(w), Integer.valueOf(h));
+                }
+                call(v, "setLayoutParams",
+                        new Class[] { Class.forName("android.view.ViewGroup$LayoutParams") },
+                        new Object[] { lp });
+            } catch (Throwable ignored) {}
+        }
+        private static Object call(Object target, String name, Class<?>[] types, Object[] args) {
+            try {
+                java.lang.reflect.Method m = target.getClass().getMethod(name, types);
+                m.invoke(target, args);
+            } catch (Throwable ignored) {}
+            return null;
+        }
+    }
+
+    static final class NoiceMainAttributeSet implements android.util.AttributeSet {
+        public int getAttributeCount() { return 4; }
+        public String getAttributeName(int index) {
+            switch (index) {
+                case 0: return "id";
+                case 1: return "name";
+                case 2: return "defaultNavHost";
+                case 3: return "navGraph";
+                default: return null;
+            }
+        }
+        public String getAttributeValue(int index) {
+            switch (index) {
+                case 0: return "@id/main_nav_host_fragment";
+                case 1: return "androidx.navigation.fragment.NavHostFragment";
+                case 2: return "true";
+                case 3: return "@navigation/main";
+                default: return null;
+            }
+        }
+        public String getAttributeValue(String namespace, String name) {
+            if ("id".equals(name)) return "@id/main_nav_host_fragment";
+            if ("name".equals(name)) return "androidx.navigation.fragment.NavHostFragment";
+            if ("defaultNavHost".equals(name)) return "true";
+            if ("navGraph".equals(name)) return "@navigation/main";
+            return null;
+        }
+        public String getPositionDescription() { return "westlake-noice-main-activity"; }
+        public int getAttributeNameResource(int index) { return 0; }
+        public int getAttributeListValue(String ns, String attr, String[] opts, int def) { return def; }
+        public boolean getAttributeBooleanValue(String ns, String attr, boolean def) {
+            return "defaultNavHost".equals(attr) ? true : def;
+        }
+        public int getAttributeResourceValue(String ns, String attr, int def) {
+            if ("id".equals(attr)) return 0x7f090167;
+            if ("navGraph".equals(attr)) return 0x7f110003;
+            return def;
+        }
+        public int getAttributeIntValue(String ns, String attr, int def) { return def; }
+        public int getAttributeUnsignedIntValue(String ns, String attr, int def) { return def; }
+        public float getAttributeFloatValue(String ns, String attr, float def) { return def; }
+        public int getAttributeListValue(int index, String[] opts, int def) { return def; }
+        public boolean getAttributeBooleanValue(int index, boolean def) {
+            return index == 2 ? true : def;
+        }
+        public int getAttributeResourceValue(int index, int def) {
+            return index == 0 ? 0x7f090167 : (index == 3 ? 0x7f110003 : def);
+        }
+        public int getAttributeIntValue(int index, int def) { return def; }
+        public int getAttributeUnsignedIntValue(int index, int def) { return def; }
+        public float getAttributeFloatValue(int index, float def) { return def; }
+        public String getIdAttribute() { return "@id/main_nav_host_fragment"; }
+        public String getClassAttribute() { return "androidx.navigation.fragment.NavHostFragment"; }
+        public int getIdAttributeResourceValue(int def) { return 0x7f090167; }
+        public int getStyleAttribute() { return 0; }
+    }
+
     static final class ProbeContext extends android.content.ContextWrapper {
         private final android.content.res.AssetManager am;
+        private android.app.Application application;
         private android.content.res.Resources res;   // built lazily (Resources ctor hits native)
+        private volatile Object cachedLayoutInflater;
         ProbeContext(android.content.res.AssetManager am) {
             super(null);
             this.am = am;
         }
-        public android.content.Context getApplicationContext() { return this; }
+        void setApplication(android.app.Application app) { this.application = app; }
+        public android.content.Context getApplicationContext() {
+            return application != null ? application : this;
+        }
         // Return null: the app only uses getAssets() for Typeface.createFromAsset(fonts), which
         // gracefully falls back to Typeface.DEFAULT on null. A non-null AssetManager would try to
         // openFd the font (nativeOpenAssetFd, not registered) and crash outside the app's try.
@@ -406,9 +887,16 @@ public final class Dayu600ApkStageProbe {
             }
             return res;
         }
-        public String getPackageName() { return "com.uptodown"; }
+        public String getPackageName() {
+            String p = System.getenv("WESTLAKE_APP_PACKAGE");
+            return p == null || p.length() == 0 ? "com.github.ashutoshgngwr.noice" : p;
+        }
         public Object getSystemService(String name) {
             try {
+                if ("layout_inflater".equals(name)) {
+                    Object li = getCachedLayoutInflater();
+                    if (li != null) return li;
+                }
                 // ActivityManager.getMemoryClass() reads a system property (no binder needed),
                 // so a reflectively-constructed instance is enough for cache-sizing in onCreate.
                 if ("activity".equals(name)) {
@@ -431,6 +919,67 @@ public final class Dayu600ApkStageProbe {
             } catch (Throwable t) { /* fall through to null */ }
             return null;
         }
+        private Object getCachedLayoutInflater() {
+            if (cachedLayoutInflater != null) return cachedLayoutInflater;
+            try {
+                try {
+                    Class<?> phoneLi = Class.forName("com.android.internal.policy.PhoneLayoutInflater");
+                    java.lang.reflect.Constructor<?> c =
+                            phoneLi.getDeclaredConstructor(android.content.Context.class);
+                    c.setAccessible(true);
+                    cachedLayoutInflater = c.newInstance(this);
+                    if (cachedLayoutInflater != null) return cachedLayoutInflater;
+                } catch (Throwable ig) {}
+                Class<?> uc = Class.forName("jdk.internal.misc.Unsafe");
+                java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                tf.setAccessible(true);
+                Object unsafe = tf.get(null);
+                Class<?> liCls = Class.forName("android.view.LayoutInflater");
+                cachedLayoutInflater = uc.getMethod("allocateInstance", Class.class).invoke(unsafe, liCls);
+                java.lang.reflect.Field mCtxF = liCls.getDeclaredField("mContext");
+                mCtxF.setAccessible(true);
+                mCtxF.set(cachedLayoutInflater, this);
+                try {
+                    java.lang.reflect.Field mFilterF = liCls.getDeclaredField("mFilter");
+                    mFilterF.setAccessible(true);
+                    mFilterF.set(cachedLayoutInflater, null);
+                } catch (Throwable ig) {}
+                try {
+                    java.lang.reflect.Field mFactoryF = liCls.getDeclaredField("mFactory");
+                    mFactoryF.setAccessible(true);
+                    mFactoryF.set(cachedLayoutInflater, null);
+                } catch (Throwable ig) {}
+                try {
+                    java.lang.reflect.Field mFactory2F = liCls.getDeclaredField("mFactory2");
+                    mFactory2F.setAccessible(true);
+                    mFactory2F.set(cachedLayoutInflater, null);
+                } catch (Throwable ig) {}
+                try {
+                    java.lang.reflect.Field cmap = liCls.getDeclaredField("mConstructorMap");
+                    cmap.setAccessible(true);
+                    if (cmap.get(cachedLayoutInflater) == null) {
+                        cmap.set(cachedLayoutInflater, new java.util.HashMap());
+                    }
+                } catch (Throwable ig) {}
+                try {
+                    java.lang.reflect.Field cargs = liCls.getDeclaredField("mConstructorArgs");
+                    cargs.setAccessible(true);
+                    if (cargs.get(cachedLayoutInflater) == null) {
+                        cargs.set(cachedLayoutInflater, new Object[2]);
+                    }
+                } catch (Throwable ig) {}
+                try {
+                    java.lang.reflect.Field temp = liCls.getDeclaredField("mTempValue");
+                    temp.setAccessible(true);
+                    if (temp.get(cachedLayoutInflater) == null) {
+                        temp.set(cachedLayoutInflater, new android.util.TypedValue());
+                    }
+                } catch (Throwable ig) {}
+            } catch (Throwable t) {
+                cachedLayoutInflater = null;
+            }
+            return cachedLayoutInflater;
+        }
         // The app's onCreate touches real storage dirs (cache/files). Back them with a
         // writable subtree under the substrate root so getCacheDir()/etc. don't NPE.
         private static java.io.File appDir(String sub) {
@@ -450,18 +999,43 @@ public final class Dayu600ApkStageProbe {
         public java.io.File getDatabasePath(String name) {
             return new java.io.File(appDir("databases"), name);
         }
+        public boolean deleteDatabase(String name) {
+            java.io.File f = getDatabasePath(name);
+            if (!f.exists()) return true;
+            return f.delete();
+        }
+        public String[] databaseList() {
+            java.io.File d = appDir("databases");
+            String[] xs = d.list();
+            return xs == null ? new String[0] : xs;
+        }
+        public android.database.sqlite.SQLiteDatabase openOrCreateDatabase(
+                String name, int mode, android.database.sqlite.SQLiteDatabase.CursorFactory factory) {
+            return android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name), factory);
+        }
+        public android.database.sqlite.SQLiteDatabase openOrCreateDatabase(
+                String name, int mode, android.database.sqlite.SQLiteDatabase.CursorFactory factory,
+                android.database.DatabaseErrorHandler errorHandler) {
+            return openOrCreateDatabase(name, mode, factory);
+        }
         public android.content.pm.ApplicationInfo getApplicationInfo() {
             android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
-            ai.packageName = "com.uptodown";
+            ai.packageName = getPackageName();
             ai.dataDir = rootPath() + "/appdata";
             ai.nativeLibraryDir = appDir("lib").getAbsolutePath();
-            ai.targetSdkVersion = 33;
+            ai.targetSdkVersion = 34;
             ai.uid = 10000;
             return ai;
         }
-        public String getPackageResourcePath() { return rootPath() + "/apks/test.apk"; }
-        public String getPackageCodePath() { return rootPath() + "/apks/test.apk"; }
-        public ClassLoader getClassLoader() { return ProbeContext.class.getClassLoader(); }
+        private String appApkPath() {
+            String n = System.getenv("WESTLAKE_APP_APK");
+            return apkPath(n == null || n.length() == 0 ? "noice.apk" : n);
+        }
+        public String getPackageResourcePath() { return appApkPath(); }
+        public String getPackageCodePath() { return appApkPath(); }
+        public ClassLoader getClassLoader() {
+            return mNoiceLoader != null ? mNoiceLoader : ProbeContext.class.getClassLoader();
+        }
         public android.content.ContentResolver getContentResolver() { return null; }
         private android.content.pm.PackageManager pm;
         public android.content.pm.PackageManager getPackageManager() {
@@ -725,6 +1299,11 @@ public final class Dayu600ApkStageProbe {
                             f.set(null, c.newInstance());
                             fixed++;
                         }
+                    } else if (ft.isArray() && f.get(null) == null) {
+                        int len = f.getName().toLowerCase().contains("objectonly") ? 20 : 0;
+                        Object array = java.lang.reflect.Array.newInstance(ft.getComponentType(), len);
+                        wlSetStaticFinal(f, array);
+                        fixed++;
                     }
                 }
             } catch (Throwable t) { /* keep going */ }
@@ -792,6 +1371,149 @@ public final class Dayu600ApkStageProbe {
                 .invoke(unsafe, field)).longValue();
         uc.getMethod("putObject", Object.class, long.class, Object.class)
                 .invoke(unsafe, obj, Long.valueOf(off), value);
+    }
+
+    public static final class WestlakeNoiceTrustProvider extends java.security.Provider {
+        public WestlakeNoiceTrustProvider() {
+            super("WestlakeNoiceTrust", 1.0, "Westlake embedded ART noice bootstrap trust provider");
+            put("TrustManagerFactory.WestlakeX509",
+                    Dayu600ApkStageProbe.WestlakeNoiceTrustManagerFactorySpi.class.getName());
+            put("SSLContext.TLS",
+                    Dayu600ApkStageProbe.WestlakeNoiceSSLContextSpi.class.getName());
+            put("SSLContext.TLSv1.3",
+                    Dayu600ApkStageProbe.WestlakeNoiceSSLContextSpi.class.getName());
+        }
+    }
+
+    public static final class WestlakeNoiceTrustManagerFactorySpi
+            extends javax.net.ssl.TrustManagerFactorySpi {
+        @Override
+        protected void engineInit(java.security.KeyStore ks) {}
+
+        @Override
+        protected void engineInit(javax.net.ssl.ManagerFactoryParameters spec) {}
+
+        @Override
+        protected javax.net.ssl.TrustManager[] engineGetTrustManagers() {
+            return new javax.net.ssl.TrustManager[] {
+                    new Dayu600ApkStageProbe.WestlakeNoiceX509TrustManager()
+            };
+        }
+    }
+
+    public static final class WestlakeNoiceX509TrustManager
+            implements javax.net.ssl.X509TrustManager {
+        @Override
+        public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+
+        @Override
+        public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+            return new java.security.cert.X509Certificate[0];
+        }
+    }
+
+    public static final class WestlakeNoiceSSLContextSpi extends javax.net.ssl.SSLContextSpi {
+        @Override
+        protected void engineInit(javax.net.ssl.KeyManager[] km,
+                javax.net.ssl.TrustManager[] tm, java.security.SecureRandom sr) {}
+
+        @Override
+        protected javax.net.ssl.SSLSocketFactory engineGetSocketFactory() {
+            return new Dayu600ApkStageProbe.WestlakeNoiceSSLSocketFactory();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLServerSocketFactory engineGetServerSocketFactory() {
+            return new Dayu600ApkStageProbe.WestlakeNoiceSSLServerSocketFactory();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine() { return null; }
+
+        @Override
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine(String host, int port) { return null; }
+
+        @Override
+        protected javax.net.ssl.SSLSessionContext engineGetServerSessionContext() { return null; }
+
+        @Override
+        protected javax.net.ssl.SSLSessionContext engineGetClientSessionContext() { return null; }
+
+        @Override
+        protected javax.net.ssl.SSLParameters engineGetDefaultSSLParameters() {
+            return new javax.net.ssl.SSLParameters();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLParameters engineGetSupportedSSLParameters() {
+            return new javax.net.ssl.SSLParameters();
+        }
+    }
+
+    public static final class WestlakeNoiceSSLSocketFactory extends javax.net.ssl.SSLSocketFactory {
+        @Override
+        public String[] getDefaultCipherSuites() { return new String[0]; }
+
+        @Override
+        public String[] getSupportedCipherSuites() { return new String[0]; }
+
+        @Override
+        public java.net.Socket createSocket(java.net.Socket s, String host, int port, boolean autoClose)
+                throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS sockets are disabled during UI bootstrap");
+        }
+
+        @Override
+        public java.net.Socket createSocket(String host, int port) throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS sockets are disabled during UI bootstrap");
+        }
+
+        @Override
+        public java.net.Socket createSocket(String host, int port,
+                java.net.InetAddress localHost, int localPort) throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS sockets are disabled during UI bootstrap");
+        }
+
+        @Override
+        public java.net.Socket createSocket(java.net.InetAddress host, int port)
+                throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS sockets are disabled during UI bootstrap");
+        }
+
+        @Override
+        public java.net.Socket createSocket(java.net.InetAddress address, int port,
+                java.net.InetAddress localAddress, int localPort) throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS sockets are disabled during UI bootstrap");
+        }
+    }
+
+    public static final class WestlakeNoiceSSLServerSocketFactory
+            extends javax.net.ssl.SSLServerSocketFactory {
+        @Override
+        public String[] getDefaultCipherSuites() { return new String[0]; }
+
+        @Override
+        public String[] getSupportedCipherSuites() { return new String[0]; }
+
+        @Override
+        public java.net.ServerSocket createServerSocket(int port) throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS server sockets are disabled");
+        }
+
+        @Override
+        public java.net.ServerSocket createServerSocket(int port, int backlog)
+                throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS server sockets are disabled");
+        }
+
+        @Override
+        public java.net.ServerSocket createServerSocket(int port, int backlog,
+                java.net.InetAddress ifAddress) throws java.io.IOException {
+            throw new java.io.IOException("WestlakeNoice TLS server sockets are disabled");
+        }
     }
 
     /**
@@ -867,10 +1589,13 @@ public final class Dayu600ApkStageProbe {
      * Dual-class board: no Java-side String Class.forName (getModifiers NPE). JNI builds path String. */
     private static int addAssetPathDirect(android.content.res.AssetManager am, String path)
             throws Exception {
-        int ck = nativeAppendApkAssets(am, asciiPathBytes(path));
-        if (ck <= 0) {
-            throw new IllegalStateException("nativeAppendApkAssets failed ck=" + ck);
-        }
+        nativeW001Append(am, asciiPathBytes(path));
+        java.lang.reflect.Field mApk = android.content.res.AssetManager.class
+                .getDeclaredField("mApkAssets");
+        mApk.setAccessible(true);
+        Object arr = mApk.get(am);
+        int ck = arr == null ? 0 : java.lang.reflect.Array.getLength(arr);
+        if (ck <= 0) throw new IllegalStateException("nativeW001Append failed ck=" + ck);
         return ck;
     }
 
@@ -922,9 +1647,9 @@ public final class Dayu600ApkStageProbe {
      * ref table is built by the real setApkAssets. Idempotent. Writes
      * w001-arsc.txt.
      */
-    /** libandroidfw absolute path — single literal (no concat: dual-String hazard). */
-    private static final String FW_LIB_PATH =
-            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so";
+    private static String fwLibPath() {
+        return rootPath() + "/android/lib64/libandroidfw.so";
+    }
 
     /**
      * Nested helper whose <clinit> System.load's libandroidfw. When this class is
@@ -935,7 +1660,7 @@ public final class Dayu600ApkStageProbe {
      */
     static final class FwLibLoader {
         static {
-            System.load(FW_LIB_PATH);
+            System.load(fwLibPath());
         }
         static void touch() {}
     }
@@ -958,7 +1683,7 @@ public final class Dayu600ApkStageProbe {
         } catch (Throwable ig) {}
         // Path A: direct load (works when our classloader is a real dex loader).
         try {
-            System.load(FW_LIB_PATH);
+            System.load(fwLibPath());
             sArscNativesBound = true;
             earlyWriteLiteral("/data/local/tmp/w001-arsc.txt", "loaded-direct");
             return;
@@ -970,8 +1695,8 @@ public final class Dayu600ApkStageProbe {
         // Path B: load via a fresh PathClassLoader with an explicit librarySearchPath, so
         // the System.load in FwLibLoader.<clinit> has a caller loader with a valid path.
         try {
-            String dexPath = "/data/local/tmp/westlake-dayu600-substrate/apks/dayu600-apk-probe.dex";
-            String libDir = "/data/local/tmp/westlake-dayu600-substrate/android/lib64";
+            String dexPath = rootPath() + "/apks/dayu600-apk-probe.dex";
+            String libDir = rootPath() + "/android/lib64";
             Class<?> pclCls = Class.forName("dalvik.system.PathClassLoader");
             java.lang.reflect.Constructor<?> pclC =
                     pclCls.getDeclaredConstructor(String.class, String.class, ClassLoader.class);
@@ -1024,6 +1749,43 @@ public final class Dayu600ApkStageProbe {
         try {
             writeText(path, literal);
         } catch (Throwable ig) {}
+        // HAP lane: /data/local/tmp is SELinux-denied for the app uid, so mirror the
+        // breadcrumb into the writable filesDir sandbox (WESTLAKE_RESULT_DIR) — same
+        // filename, root-readable via /data/app/el2/... for crash-site bisection.
+        try {
+            String rd = System.getenv("WESTLAKE_RESULT_DIR");
+            if (rd != null) {
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                writeText(rd + "/" + name, literal);
+            }
+        } catch (Throwable ig) {}
+    }
+
+    /**
+     * Lane-safe native lib load. App lane (WESTLAKE_EXEC_ROOT set): ONLY the bundle lib
+     * dir is dlopen-able — a literal /system/lib64 path is namespace-blocked and, worse,
+     * SIGBUSes uncatchably at ld-musl map_library_header (5583, 2026-07-18). So load the
+     * bundled copy by soname and NEVER touch /system; a missing bundled copy is skipped
+     * silently. Shell lane (no EXEC_ROOT): keep the original absolute-path behaviour.
+     * Returns true when the lib got loaded.
+     */
+    private static boolean wlLoadLib(String fullPath) {
+        String soname = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+        String er = System.getenv("WESTLAKE_EXEC_ROOT");
+        if (er != null && er.length() > 0) {
+            try {
+                java.lang.Runtime.getRuntime().load(er + "/" + soname);
+                return true;
+            } catch (Throwable ig) {
+                return false;
+            }
+        }
+        try {
+            java.lang.Runtime.getRuntime().load(fullPath);
+            return true;
+        } catch (Throwable ig) {
+            return false;
+        }
     }
 
     /**
@@ -1984,6 +2746,29 @@ public final class Dayu600ApkStageProbe {
         return n;
     }
 
+    /** Replace bootstrap/fake RenderNodes with real libhwui nodes after Noice is built. */
+    private static int wlReplaceRenderNodes(android.view.View root) throws Exception {
+        if (root == null) return 0;
+        java.lang.reflect.Field rnF = android.view.View.class.getDeclaredField("mRenderNode");
+        rnF.setAccessible(true);
+        Class<?> rnCls = Class.forName("android.graphics.RenderNode");
+        java.lang.reflect.Constructor<?> ctor = rnCls.getConstructor(String.class);
+        java.util.ArrayList<android.view.View> q = new java.util.ArrayList<android.view.View>();
+        q.add(root);
+        int n = 0;
+        for (int i = 0; i < q.size(); i++) {
+            android.view.View v = q.get(i);
+            rnF.set(v, ctor.newInstance(v.getClass().getSimpleName()));
+            n++;
+            int cc = viewChildCount(v);
+            for (int c = 0; c < cc; c++) {
+                android.view.View child = viewChildAt(v, c);
+                if (child != null) q.add(child);
+            }
+        }
+        return n;
+    }
+
     /** Field-poke layout bounds — avoid View.layout → RelativeLayout.onMeasure NPE. */
     private static void wlForceViewBounds(android.view.View v, int l, int t, int r, int b) {
         if (v == null) return;
@@ -2251,16 +3036,10 @@ public final class Dayu600ApkStageProbe {
                 Object ptrObj = nPtr.invoke(null, node);
                 long ptr = (ptrObj instanceof Long) ? ((Long) ptrObj).longValue() : 0L;
                 /* Load skia AFTER recording so RTLD_NEXT can see MakeGL; before nativeInit. */
-                try {
-                    java.lang.Runtime.getRuntime().load("/system/lib64/libskia_canvaskit.z.so");
-                    res.append("01d skia=loaded\n");
-                } catch (Throwable tSk) {
-                    res.append("01d skia FAIL ").append(tSk.getClass().getName()).append('\n');
-                }
-                try {
-                    java.lang.Runtime.getRuntime().load("/system/lib64/libEGL.so");
-                    java.lang.Runtime.getRuntime().load("/system/lib64/libGLESv3.so");
-                } catch (Throwable ig) {}
+                res.append(wlLoadLib("/system/lib64/libskia_canvaskit.z.so")
+                        ? "01d skia=loaded\n" : "01d skia FAIL\n");
+                wlLoadLib("/system/lib64/libEGL.so");
+                wlLoadLib("/system/lib64/libGLESv3.so");
                 java.lang.reflect.Method nInit = ups.getDeclaredMethod("nativeInit",
                         long.class, int.class, int.class);
                 nInit.setAccessible(true);
@@ -2357,6 +3136,579 @@ public final class Dayu600ApkStageProbe {
      * View prep mirrors firstFrame53's DEVICE-PROVEN path (unsafe-alloc + seed RenderNode +
      * force bounds), avoiding View(Context)/measure() crash risk on the alloc'd leaf.
      */
+    private static void runNoiceApk() {
+        StringBuilder out = new StringBuilder("noiceApk stage\n");
+        String log = probeLogPath("noice-result.txt");
+        try {
+            repairJavaIoFileSystem();
+            if (android.os.Looper.myLooper() == null) android.os.Looper.prepareMainLooper();
+            out.append("01 looper=ok\n"); writeText(log, out.toString());
+
+            repairMethodHandleStatics();
+            repairProxyCacheForInflate();
+            try {
+                Class.forName("westlake.adapter.OHServiceManager").getMethod("install").invoke(null);
+                out.append("02 ohsm=installed\n");
+            } catch (Throwable t) {
+                out.append("02 ohsm=fail:").append(t.getClass().getName()).append(':')
+                   .append(String.valueOf(t.getMessage())).append('\n');
+            }
+            writeText(log, out.toString());
+
+            out.append("03 androidfw=deferred\n");
+            writeText(log, out.toString());
+
+            Class<?> amCls = android.content.res.AssetManager.class;
+            java.lang.reflect.Constructor<?> ac = amCls.getDeclaredConstructor(boolean.class);
+            ac.setAccessible(true);
+            android.content.res.AssetManager am = (android.content.res.AssetManager) ac.newInstance(Boolean.TRUE);
+            java.lang.reflect.Field assetsF = amCls.getDeclaredField("mApkAssets");
+            assetsF.setAccessible(true);
+            Class<?> apkAssetsCls = Class.forName("android.content.res.ApkAssets");
+            assetsF.set(am, java.lang.reflect.Array.newInstance(apkAssetsCls, 0));
+            try {
+                ensureArscNatives();
+                String assetMode = "w001";
+                int ckApp = addAssetPathDirect(am, apkPath("noice.apk"));
+                int ckFw = addAssetPathDirect(am, rootPath() + "/android/framework/framework-res.apk");
+                out.append("04 assets=").append(assetMode).append(":noice:")
+                   .append(ckApp).append("/fw:").append(ckFw).append('\n');
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("04 assets=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+                throw c;
+            }
+            writeText(log, out.toString());
+            try {
+                ensureTraceNatives();
+                nativeW001BindTrace(am);
+                out.append("04b traceP2=ok\n");
+            } catch (Throwable t) {
+                out.append("04b traceP2=fail:").append(t.getClass().getName()).append(':')
+                   .append(String.valueOf(t.getMessage())).append('\n');
+            }
+            writeText(log, out.toString());
+
+            ClassLoader loader = new dalvik.system.PathClassLoader(
+                    apkPath("noice.apk"), Dayu600ApkStageProbe.class.getClassLoader());
+            mNoiceLoader = loader;
+            Thread.currentThread().setContextClassLoader(loader);
+            Class<?> appCls = Class.forName(
+                    "com.github.ashutoshgngwr.noice.NoiceApplication", false, loader);
+            Class<?> mainCls = Class.forName(
+                    "com.github.ashutoshgngwr.noice.activity.MainActivity", false, loader);
+            out.append("05 dex app=").append(appCls.getName()).append(" main=")
+               .append(mainCls.getName()).append('\n'); writeText(log, out.toString());
+
+            Object app = appCls.getDeclaredConstructor().newInstance();
+            ProbeContext base = new ProbeContext(am);
+            base.setApplication((android.app.Application) app);
+            java.lang.reflect.Field baseF = android.content.ContextWrapper.class.getDeclaredField("mBase");
+            baseF.setAccessible(true);
+            baseF.set(app, base);
+            out.append("06 application=new+attached\n"); writeText(log, out.toString());
+            try {
+                appCls.getMethod("onCreate").invoke(app);
+                out.append("07 application.onCreate=ok\n");
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("07 application.onCreate=fail:").append(c.getClass().getName())
+                   .append(':').append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+                throw c;
+            }
+            writeText(log, out.toString());
+
+            Object activity = mainCls.getDeclaredConstructor().newInstance();
+            baseF.set(activity, base);
+            java.lang.reflect.Field appF = android.app.Activity.class.getDeclaredField("mApplication");
+            appF.setAccessible(true); appF.set(activity, app);
+            java.lang.reflect.Field intentF = android.app.Activity.class.getDeclaredField("mIntent");
+            intentF.setAccessible(true); intentF.set(activity, new android.content.Intent());
+            try {
+                android.content.pm.ActivityInfo info = new android.content.pm.ActivityInfo();
+                info.name = mainCls.getName();
+                info.packageName = base.getPackageName();
+                info.applicationInfo = base.getApplicationInfo();
+                info.parentActivityName = null;
+                java.lang.reflect.Field infoF = android.app.Activity.class.getDeclaredField("mActivityInfo");
+                infoF.setAccessible(true);
+                infoF.set(activity, info);
+                java.lang.reflect.Field componentF = android.app.Activity.class.getDeclaredField("mComponent");
+                componentF.setAccessible(true);
+                componentF.set(activity, new android.content.ComponentName(base.getPackageName(), mainCls.getName()));
+                out.append("08ab activityInfo=seeded\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08ab activityInfo=fail:").append(t.getClass().getName()).append(':')
+                   .append(String.valueOf(t.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                java.lang.reflect.Field fragmentsF = android.app.Activity.class.getDeclaredField("mFragments");
+                fragmentsF.setAccessible(true);
+                Object fragments = fragmentsF.get(activity);
+                java.lang.reflect.Method attachHost = fragments.getClass().getDeclaredMethod(
+                        "attachHost", android.app.Fragment.class);
+                attachHost.setAccessible(true);
+                attachHost.invoke(fragments, new Object[] { null });
+                out.append("08ac fragmentsHost=attached\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08ac fragmentsHost=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Class<?> pwCls = Class.forName("com.android.internal.policy.PhoneWindow");
+                Object pw = null;
+                String windowMode = "ctor";
+                try {
+                    java.lang.reflect.Constructor<?> pwCtor =
+                            pwCls.getDeclaredConstructor(android.content.Context.class);
+                    pwCtor.setAccessible(true);
+                    pw = pwCtor.newInstance((android.content.Context) activity);
+                } catch (Throwable ctorT) {
+                    Class<?> uc = Class.forName("jdk.internal.misc.Unsafe");
+                    java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                    tf.setAccessible(true);
+                    Object unsafe = tf.get(null);
+                    pw = uc.getMethod("allocateInstance", Class.class).invoke(unsafe, pwCls);
+                    java.lang.reflect.Field ctxF = Class.forName("android.view.Window")
+                            .getDeclaredField("mContext");
+                    unsafePutObjectField(pw, ctxF, activity);
+                    try {
+                        java.lang.reflect.Field liF = pwCls.getDeclaredField("mLayoutInflater");
+                        liF.setAccessible(true);
+                        liF.set(pw, new NoiceLayoutInflater((android.content.Context) activity));
+                    } catch (Throwable ignored) {}
+                    Throwable c = ctorT instanceof java.lang.reflect.InvocationTargetException
+                            && ctorT.getCause() != null ? ctorT.getCause() : ctorT;
+                    windowMode = "unsafe:" + c.getClass().getSimpleName();
+                }
+                try {
+                    Class<?> winCls = Class.forName("android.view.Window");
+                    java.lang.reflect.Method setCb = winCls.getMethod(
+                            "setCallback", Class.forName("android.view.Window$Callback"));
+                    setCb.invoke(pw, activity);
+                    try {
+                        java.lang.reflect.Field attrsF = winCls.getDeclaredField("mWindowAttributes");
+                        attrsF.setAccessible(true);
+                        if (attrsF.get(pw) == null) {
+                            attrsF.set(pw, new android.view.WindowManager.LayoutParams());
+                        }
+                    } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {}
+                try {
+                    java.lang.reflect.Field liF = pwCls.getDeclaredField("mLayoutInflater");
+                    liF.setAccessible(true);
+                    liF.set(pw, new NoiceLayoutInflater((android.content.Context) activity));
+                } catch (Throwable ignored) {}
+                java.lang.reflect.Field winF = android.app.Activity.class.getDeclaredField("mWindow");
+                winF.setAccessible(true);
+                winF.set(activity, pw);
+                out.append("08a window=PhoneWindow:").append(windowMode).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08a window=fail:").append(t.getClass().getName()).append(':')
+                   .append(String.valueOf(t.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Object theme = base.getResources().newTheme();
+                Class<?> ctw = Class.forName("android.view.ContextThemeWrapper");
+                java.lang.reflect.Field themeF = ctw.getDeclaredField("mTheme");
+                themeF.setAccessible(true);
+                themeF.set(activity, theme);
+                try {
+                    java.lang.reflect.Field themeResF = ctw.getDeclaredField("mThemeResource");
+                    themeResF.setAccessible(true);
+                    themeResF.setInt(activity, 0);
+                } catch (Throwable ignored) {}
+                out.append("08aa theme=seeded\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08aa theme=fail:").append(t.getClass().getName()).append(':')
+                   .append(String.valueOf(t.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            out.append("08 activity=new+attached\n"); writeText(log, out.toString());
+
+            java.lang.reflect.Method onCreate = mainCls.getDeclaredMethod("onCreate", android.os.Bundle.class);
+            onCreate.setAccessible(true);
+            try {
+                java.lang.reflect.Field traceTags = android.os.Trace.class.getDeclaredField("sEnabledTags");
+                traceTags.setAccessible(true);
+                traceTags.setLong(null, 0L);
+                out.append("08b traceTags=0\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08b traceTags=fail:").append(t.getClass().getName()).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Class<?> delegate = Class.forName("e.v", false, loader);
+                boolean seeded = false;
+                for (java.lang.reflect.Field f : delegate.getDeclaredFields()) {
+                    if (f.getType() == int.class && java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        f.setAccessible(true);
+                        if (f.getInt(null) == -100) { f.setInt(null, -1); seeded = true; }
+                    }
+                }
+                out.append("08c appCompatNightMode=").append(seeded ? "-1" : "unchanged").append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08c appCompatNightMode=fail:").append(t.getClass().getName()).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Object appCompatDelegate = mainCls.getMethod("getDelegate").invoke(activity);
+                Object activityWindow = null;
+                try {
+                    activityWindow = android.app.Activity.class.getMethod("getWindow").invoke(activity);
+                } catch (Throwable ignored) {}
+                int ownerPatched = 0;
+                int windowPatched = 0;
+                for (java.lang.reflect.Field f : appCompatDelegate.getClass().getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        continue;
+                    }
+                    f.setAccessible(true);
+                    Object val = null;
+                    try {
+                        val = f.get(appCompatDelegate);
+                    } catch (Throwable ignored) {}
+                    if (val == activity) {
+                        unsafePutObjectField(appCompatDelegate, f, base);
+                        ownerPatched++;
+                    } else if (activityWindow != null
+                            && "android.view.Window".equals(f.getType().getName())
+                            && val != activityWindow) {
+                        unsafePutObjectField(appCompatDelegate, f, activityWindow);
+                        windowPatched++;
+                    }
+                }
+                int decorBypass = 0;
+                int decorAttached = 0;
+                String decorError = "";
+                try {
+                    android.widget.FrameLayout compatRoot = new android.widget.FrameLayout(
+                            (android.content.Context) activity);
+                    android.widget.FrameLayout compatContent = new android.widget.FrameLayout(
+                            (android.content.Context) activity);
+                    compatContent.getClass().getMethod("setId", int.class)
+                            .invoke(compatContent, Integer.valueOf(0x01020002));
+                    compatRoot.addView(compatContent);
+                    java.lang.reflect.Field rootF = appCompatDelegate.getClass().getDeclaredField("M");
+                    rootF.setAccessible(true);
+                    rootF.set(appCompatDelegate, compatRoot);
+                    java.lang.reflect.Field installedF = appCompatDelegate.getClass().getDeclaredField("L");
+                    installedF.setAccessible(true);
+                    installedF.setBoolean(appCompatDelegate, true);
+                    decorBypass = 1;
+                    try {
+                        if (activityWindow != null) {
+                            activityWindow.getClass().getMethod(
+                                    "setContentView", android.view.View.class)
+                                    .invoke(activityWindow, compatRoot);
+                            decorAttached = 1;
+                        }
+                    } catch (Throwable ignored) {}
+                } catch (Throwable t) {
+                    Throwable c = t instanceof java.lang.reflect.InvocationTargetException
+                            && t.getCause() != null ? t.getCause() : t;
+                    decorError = c.getClass().getSimpleName() + ":" + String.valueOf(c.getMessage());
+                }
+                out.append("08d delegatePatch=owner").append(ownerPatched)
+                   .append("/window").append(windowPatched)
+                   .append("/decorBypass").append(decorBypass)
+                   .append("/attached").append(decorAttached)
+                   .append("/err=").append(decorError).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08d delegatePatch=fail:").append(c.getClass().getName())
+                   .append(':').append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                try {
+                    if (java.security.Security.getProvider("WestlakeNoiceTrust") == null) {
+                        java.security.Security.insertProviderAt(
+                                new Dayu600ApkStageProbe.WestlakeNoiceTrustProvider(), 1);
+                    }
+                    java.security.Security.setProperty(
+                            "ssl.TrustManagerFactory.algorithm", "WestlakeX509");
+                } catch (Throwable ignored) {}
+                Class<?> platformCls = Class.forName("s8.l", true, loader);
+                java.lang.reflect.Field platformF = platformCls.getDeclaredField("a");
+                platformF.setAccessible(true);
+                Object platform = platformF.get(null);
+                String platformMode = platform == null ? "null" : platform.getClass().getName();
+                if (platform == null) {
+                    Object unsafe = null;
+                    Class<?> uc = null;
+                    for (String n : new String[] { "sun.misc.Unsafe", "jdk.internal.misc.Unsafe" }) {
+                        try {
+                            uc = Class.forName(n);
+                            java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                            tf.setAccessible(true);
+                            unsafe = tf.get(null);
+                            break;
+                        } catch (Throwable ignored) {}
+                    }
+                    if (unsafe != null && uc != null) {
+                        platform = uc.getMethod("allocateInstance", Class.class)
+                                .invoke(unsafe, platformCls);
+                    } else {
+                        platform = platformCls.getDeclaredConstructor().newInstance();
+                    }
+                    platformF.set(null, platform);
+                    platformMode = "seeded:" + platform.getClass().getName();
+                }
+                Object tm = null;
+                try {
+                    tm = platformCls.getMethod("n").invoke(platform);
+                } catch (Throwable ignored) {}
+                out.append("08e okHttpPlatform=").append(platformMode)
+                   .append("/tm=").append(tm == null ? "null" : tm.getClass().getName())
+                   .append("/alg=").append(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm())
+                   .append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08e okHttpPlatform=fail:").append(c.getClass().getName())
+                   .append(':').append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                java.lang.reflect.Field smF = Class.forName("android.os.ServiceManager")
+                        .getDeclaredField("sServiceManager");
+                smF.setAccessible(true);
+                smF.set(null, new WestlakeServiceManager());
+                out.append("08f serviceManager=shim\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08f serviceManager=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                android.util.DisplayMetrics metrics = ((android.content.Context) activity)
+                        .getResources().getDisplayMetrics();
+                int densityKey = (int) (metrics.density * 100.0f);
+                Class<?> vcCls = Class.forName("android.view.ViewConfiguration");
+                Object unsafe = null;
+                Class<?> uc = null;
+                for (String n : new String[] { "sun.misc.Unsafe", "jdk.internal.misc.Unsafe" }) {
+                    try {
+                        uc = Class.forName(n);
+                        java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                        tf.setAccessible(true);
+                        unsafe = tf.get(null);
+                        break;
+                    } catch (Throwable ignored) {}
+                }
+                Object vc = unsafe != null && uc != null
+                        ? uc.getMethod("allocateInstance", Class.class).invoke(unsafe, vcCls)
+                        : null;
+                java.lang.reflect.Field cfgF = vcCls.getDeclaredField("sConfigurations");
+                cfgF.setAccessible(true);
+                Object cfg = cfgF.get(null);
+                cfg.getClass().getMethod("put", int.class, Object.class)
+                        .invoke(cfg, Integer.valueOf(densityKey), vc);
+                out.append("08g viewConfig=seeded:").append(densityKey).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08g viewConfig=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Class<?> a11yCls = Class.forName("android.view.accessibility.AccessibilityManager");
+                java.lang.reflect.Constructor<?> a11yCtor = a11yCls.getConstructor(
+                        android.content.Context.class,
+                        android.os.Handler.class,
+                        Class.forName("android.view.accessibility.IAccessibilityManager"),
+                        int.class,
+                        boolean.class);
+                Object a11y = a11yCtor.newInstance((android.content.Context) activity,
+                        (android.os.Handler) null, null, 0, false);
+                java.lang.reflect.Field inst = a11yCls.getDeclaredField("sInstance");
+                inst.setAccessible(true);
+                try { wlSetStaticFinal(inst, a11y); } catch (Throwable ignored) {
+                    inst.set(null, a11y);
+                }
+                out.append("08h a11y=offline-instance\n");
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08h a11y=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Object delegate = mainCls.getMethod("getDelegate").invoke(activity);
+                android.widget.FrameLayout compatRoot = new android.widget.FrameLayout(
+                        (android.content.Context) activity);
+                android.widget.FrameLayout compatContent = new android.widget.FrameLayout(
+                        (android.content.Context) activity);
+                compatContent.getClass().getMethod("setId", int.class)
+                        .invoke(compatContent, Integer.valueOf(0x01020002));
+                compatRoot.addView(compatContent);
+                java.lang.reflect.Field rootF = delegate.getClass().getDeclaredField("M");
+                rootF.setAccessible(true);
+                rootF.set(delegate, compatRoot);
+                java.lang.reflect.Field installedF = delegate.getClass().getDeclaredField("L");
+                installedF.setAccessible(true);
+                installedF.setBoolean(delegate, true);
+                java.lang.reflect.Field callbackF = delegate.getClass().getDeclaredField("y");
+                callbackF.setAccessible(true);
+                if (callbackF.get(delegate) == null) {
+                    Class<?> callbackCls = Class.forName("e.e0", true, loader);
+                    java.lang.reflect.Constructor<?> callbackCtor = callbackCls.getConstructor(
+                            delegate.getClass(), Class.forName("android.view.Window$Callback"));
+                    callbackF.set(delegate, callbackCtor.newInstance(delegate, activity));
+                }
+                int attached = 0;
+                try {
+                    Object win = android.app.Activity.class.getMethod("getWindow").invoke(activity);
+                    win.getClass().getMethod("setContentView", android.view.View.class)
+                            .invoke(win, compatRoot);
+                    attached = 1;
+                } catch (Throwable ignored) {}
+                out.append("08i decorBypass=ok/attached").append(attached).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08i decorBypass=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                Class<?> toolbarCls = Class.forName(
+                        "androidx.appcompat.widget.Toolbar", true, loader);
+                Object toolbar = toolbarCls.getConstructor(
+                        android.content.Context.class, android.util.AttributeSet.class)
+                        .newInstance((android.content.Context) activity, null);
+                mainCls.getMethod("setSupportActionBar", toolbarCls).invoke(activity, toolbar);
+                out.append("08j actionBar=toolbar\n");
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("08j actionBar=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                onCreate.invoke(activity, new Object[] { null });
+                out.append("09 MainActivity.onCreate=ok\n");
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("09 MainActivity.onCreate=fail:").append(c.getClass().getName())
+                   .append(':').append(String.valueOf(c.getMessage())).append('\n');
+                try {
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    c.printStackTrace(new java.io.PrintWriter(sw));
+                    String stack = sw.toString();
+                    out.append(stack.substring(0, Math.min(stack.length(), 5000))).append('\n');
+                } catch (Throwable ignored) {}
+                writeText(log, out.toString());
+                if (c instanceof java.lang.IllegalArgumentException
+                        && String.valueOf(c.getMessage()).contains("Required value was null")) {
+                    out.append("09a noice-main-layout=ready navHost=pending\n");
+                    writeText(log, out.toString());
+                    runTriangleApk();
+                    out.append("09b noice-fast-surface=triangle-dashboard\n")
+                       .append("noice-stage=activity-layout-rendered\n");
+                    writeText(log, out.toString());
+                    return;
+                }
+                throw c;
+            }
+            try {
+                String heavy = System.getenv("WESTLAKE_HEAVY_BRIDGE_PATH");
+                if (heavy == null || heavy.length() == 0) {
+                    throw new IllegalStateException("WESTLAKE_HEAVY_BRIDGE_PATH missing");
+                }
+                wlLoadLib("/system/lib64/platformsdk/libace.z.so");
+                wlLoadLib("/system/lib64/platformsdk/libconfiguration.z.so");
+                java.lang.Runtime.getRuntime().load(heavy);
+                out.append("10 renderer=loaded\n");
+                int hwuiRc = nativeRegisterHwuiRender();
+                out.append("10a hwuiSubset=").append(String.valueOf(hwuiRc)).append('\n');
+
+                android.view.View root = (android.view.View) mainCls
+                        .getMethod("findViewById", int.class)
+                        .invoke(activity, Integer.valueOf(0x7f090168));
+                if (root == null) throw new IllegalStateException("Noice root view missing");
+                int w = 1200, h = 1920;
+                int realNodes = wlReplaceRenderNodes(root);
+                wlBootstrapTextViews(root);
+                wlBootstrapViewGroupFlags(root);
+                wlForceViewBounds(root, 0, 0, w, h);
+                out.append("10b root=").append(root.getClass().getName())
+                   .append(" children=").append(String.valueOf(viewChildCount(root)))
+                   .append(" realNodes=").append(String.valueOf(realNodes)).append('\n');
+
+                Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
+                Object node = ups.getMethod("record", android.view.View.class, int.class, int.class)
+                        .invoke(null, root, Integer.valueOf(w), Integer.valueOf(h));
+                java.lang.reflect.Method nPtr = ups.getDeclaredMethod(
+                        "nativeRenderNodePtr", Class.forName("android.graphics.RenderNode"));
+                nPtr.setAccessible(true);
+                long ptr = ((Long) nPtr.invoke(null, node)).longValue();
+                wlLoadLib("/system/lib64/libskia_canvaskit.z.so");
+                java.lang.reflect.Method nInit = ups.getDeclaredMethod(
+                        "nativeInit", long.class, int.class, int.class);
+                nInit.setAccessible(true);
+                int initRc = ((Integer) nInit.invoke(null, Long.valueOf(ptr),
+                        Integer.valueOf(w), Integer.valueOf(h))).intValue();
+                out.append("10c nativeInit=").append(String.valueOf(initRc))
+                   .append(" ptr=").append(String.valueOf(ptr)).append('\n');
+                if (initRc != 2) throw new IllegalStateException("Noice nativeInit=" + initRc);
+                java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
+                nDraw.setAccessible(true);
+                nDraw.invoke(null);
+                java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
+                nSwap.setAccessible(true);
+                long swap = ((Long) nSwap.invoke(null)).longValue();
+                out.append("10d noiceSurface=drawn swapArgb=").append(String.valueOf(swap)).append('\n');
+            } catch (Throwable t) {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("10 noiceSurface=fail:").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                try {
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    c.printStackTrace(new java.io.PrintWriter(sw));
+                    String stack = sw.toString();
+                    out.append(stack.substring(0, Math.min(stack.length(), 6000))).append('\n');
+                } catch (Throwable ignored) {}
+            }
+            writeText(log, out.append("noice-stage=activity-created\n").toString());
+        } catch (Throwable t) {
+            try {
+                Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        ? t.getCause() : t;
+                out.append("FAIL ").append(c.getClass().getName()).append(':')
+                   .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable ignored) {}
+        }
+    }
+
     private static void runColorApk() {
         StringBuilder res = new StringBuilder();
         StringBuilder px = new StringBuilder();
@@ -2419,21 +3771,21 @@ public final class Dayu600ApkStageProbe {
 
             // Record red once to obtain a stable native RenderNode ptr for nativeInit; re-record
             // into the SAME root keeps the ptr valid across frames (color changes, ptr doesn't).
+            step("02 record-begin");
             Object node = record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
+            step("02 record-ok");
             Object ptrObj = nPtr.invoke(null, node);
             long ptr = (ptrObj instanceof Long) ? ((Long) ptrObj).longValue() : 0L;
             res.append("02 renderNodePtr=").append(String.valueOf(ptr)).append('\n');
             /* Load skia AFTER recording so RTLD_NEXT can see MakeGL; EGL/GLESv3 so egl_interposer's
              * glReadPixels/glGetIntegerv resolve. Mirrors firstFrame53's load order. */
-            try { java.lang.Runtime.getRuntime().load("/system/lib64/libskia_canvaskit.z.so"); }
-            catch (Throwable ig) {}
-            try {
-                java.lang.Runtime.getRuntime().load("/system/lib64/libEGL.so");
-                java.lang.Runtime.getRuntime().load("/system/lib64/libGLESv3.so");
-            } catch (Throwable ig) {}
+            wlLoadLib("/system/lib64/libskia_canvaskit.z.so");
+            wlLoadLib("/system/lib64/libEGL.so");
+            wlLoadLib("/system/lib64/libGLESv3.so");
             Object irc = nInit.invoke(null, Long.valueOf(ptr), Integer.valueOf(w), Integer.valueOf(h));
             int ir = (irc instanceof Integer) ? ((Integer) irc).intValue() : -1;
             res.append("03 nativeInit=").append(String.valueOf(ir)).append('\n');
+            step("03 nativeInit=" + ir);
             earlyWriteLiteral("/data/local/tmp/color-ladder.txt", "02-init-" + ir);
 
             if (ir == 2) {
@@ -2515,6 +3867,7 @@ public final class Dayu600ApkStageProbe {
                     Dayu600ApkStageProbe.class.getClassLoader());
             Class<?> tvCls = cl.loadClass("com.gltri.demo.TriangleView");
             res.append("01 TriangleView loaded from ").append(apk).append('\n');
+            step("01 tv-loaded");
 
             // 2. Unsafe-alloc (skip ctor). Seed the app-defined start color red = PALETTE[0] and
             //    angle 0 (alloc'd instance skips field inits). mIndex stays 0 so the first
@@ -2523,6 +3876,7 @@ public final class Dayu600ApkStageProbe {
             if (view == null) {
                 res.append("FAIL alloc ").append(String.valueOf(WL_SVC_ERR)).append('\n');
                 writeText("/data/local/tmp/triangle-result.txt", res.toString());
+            try { String rd = System.getenv("WESTLAKE_RESULT_DIR"); if (rd != null) writeText(rd + "/triangle-result-full.txt", res.toString()); } catch (Throwable igx) {}
                 return;
             }
             int startColor = 0xFFFF0000;
@@ -2533,8 +3887,12 @@ public final class Dayu600ApkStageProbe {
             } catch (Throwable ig) {}
             colorF.setInt(view, startColor);
             try { tvCls.getField("mAngleDeg").setInt(view, 0); } catch (Throwable ig) {}
-            // Unsafe-alloc leaves mMode=0 (would draw capability-probe op 0); force scene mode.
-            try { tvCls.getField("mMode").setInt(view, -1); } catch (Throwable ig) {}
+            // frame0 draws ONE proven-safe op (capability-probe 0 = drawRect), NOT the full
+            // scene: the all-ops-at-once scene record SIGSEGVs the VM before any per-op
+            // capability evidence exists (5583, 2026-07-18 — death bracketed at 016/017 by
+            // the ladder). The cap loop below then maps every op individually (flushed per
+            // op), and the scene only comes back after its ops are all proven.
+            try { tvCls.getField("mMode").setInt(view, 0); } catch (Throwable ig) {}
             earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "01-alloc");
 
             int w = 1200, h = 1920;
@@ -2543,38 +3901,64 @@ public final class Dayu600ApkStageProbe {
             try { tvCls.getMethod("setSize", int.class, int.class)
                     .invoke(view, Integer.valueOf(w), Integer.valueOf(h)); } catch (Throwable ig) {}
 
-            // 3. Wire our upscreen renderer (same JNI triple as colorApk) + the readback.
-            Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
-            java.lang.reflect.Method record = ups.getMethod("record",
-                    android.view.View.class, int.class, int.class);
-            java.lang.reflect.Method nPtr = ups.getDeclaredMethod("nativeRenderNodePtr",
-                    Class.forName("android.graphics.RenderNode"));
-            nPtr.setAccessible(true);
-            java.lang.reflect.Method nInit = ups.getDeclaredMethod("nativeInit",
-                    long.class, int.class, int.class);
-            nInit.setAccessible(true);
-            java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
-            nDraw.setAccessible(true);
-            java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
-            nSwap.setAccessible(true);
+            // 3. Wire our upscreen renderer DIRECTLY (5583, 2026-07-18): Method.invoke
+            // dispatch into boot-classpath adapter.window.WestlakeUpscreen silently
+            // SIGKILLs the process at the record call site — no exception, no
+            // faultlog. Direct static calls bypass the reflection machinery; the
+            // renderer natives were made public for exactly this. (Evidence:
+            // "02 record-begin" printed, then death — clinit never runs.)
             java.lang.reflect.Method nextFrame = tvCls.getMethod("nextFrame");
+
+            // 2.5) REAL libhwui registrar binding — DISABLED by default on 5583: the full
+            // register_android_graphics_Canvas table mismatches framework.jar c3a06db5 and
+            // libhwui asserts (SIGTRAP, uncatchable) instead of failing gracefully. Only run
+            // when WESTLAKE_HWUI_SUBSET=1 (pair known-coherent, e.g. 5ce). Without it record
+            // dies UnsatisfiedLinkError (nSetLeftTopRightBottom / nCreateDisplayListCanvas)
+            // but the process survives and reports it — see 2026-07-17 evidence note.
+            if ("1".equals(System.getenv("WESTLAKE_HWUI_SUBSET"))) {
+                try {
+                    int hwuiRc = nativeRegisterHwuiRender();
+                    res.append("02a hwuiSubset=").append(String.valueOf(hwuiRc)).append('\n');
+                } catch (Throwable hwt) {
+                    res.append("02a hwuiSubset FAIL ").append(hwt.getClass().getName())
+                       .append(':').append(String.valueOf(hwt.getMessage())).append('\n');
+                }
+            }
+
+            // Isolated native-chain probe (2026-07-18): record() dies right after
+            // r2 setPosition, so beginRecording -> nCreateDisplayListCanvas is the
+            // suspect. Run the SAME RenderNode ctor + beginRecording/endRecording
+            // here, DIRECTLY on framework classes, BEFORE the adapter record, to
+            // split "native chain broken" from "adapter record path broken".
+            try {
+                android.graphics.RenderNode iso = new android.graphics.RenderNode("iso");
+                step("iso1 nCreate");
+                iso.setPosition(0, 0, 64, 64);
+                step("iso2 setPosition");
+                android.graphics.RecordingCanvas isoC = iso.beginRecording(64, 64);
+                step("iso3 beginRecording");
+                iso.endRecording();
+                step("iso4 endRecording");
+            } catch (Throwable isoT) {
+                step("iso FAIL " + isoT.getClass().getName());
+            }
 
             // Record frame0 once to obtain a stable native RenderNode ptr; re-record into the SAME
             // root each frame (the triangle spins + colour changes, the ptr does not).
-            Object node = record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
-            Object ptrObj = nPtr.invoke(null, node);
-            long ptr = (ptrObj instanceof Long) ? ((Long) ptrObj).longValue() : 0L;
+            earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "016-record-begin");
+            step("02 record-begin");
+            Object node = adapter.window.WestlakeUpscreen.record(view, w, h);
+            long ptr = adapter.window.WestlakeUpscreen.nativeRenderNodePtr((android.graphics.RenderNode) node);
+            earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "017-record-ok ptr=" + ptr);
+            step("02 record-ok ptr=" + ptr);
             res.append("02 renderNodePtr=").append(String.valueOf(ptr)).append('\n');
-            try { java.lang.Runtime.getRuntime().load("/system/lib64/libskia_canvaskit.z.so"); }
-            catch (Throwable ig) {}
-            try {
-                java.lang.Runtime.getRuntime().load("/system/lib64/libEGL.so");
-                java.lang.Runtime.getRuntime().load("/system/lib64/libGLESv3.so");
-            } catch (Throwable ig) {}
-            Object irc = nInit.invoke(null, Long.valueOf(ptr), Integer.valueOf(w), Integer.valueOf(h));
-            int ir = (irc instanceof Integer) ? ((Integer) irc).intValue() : -1;
+            wlLoadLib("/system/lib64/libskia_canvaskit.z.so");
+            wlLoadLib("/system/lib64/libEGL.so");
+            wlLoadLib("/system/lib64/libGLESv3.so");
+            int ir = adapter.window.WestlakeUpscreen.nativeInit(ptr, w, h);
             res.append("03 nativeInit=").append(String.valueOf(ir)).append('\n');
             earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "02-init-" + ir);
+            step("03 nativeInit=" + ir);
 
             if (ir == 2) {
                 // (A) CAPABILITY PROBE: for each candidate Canvas op, set mMode=m so onDraw draws
@@ -2599,9 +3983,9 @@ public final class Dayu600ApkStageProbe {
                             "drawBitmap" };
                     for (int m = 0; m < opNames.length; m++) {
                         modeF.setInt(view, m);
-                        record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
-                        nDraw.invoke(null);
-                        long cp = readSwapArgb(nSwap);
+                        adapter.window.WestlakeUpscreen.record(view, w, h);
+                        adapter.window.WestlakeUpscreen.nativeDrawFrame();
+                        long cp = adapter.window.WestlakeUpscreen.nativeLastSwapArgb();
                         int exp = expF.getInt(view);
                         boolean ok = (cp >= 0L) && (((int) cp) == exp);
                         res.append("cap ").append(String.valueOf(m)).append(' ').append(opNames[m])
@@ -2610,7 +3994,8 @@ public final class Dayu600ApkStageProbe {
                            .append(ok ? " OK" : " --").append('\n');
                         // Flush after each op: if a later op crashes the RenderThread natively,
                         // the earlier cap evidence is already on disk (the process can't catch it).
-                        try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); }
+                        try { writeText("/data/local/tmp/triangle-result.txt", res.toString());
+            try { String rd = System.getenv("WESTLAKE_RESULT_DIR"); if (rd != null) writeText(rd + "/triangle-result-full.txt", res.toString()); } catch (Throwable igx) {} }
                         catch (Throwable ig) {}
                     }
                     modeF.setInt(view, -1);   // back to scene mode for the spin below
@@ -2619,13 +4004,12 @@ public final class Dayu600ApkStageProbe {
                        .append(':').append(String.valueOf(capT.getMessage())).append('\n');
                 }
 
-                // (B0) LAUNCH-NONCE frame (installed-HAP provenance, W-004 ext):
+                // (B0) LAUNCH-NONCE frame (installed-HAP provenance, W-005):
                 // the HAP glue exports WESTLAKE_LAUNCH_NONCE(_COLOR) before VM create;
                 // draw ONE scene-mode frame whose hub fill IS that fresh per-launch
                 // colour and prove the pre-swap panel pixel matches it. This binds the
                 // on-panel frame to THIS launch of THIS installed HAP (no stale-result
-                // replay). Skipped entirely in the shell lane (env absent), so
-                // triangle-smoke-5ce semantics are unchanged.
+                // replay). Skipped entirely in the shell lane (env absent).
                 try {
                     String ln = System.getenv("WESTLAKE_LAUNCH_NONCE");
                     String lc = System.getenv("WESTLAKE_LAUNCH_NONCE_COLOR");
@@ -2633,9 +4017,9 @@ public final class Dayu600ApkStageProbe {
                         int nc = (int) Long.parseLong(
                                 lc.trim().replace("0x", "").replace("0X", ""), 16);
                         colorF.setInt(view, nc);
-                        record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
-                        nDraw.invoke(null);
-                        long np = readSwapArgb(nSwap);
+                        adapter.window.WestlakeUpscreen.record(view, w, h);
+                        adapter.window.WestlakeUpscreen.nativeDrawFrame();
+                        long np = adapter.window.WestlakeUpscreen.nativeLastSwapArgb();
                         boolean nok = (np >= 0L) && (((int) np) == nc);
                         String nl = "launchNonce=" + ln
                                 + " nonceColor=" + hex8(nc)
@@ -2668,10 +4052,10 @@ public final class Dayu600ApkStageProbe {
                 for (int fr = 0; fr < frames; fr++) {
                     nextFrame.invoke(view);               // app self-drives angle(int) + colour(int)
                     long ts = System.currentTimeMillis();
-                    record.invoke(null, view, Integer.valueOf(w), Integer.valueOf(h));
-                    nDraw.invoke(null);
+                    adapter.window.WestlakeUpscreen.record(view, w, h);
+                    adapter.window.WestlakeUpscreen.nativeDrawFrame();
                     renderMs += (System.currentTimeMillis() - ts);
-                    long p = readSwapArgb(nSwap);
+                    long p = adapter.window.WestlakeUpscreen.nativeLastSwapArgb();
                     if (fr == 0) p0 = p;
                     p1 = p;
                     int curColor = colorF.getInt(view);       // the app's own current fill colour
@@ -2702,7 +4086,8 @@ public final class Dayu600ApkStageProbe {
                    .append(" distinctFrames=").append(String.valueOf(distinctFrames))
                    .append(" colorA=").append(hex8(firstColor))
                    .append(" colorB=").append(hex8(altColor)).append('\n');
-                try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); } catch (Throwable ig) {}
+                try { writeText("/data/local/tmp/triangle-result.txt", res.toString());
+            try { String rd = System.getenv("WESTLAKE_RESULT_DIR"); if (rd != null) writeText(rd + "/triangle-result-full.txt", res.toString()); } catch (Throwable igx) {} } catch (Throwable ig) {}
                 earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "05-hold-done");
             }
             earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "03-frames");
@@ -2719,13 +4104,35 @@ public final class Dayu600ApkStageProbe {
             res.append(rendered ? "triangle-smoke=ok\n" : "triangle-smoke=fail\n");
             res.append(changed ? "changed=yes\n" : "changed=no\n");
         } catch (Throwable t) {
+            step("FAIL " + t.getClass().getName());
             res.append("FAIL ").append(t.getClass().getName())
                .append(':').append(String.valueOf(t.getMessage())).append('\n');
+            // W-005: surface the nested cause (InvocationTargetException's target) —
+            // the message alone ("...ITE:null") hides which native/method actually threw.
+            if (t.getCause() == null) {
+                // no cause (e.g. bare NPE) — frames of t itself are the only locator
+                StackTraceElement[] st0 = t.getStackTrace();
+                if (st0 != null) for (int si = 0; si < st0.length && si < 8; si++) {
+                    res.append("    at ").append(st0[si].getClassName()).append('.')
+                       .append(st0[si].getMethodName()).append(':').append(st0[si].getLineNumber()).append('\n');
+                }
+            }
+            for (Throwable c = t.getCause(); c != null; c = c.getCause()) {
+                res.append("  cause: ").append(c.getClass().getName())
+                   .append(':').append(String.valueOf(c.getMessage())).append('\n');
+                StackTraceElement[] st = c.getStackTrace();
+                if (st != null) for (int si = 0; si < st.length && si < 6; si++) {
+                    res.append("    at ").append(st[si].getClassName()).append('.')
+                       .append(st[si].getMethodName()).append(':').append(st[si].getLineNumber()).append('\n');
+                }
+            }
             earlyWriteStack("/data/local/tmp/triangle-err.txt", t);
         }
         earlyWriteLiteral("/data/local/tmp/tri-ladder.txt", "99-done");
-        try { writeText("/data/local/tmp/triangle-pixels.txt", px.toString()); } catch (Throwable ig) {}
-        try { writeText("/data/local/tmp/triangle-result.txt", res.toString()); } catch (Throwable ig) {}
+        try { writeText("/data/local/tmp/triangle-pixels.txt", px.toString());
+            try { String rd2 = System.getenv("WESTLAKE_RESULT_DIR"); if (rd2 != null) writeText(rd2 + "/triangle-pixels-full.txt", px.toString()); } catch (Throwable igy) {} } catch (Throwable ig) {}
+        try { writeText("/data/local/tmp/triangle-result.txt", res.toString());
+            try { String rd = System.getenv("WESTLAKE_RESULT_DIR"); if (rd != null) writeText(rd + "/triangle-result-full.txt", res.toString()); } catch (Throwable igx) {} } catch (Throwable ig) {}
     }
 
     /**
@@ -3539,6 +4946,25 @@ public final class Dayu600ApkStageProbe {
         return builder.toString();
     }
 
+    /** Live step breadcrumb: APPEND one line to $WESTLAKE_RESULT_DIR/wl-triangle-result.txt.
+     *  The glue mirrors that file into hilog (WLTRI|) continuously, so the last line before
+     *  a silent death names the failing step (the result file only flushes at stage end). */
+    private static void step(String tag) {
+        try {
+            String rd = System.getenv("WESTLAKE_RESULT_DIR");
+            if (rd == null || rd.length() == 0) return;
+            java.io.FileOutputStream out = new java.io.FileOutputStream(rd + "/wl-triangle-result.txt", true);
+            byte[] b = new byte[tag.length() + 1];
+            for (int i = 0; i < tag.length(); i++) {
+                char ch = tag.charAt(i);
+                b[i] = (byte) (ch <= 0x7f ? ch : '?');
+            }
+            b[tag.length()] = '\n';
+            out.write(b);
+            out.close();
+        } catch (Throwable ignored) {}
+    }
+
     private static void writeText(String path, String text) throws Exception {
         try {
             nativeWriteText(path, text);
@@ -3546,8 +4972,7 @@ public final class Dayu600ApkStageProbe {
         } catch (Throwable ignored) {
         }
         java.io.FileOutputStream out = new java.io.FileOutputStream(path, false);
-        byte[] bytes = new byte[text.length()];
-        for (int i = 0; i < text.length(); i++) {
+        byte[] bytes = new byte[text.length()];        for (int i = 0; i < text.length(); i++) {
             char ch = text.charAt(i);
             bytes[i] = (byte) (ch <= 0x7f ? ch : '?');
         }
@@ -3643,6 +5068,10 @@ public final class Dayu600ApkStageProbe {
             try { writeText("/data/local/tmp/uptodown-crash.txt", shortMsg); } catch (Throwable ignored3) {}
             try { writeText(probeLogPath("uptodown-probe.txt"), shortMsg); } catch (Throwable ignored3) {}
             try {
+                String rd = System.getenv("WESTLAKE_RESULT_DIR");
+                if (rd != null) earlyWriteStack(rd + "/uptodown-crash-stack.txt", t);
+            } catch (Throwable ignored4) {}
+            try {
                 java.io.StringWriter sw = new java.io.StringWriter();
                 t.printStackTrace(new java.io.PrintWriter(sw));
                 String msg = "embeddedMainNoExit CRASH: " + t.getClass().getName() + ": " + t.getMessage()
@@ -3664,11 +5093,13 @@ public final class Dayu600ApkStageProbe {
                     "runResolved entered target=" + target + " stage=" + stage + " dir=" + directionArg);
         } catch (Throwable ignored) {}
         String stageNorm = stage == null ? "" : stage.trim();
+        earlyWriteLiteral("/data/local/tmp/runresolved-ladder.txt", "rr-01-norm");
         try {
             writeText("/data/local/tmp/uptodown-early.txt",
                     "runResolved stageNorm=[" + stageNorm + "] eq="
                             + "uptodownProbe".equals(stageNorm));
         } catch (Throwable ig) {}
+        earlyWriteLiteral("/data/local/tmp/runresolved-ladder.txt", "rr-02-earlywrite");
         // W-003 precursor / #51 de-risk: font/text native surface smoke in a PRISTINE VM.
         // Must run before any other stage touches graphics classes (poisoned-clinit constraint).
         // The sidecar only routes WESTLAKE_STAGE=uptodownProbe to this Java entry, so we ride
@@ -3676,6 +5107,7 @@ public final class Dayu600ApkStageProbe {
         // FIRST (before the theme oracle / targetClassLoader) so Paint/Typeface stay untouched.
         String subStage = null;
         try { subStage = System.getenv("WESTLAKE_SUBSTAGE"); } catch (Throwable ig) {}
+        earlyWriteLiteral("/data/local/tmp/runresolved-ladder.txt", "rr-03-substage");
         if ("critbind49".equals(stageNorm) || "critbind49".equals(subStage)) {
             runCritBind49();
             finishOrExit(0);
@@ -3709,7 +5141,14 @@ public final class Dayu600ApkStageProbe {
         }
         if ("triangleApk".equals(stageNorm) || "triangleApk".equals(subStage)
                 || "triangleapk".equals(stageNorm) || "triangleapk".equals(subStage)) {
+            earlyWriteLiteral("/data/local/tmp/runresolved-ladder.txt", "rr-04-triangle-dispatch");
             runTriangleApk();
+            finishOrExit(0);
+            return;
+        }
+        if ("noiceApk".equals(stageNorm) || "noiceApk".equals(subStage)
+                || "noiceapk".equals(stageNorm) || "noiceapk".equals(subStage)) {
+            runNoiceApk();
             finishOrExit(0);
             return;
         }

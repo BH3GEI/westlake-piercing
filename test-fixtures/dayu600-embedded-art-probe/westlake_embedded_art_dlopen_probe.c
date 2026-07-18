@@ -58,6 +58,12 @@ extern long double strtold(const char *nptr, char **endptr);
 #define WL_MAP_ANON    0x20
 
 volatile long westlake_cd_mmap_rescues = 0;  /* observability: # of rescued maps */
+static volatile int westlake_ctor_vm_rc = -9999;
+
+__attribute__((visibility("default"))) int westlake_embedded_art_last_vm_rc(void)
+{
+    return westlake_ctor_vm_rc;
+}
 
 static long wl_syscall6(long n, long a0, long a1, long a2, long a3, long a4, long a5)
 {
@@ -288,6 +294,14 @@ __attribute__((visibility("default"))) jboolean Java_android_os_Trace_nativeIsTa
     (void)env;
     (void)klass;
     (void)tag;
+    return 0;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_os_Trace_nativeGetEnabledTags(
+    JNIEnv *env, jclass klass)
+{
+    (void)env;
+    (void)klass;
     return 0;
 }
 
@@ -622,6 +636,12 @@ static const char *westlake_root(void)
     return root;
 }
 
+static const char *westlake_exec_root(void)
+{
+    char *root = getenv("WESTLAKE_EXEC_ROOT");
+    return (root == 0 || root[0] == 0) ? westlake_root() : root;
+}
+
 static int westlake_uses_substrate_layout(void)
 {
     char *layout = getenv("WESTLAKE_LAYOUT");
@@ -654,12 +674,6 @@ static char *build_root_path(char *dst, unsigned long cap, const char *suffix)
     return dst;
 }
 
-static char *build_art_path(void)
-{
-    static char path[512];
-    return build_root_path(path, sizeof(path), "/art/libwestlake_art.so");
-}
-
 /* [DAYU600] -Ximage:<root>/boot.art — ART expands this to <root>/arm64/boot.art, loading
  * the arm64 boot image (with the FieldVarHandle fixup) so VarHandle-dependent classes are
  * pre-initialized instead of hitting the broken imageless clinit. Enabled only when
@@ -684,13 +698,42 @@ static char *build_default_heavy_bridge_path(void)
     return (char *)westlake_default_heavy_bridge_path;
 }
 
-static char *build_android_runtime_path(void)
+/* [5583 app-lane] exec dlopen with FLAT-then-lane fallback. An installed-HAP app
+ * process on 5583 may ONLY dlopen paths inside the bundle native-lib dir: ANY
+ * path under filesDir fails EINVAL — even a SYMLINK whose realpath is a blessed
+ * bundle file, and even when that file is already mapped (artboot glue diag,
+ * 2026-07-17). So the lane-shaped "$EXEC_ROOT/<rel>" form (filesDir symlinks)
+ * can never work in the app lane; only FLAT "$EXEC_ROOT/<soname>" does (glue
+ * points WESTLAKE_EXEC_ROOT at the bundle lib dir). The shell lane keeps a real
+ * lane-shaped root, where the flat form simply misses and the lane form loads.
+ * Trying flat first therefore serves both lanes with one contract. */
+static void *dlopen_exec(const char *lane_rel, const char *soname, int flags)
 {
-    static char path[512];
-    if (westlake_uses_substrate_layout()) {
-        return build_root_path(path, sizeof(path), "/android/lib64/liboh_android_runtime.so");
+    char path[768];
+    unsigned long pos;
+    const char *root = westlake_exec_root();
+    void *h;
+    pos = 0; path[0] = 0;
+    append_text(path, sizeof(path), &pos, root);
+    append_text(path, sizeof(path), &pos, "/");
+    append_text(path, sizeof(path), &pos, soname);
+    h = dlopen(path, flags);
+    if (h != 0) {
+        log_text("exec load ok (flat):");
+        log_text(path);
+        return h;
     }
-    return build_root_path(path, sizeof(path), "/lib64/liboh_android_runtime.so");
+    (void)dlerror();
+    pos = 0; path[0] = 0;
+    append_text(path, sizeof(path), &pos, root);
+    append_text(path, sizeof(path), &pos, "/");
+    append_text(path, sizeof(path), &pos, lane_rel);
+    h = dlopen(path, flags);
+    if (h != 0) {
+        log_text("exec load ok (lane):");
+        log_text(path);
+    }
+    return h;
 }
 
 static char *build_bootclasspath_option(void)
@@ -836,8 +879,21 @@ static char *build_classpath_option(void)
 
 static void log_text(const char *s)
 {
+    static char log_path[1200];
+    if (log_path[0] == 0) {
+        const char *root = getenv("WESTLAKE_ROOT");
+        unsigned long pos = 0;
+        if (root != 0 && root[0] != 0) {
+            append_text(log_path, sizeof(log_path), &pos, root);
+            append_text(log_path, sizeof(log_path), &pos,
+                "/apks/probe-logs/embedded-art.log");
+        } else {
+            append_text(log_path, sizeof(log_path), &pos,
+                "/data/local/tmp/westlake-embedded-art-dlopen-probe.log");
+        }
+    }
     long fd = syscall4(56, AT_FDCWD,
-        (long)"/data/local/tmp/westlake-embedded-art-dlopen-probe.log",
+        (long)log_path,
         O_WRONLY | O_CREAT | O_APPEND, LOG_MODE);
     if (fd < 0) {
         return;
@@ -1526,7 +1582,8 @@ static int ensure_art_loaded(void)
     if (westlake_art_handle != 0 && westlake_create_vm_symbol != 0) {
         return 0;
     }
-    westlake_art_handle = dlopen(build_art_path(), RTLD_NOW | RTLD_GLOBAL);
+    westlake_art_handle = dlopen_exec("art/libwestlake_art.so",
+        "libwestlake_art.so", RTLD_NOW | RTLD_GLOBAL);
     if (westlake_art_handle == 0) {
         log_text("dlopen libwestlake_art.so failed");
         char *err = dlerror();
@@ -1577,10 +1634,12 @@ static int call_android_runtime_start_reg(JNIEnv *env)
         return 0;
     }
     if (westlake_android_runtime_handle == 0) {
-        char *path = build_android_runtime_path();
+        const char *lane_rel = westlake_uses_substrate_layout()
+            ? "android/lib64/liboh_android_runtime.so"
+            : "lib64/liboh_android_runtime.so";
         log_text("android runtime dlopen begin");
-        log_text(path);
-        westlake_android_runtime_handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+        westlake_android_runtime_handle = dlopen_exec(lane_rel,
+            "liboh_android_runtime.so", RTLD_NOW | RTLD_GLOBAL);
         if (westlake_android_runtime_handle == 0) {
             log_text("android runtime dlopen failed");
             char *err = dlerror();
@@ -1729,6 +1788,330 @@ static void g_crash_handler(int sig) {
     }
 }
 
+/* Noice is first constructed with tiny bootstrap graphics stubs. Once the real
+ * Activity/View tree exists, bind only the HWUI registrars required to record
+ * that tree and submit it through WestlakeUpscreen. Running the full 54-entry
+ * AndroidRuntime registrar before app startup can block in unrelated codecs and
+ * system-service probes; this late, narrow set keeps the foreground path bounded. */
+
+/* [5583] selective per-entry hwui binding. The libhwui registrars call
+ * jniRegisterNativeMethods and ASSERT (SIGTRAP, uncatchable) when it returns <0,
+ * killing the process before we learn WHICH class/entry failed (measured:
+ * register_android_graphics_Canvas on framework.jar c3a06db5, 2026-07-17).
+ * The JNINativeMethod tables themselves sit in libhwui's RELRO and are
+ * RELR-relocated at load, so we read them at runtime and register entry by
+ * entry, logging and skipping failures. Table vaddrs are harvested from the
+ * registrar prologues of the PINNED libhwui (sha256 c9ed61d0…); a different
+ * libhwui needs a re-harvest. Gated on WESTLAKE_HWUI_SELECTIVE=1. */
+typedef struct { const void *dli_fname; void *dli_fbase; const void *dli_sname; void *dli_saddr; } WlDlInfo;
+extern int dladdr(const void *addr, WlDlInfo *info);
+/* hilog sink for the selective binder: resolved LAZILY (the probe is -nostdlib;
+ * a hard OH_LOG_Print import fails RTLD_NOW relocation because hilog_ndk.z.so is
+ * not in the app process' global symbol scope). First call tries to grab it from
+ * the already-loaded hilog_ndk; unavailable => file-log only. */
+static void hlog_sel(const char *s) {
+    static int resolved = 0;
+    static void (*fn)(int, int, unsigned int, const char *, const char *, ...) = 0;
+    if (!resolved) {
+        resolved = 1;
+        void *h = dlopen("libhilog_ndk.z.so", RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+        if (h == 0) h = dlopen("libhilog.z.so", RTLD_NOW | 4);
+        if (h == 0) h = dlopen("libhilog.so", RTLD_NOW | 4);
+        if (h != 0) fn = (void (*)(int, int, unsigned int, const char *, const char *, ...))
+            dlsym(h, "OH_LOG_Print");
+    }
+    if (fn != 0) fn(0, 6, 0xA100, "WLSEL", "%{public}s", s);
+}
+
+struct wl_hwui_table { const char *cls; unsigned long vaddr; int count; };
+static const struct wl_hwui_table WL_HWUI_TABLES[] = {
+    /* minimal record set first (2026-07-18): record dies silently ~1s after the
+     * full 12-class registration — bisect whether re-binding the bootstrap-stubbed
+     * classes (Paint bootstrap / RenderNode minimal / Trace) destabilizes the VM.
+     * The other classes are re-enabled by editing this table back. */
+    {"android/graphics/RenderNode",          0x47a210, 90},
+    {"android/graphics/RecordingCanvas",     0x48a9e0, 12},
+    {"android/graphics/Canvas",              0x478838, 33},
+    {"android/graphics/BaseCanvas",          0x478b50, 32},
+    {"android/graphics/BaseRecordingCanvas", 0x478b50, 32},
+#if 0
+    {"android/graphics/Paint",               0x477220, 85},
+    {"android/graphics/Path",                0x477bf8, 43},
+    {"android/graphics/Matrix$ExtraNatives", 0x479c68, 2},
+    {"android/graphics/ColorSpace$Rgb$Native", 0x478e50, 2},
+    {"android/graphics/Region",              0x478028, 23},
+    {"android/graphics/Shader",              0x478370, 1},
+    /* Typeface EXCLUDED: clinit SIGSEGVs the VM on this substrate (Minikin). */
+#endif
+};
+
+static jint westlake_hwui_register_selective(JNIEnv *env)
+{
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) {
+        log_text("selective hwui: dlopen libhwui.so failed"); hlog_sel("selective hwui: dlopen libhwui.so failed");
+        char *e = dlerror(); if (e != 0) log_text(e); hlog_sel(e);
+        return -1;
+    }
+    void *sym = dlsym(hwui, "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv");
+    WlDlInfo di; di.dli_fname = 0; di.dli_fbase = 0; di.dli_sname = 0; di.dli_saddr = 0;
+    if (sym == 0 || dladdr(sym, &di) == 0 || di.dli_fbase == 0) {
+        log_text("selective hwui: cannot locate libhwui base"); hlog_sel("selective hwui: cannot locate libhwui base");
+        return -1;
+    }
+    char *base = (char *)di.dli_fbase;
+    int total_bound = 0, total_skip = 0;
+    int ntab = (int)(sizeof(WL_HWUI_TABLES) / sizeof(WL_HWUI_TABLES[0]));
+    for (int t = 0; t < ntab; t++) {
+        const struct wl_hwui_table *T = &WL_HWUI_TABLES[t];
+        /* in-vivo harvest check: dump entry[0] of each table BEFORE using it, so
+         * a wrong vaddr shows up as garbage strings in the log instead of
+         * corrupting the VM with bogus RegisterNatives. */
+        {
+            const JNINativeMethod *tab0 = (const JNINativeMethod *)(base + T->vaddr);
+            char msg[320]; unsigned long mp = 0;
+            append_text(msg, sizeof(msg), &mp, "selective hwui: table ");
+            append_text(msg, sizeof(msg), &mp, T->cls);
+            append_text(msg, sizeof(msg), &mp, " entry0=");
+            append_text(msg, sizeof(msg), &mp, tab0[0].name ? tab0[0].name : "(null)");
+            append_text(msg, sizeof(msg), &mp, " ");
+            append_text(msg, sizeof(msg), &mp, tab0[0].signature ? tab0[0].signature : "(null)");
+            log_text(msg); hlog_sel(msg);
+        }
+        jclass c = (*env)->FindClass(env, T->cls);
+        if (c == 0) {
+            log_text("selective hwui: FindClass FAILED (class skipped):"); hlog_sel("selective hwui: FindClass FAILED (class skipped):");
+            log_text(T->cls); hlog_sel(T->cls);
+            if ((*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, T->cls);
+                (*env)->ExceptionClear(env);
+            }
+            total_skip += T->count;
+            continue;
+        }
+        const JNINativeMethod *tab = (const JNINativeMethod *)(base + T->vaddr);
+        int bound = 0, skipped = 0;
+        for (int i = 0; i < T->count; i++) {
+            JNINativeMethod one = tab[i];
+            if (one.name == 0 || one.signature == 0 || one.fnPtr == 0) {
+                skipped++;
+                log_text("selective hwui: NULL table slot (harvest off?) — class aborted"); hlog_sel("selective hwui: NULL table slot (harvest off?) — class aborted");
+                log_text(T->cls); hlog_sel(T->cls);
+                break;
+            }
+            /* 2026-07-18: nCreate/nGetNativeFinalizer back to REAL — the fake-handle
+             * experiment showed record() dies at setPosition derefing the fake ptr.
+             * (The bootstrap minimal set is fully superseded by this table now.) */
+            jint rc = (*env)->RegisterNatives(env, c, &one, 1);
+            if (rc != 0 || (*env)->ExceptionCheck(env)) {
+                skipped++;
+                char msg[320]; unsigned long mp = 0;
+                append_text(msg, sizeof(msg), &mp, "selective hwui: skip entry ");
+                append_text(msg, sizeof(msg), &mp, T->cls);
+                append_text(msg, sizeof(msg), &mp, "#");
+                append_text(msg, sizeof(msg), &mp, one.name);
+                log_text(msg); hlog_sel(msg);
+                if ((*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, msg);
+                    (*env)->ExceptionClear(env);
+                }
+            } else {
+                bound++;
+            }
+        }
+        log_text(T->cls); hlog_sel(T->cls);
+        log_int("  selective bound=", bound);
+        log_int("  selective skipped=", skipped);
+        total_bound += bound; total_skip += skipped;
+        /* wl-obs: per-table DONE marker — a run dying mid-registration leaves its
+         * last marker in embedded-art.log (survives process death, unlike hilog). */
+        {
+            char dmsg[320]; unsigned long dp = 0;
+            append_text(dmsg, sizeof(dmsg), &dp, "sel done ");
+            append_text(dmsg, sizeof(dmsg), &dp, T->cls);
+            log_text(dmsg);
+        }
+    }
+    log_int("selective hwui total bound=", total_bound);
+    log_int("selective hwui total skipped=", total_skip);
+    log_text("selective hwui RETURN");
+    return total_skip;
+}
+
+static jint westlake_native_register_hwui_render(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    if (streq(getenv("WESTLAKE_HWUI_SELECTIVE"), "1")) {
+        return westlake_hwui_register_selective(env);
+    }
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) {
+        log_text("Noice HWUI subset: dlopen libhwui.so failed");
+        char *e = dlerror(); if (e != 0) log_text(e);
+        return -1;
+    }
+    struct wl_reg { const char *name; const char *sym; } regs[] = {
+        {"Canvas", "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv"},
+        {"ColorSpace", "_ZN7android36register_android_graphics_ColorSpaceEP7_JNIEnv"},
+        {"Matrix", "_ZN7android32register_android_graphics_MatrixEP7_JNIEnv"},
+        {"Paint", "_ZN7android31register_android_graphics_PaintEP7_JNIEnv"},
+        {"Path", "_ZN7android30register_android_graphics_PathEP7_JNIEnv"},
+        {"Region", "_ZN7android32register_android_graphics_RegionEP7_JNIEnv"},
+        {"Shader", "_Z32register_android_graphics_ShaderP7_JNIEnv"},
+        {"Typeface", "_Z34register_android_graphics_TypefaceP7_JNIEnv"},
+        {"RenderNode", "_ZN7android32register_android_view_RenderNodeEP7_JNIEnv"},
+        {"DisplayListCanvas", "_ZN7android39register_android_view_DisplayListCanvasEP7_JNIEnv"},
+    };
+    int failures = 0;
+    int n = (int)(sizeof(regs) / sizeof(regs[0]));
+    for (int i = 0; i < n; i++) {
+        typedef int (*reg_fn)(JNIEnv *);
+        reg_fn fn = (reg_fn)dlsym(hwui, regs[i].sym);
+        log_text(regs[i].name);
+        if (fn == 0) { failures++; continue; }
+        int rc = fn(env);
+        if ((*env)->ExceptionCheck(env)) {
+            describe_pending_exception(env, regs[i].name);
+            (*env)->ExceptionClear(env);
+            failures++;
+        } else if (rc != 0) {
+            failures++;
+        }
+    }
+    log_int("Noice HWUI subset failures=", failures);
+    return failures;
+}
+
+static void westlake_AssetManager_nativeSetConfiguration_noop(
+    JNIEnv *env, jclass clazz, jlong asset_manager,
+    jint mcc, jint mnc, jstring locale,
+    jint orientation, jint touchscreen, jint density, jint keyboard,
+    jint keyboard_hidden, jint navigation, jint screen_width, jint screen_height,
+    jint smallest_width_dp, jint width_dp, jint height_dp, jint screen_layout,
+    jint ui_mode, jint color_mode, jint grammatical_gender, jint major_version)
+{
+    (void)env; (void)clazz; (void)asset_manager; (void)mcc; (void)mnc; (void)locale;
+    (void)orientation; (void)touchscreen; (void)density; (void)keyboard;
+    (void)keyboard_hidden; (void)navigation; (void)screen_width; (void)screen_height;
+    (void)smallest_width_dp; (void)width_dp; (void)height_dp; (void)screen_layout;
+    (void)ui_mode; (void)color_mode; (void)grammatical_gender; (void)major_version;
+}
+
+static void westlake_AssetManager_nativeApplyStyle_noop(
+    JNIEnv *env, jclass clazz, jlong ptr, jlong theme, jint def_style_attr,
+    jint def_style_res, jlong parser, jintArray attrs, jlong out_values, jlong out_indices)
+{
+    (void)env; (void)clazz; (void)ptr; (void)theme; (void)def_style_attr;
+    (void)def_style_res; (void)parser; (void)attrs; (void)out_values; (void)out_indices;
+}
+
+static void westlake_AssetManager_nativeThemeApplyStyle_noop(
+    JNIEnv *env, jclass clazz, jlong ptr, jlong theme, jint style, jboolean force)
+{
+    (void)env; (void)clazz; (void)ptr; (void)theme; (void)style; (void)force;
+}
+
+static void westlake_AssetManager_nativeThemeCopy_noop(
+    JNIEnv *env, jclass clazz, jlong dst_asset, jlong dst_theme, jlong src_asset, jlong src_theme)
+{
+    (void)env; (void)clazz; (void)dst_asset; (void)dst_theme; (void)src_asset; (void)src_theme;
+}
+
+static volatile jlong westlake_rendernode_next = 0x52000000LL;
+
+__attribute__((visibility("default"))) void westlake_RenderNode_finalizer_noop(void *native_ptr)
+{
+    (void)native_ptr;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_graphics_RenderNode_nCreate(
+    JNIEnv *env, jclass clazz, jstring name)
+{
+    (void)env; (void)clazz; (void)name;
+    return ++westlake_rendernode_next;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_graphics_RenderNode_nGetNativeFinalizer(
+    JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return (jlong)(void *)&westlake_RenderNode_finalizer_noop;
+}
+
+static jfloat westlake_RenderNode_nGetElevation(jlong render_node)
+{
+    (void)render_node;
+    return 0.0f;
+}
+
+static jboolean westlake_RenderNode_nSetElevation(jlong render_node, jfloat elevation)
+{
+    (void)render_node;
+    (void)elevation;
+    return 0;
+}
+
+static jboolean westlake_RenderNode_nGetClipToOutline(jlong render_node)
+{
+    (void)render_node;
+    return 0;
+}
+
+static jboolean westlake_RenderNode_nSetClipToOutline(jlong render_node, jboolean clip)
+{
+    (void)render_node;
+    (void)clip;
+    return 0;
+}
+
+static volatile jlong westlake_paint_next = 0x53000000LL;
+
+__attribute__((visibility("default"))) void westlake_Paint_finalizer_noop(void *native_ptr)
+{
+    (void)native_ptr;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_graphics_Paint_nInit(
+    JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return ++westlake_paint_next;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_graphics_Paint_nInitWithPaint(
+    JNIEnv *env, jclass clazz, jlong paint)
+{
+    (void)env; (void)clazz; (void)paint;
+    return ++westlake_paint_next;
+}
+
+__attribute__((visibility("default"))) jlong Java_android_graphics_Paint_nGetNativeFinalizer(
+    JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return (jlong)(void *)&westlake_Paint_finalizer_noop;
+}
+
+static jint westlake_Paint_nGetFlags(jlong p) { (void)p; return 1283; }
+static void westlake_Paint_nSetFlags(jlong p, jint v) { (void)p; (void)v; }
+static jint westlake_Paint_nSetTextLocales(JNIEnv *env, jclass c, jlong p, jstring s)
+{ (void)env; (void)c; (void)p; (void)s; return 0; }
+static void westlake_Paint_nSetTextLocalesByMinikinLocaleListId(jlong p, jint v)
+{ (void)p; (void)v; }
+static void westlake_Paint_nSetInt(jlong p, jint v) { (void)p; (void)v; }
+static void westlake_Paint_nSetBool(jlong p, jboolean v) { (void)p; (void)v; }
+static void westlake_Paint_nSetFloat(jlong p, jfloat v) { (void)p; (void)v; }
+static void westlake_Paint_nSetLong(jlong p, jlong v) { (void)p; (void)v; }
+static void westlake_Paint_nSetColorLong(jlong p, jlong cs, jlong color)
+{ (void)p; (void)cs; (void)color; }
+static jlong westlake_Paint_nSetLongReturn(jlong p, jlong v) { (void)p; return v; }
+static jboolean westlake_Paint_false_J(jlong p) { (void)p; return 0; }
+static jboolean westlake_Paint_true_J(jlong p) { (void)p; return 1; }
+static jint westlake_Paint_zeroI_J(jlong p) { (void)p; return 0; }
+static jfloat westlake_Paint_zeroF_J(jlong p) { (void)p; return 0.0f; }
+static jfloat westlake_Paint_oneF_J(jlong p) { (void)p; return 1.0f; }
+static jfloat westlake_Paint_textSize_J(jlong p) { (void)p; return 16.0f; }
+
 static int register_system_natives(JNIEnv *env)
 {
     jclass system_class = (*env)->FindClass(env, "java/lang/System");
@@ -1762,6 +2145,146 @@ static int register_system_natives(JNIEnv *env)
     } else {
         if (register_trace_natives_on(env, trace_class, "boot FindClass Trace") != 0) {
             /* already logged */
+        }
+    }
+
+    /* HAP-safe Resources bootstrap: OHBridge's generic nativeSetConfiguration
+     * trampoline is not callable under this interpreter and SIGBUSes. Configuration
+     * is advisory for our fixed 1200x1920 probe, so register an exact-signature no-op. */
+    {
+        jclass am_class = (*env)->FindClass(env, "android/content/res/AssetManager");
+        if (am_class != 0 && !(*env)->ExceptionCheck(env)) {
+            JNINativeMethod m[] = {
+                {
+                    "nativeSetConfiguration",
+                    "(JIILjava/lang/String;IIIIIIIIIIIIIIII)V",
+                    (void *)westlake_AssetManager_nativeSetConfiguration_noop
+                },
+                {
+                    "nativeApplyStyle",
+                    "(JJIIJ[IJJ)V",
+                    (void *)westlake_AssetManager_nativeApplyStyle_noop
+                },
+                {
+                    "nativeThemeApplyStyle",
+                    "(JJIZ)V",
+                    (void *)westlake_AssetManager_nativeThemeApplyStyle_noop
+                },
+                {
+                    "nativeThemeCopy",
+                    "(JJJJ)V",
+                    (void *)westlake_AssetManager_nativeThemeCopy_noop
+                },
+            };
+            jint arc = (*env)->RegisterNatives(env, am_class, m, 4);
+            if (arc == 0 && !(*env)->ExceptionCheck(env))
+                log_text("RegisterNatives AssetManager theme noops ok");
+            else {
+                log_text("RegisterNatives AssetManager theme noops failed");
+                (*env)->ExceptionClear(env);
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
+    }
+
+    /* Noice foreground bring-up now reaches real android.view.View construction.
+     * On DAYU600's mixed OHOS/Android graphics stack, RenderNode.nCreate SIGBUSes
+     * in the platform native renderer before Java layout can be built. The probe
+     * does not render through Android HWUI; it only needs stable Java View objects,
+     * so return an opaque fake native handle and a no-op finalizer. */
+    {
+        jclass rn_class = (*env)->FindClass(env, "android/graphics/RenderNode");
+        if (rn_class != 0 && !(*env)->ExceptionCheck(env)) {
+            JNINativeMethod rn[] = {
+                {"nCreate", "(Ljava/lang/String;)J",
+                    (void *)Java_android_graphics_RenderNode_nCreate},
+                {"nGetNativeFinalizer", "()J",
+                    (void *)Java_android_graphics_RenderNode_nGetNativeFinalizer},
+                {"nGetElevation", "(J)F",
+                    (void *)westlake_RenderNode_nGetElevation},
+                {"nSetElevation", "(JF)Z",
+                    (void *)westlake_RenderNode_nSetElevation},
+                {"nGetClipToOutline", "(J)Z",
+                    (void *)westlake_RenderNode_nGetClipToOutline},
+                {"nSetClipToOutline", "(JZ)Z",
+                    (void *)westlake_RenderNode_nSetClipToOutline},
+            };
+            jint rrc = (*env)->RegisterNatives(env, rn_class, rn, 6);
+            if (rrc == 0 && !(*env)->ExceptionCheck(env))
+                log_text("RegisterNatives RenderNode minimal ok");
+            else {
+                log_text("RegisterNatives RenderNode minimal failed");
+                (*env)->ExceptionClear(env);
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
+    }
+    {
+        jclass paint_class = (*env)->FindClass(env, "android/graphics/Paint");
+        if (paint_class != 0 && !(*env)->ExceptionCheck(env)) {
+            JNINativeMethod pm[] = {
+                {"nInit", "()J", (void *)Java_android_graphics_Paint_nInit},
+                {"nInitWithPaint", "(J)J", (void *)Java_android_graphics_Paint_nInitWithPaint},
+                {"nGetNativeFinalizer", "()J", (void *)Java_android_graphics_Paint_nGetNativeFinalizer},
+                {"nGetFlags", "(J)I", (void *)westlake_Paint_nGetFlags},
+                {"nSetFlags", "(JI)V", (void *)westlake_Paint_nSetFlags},
+                {"nSetTextLocales", "(JLjava/lang/String;)I", (void *)westlake_Paint_nSetTextLocales},
+                {"nSetTextLocalesByMinikinLocaleListId", "(JI)V", (void *)westlake_Paint_nSetTextLocalesByMinikinLocaleListId},
+                {"nSetColor", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nSetColor", "(JJJ)V", (void *)westlake_Paint_nSetColorLong},
+                {"nSetAlpha", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nSetTextSize", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetTextSize", "(J)F", (void *)westlake_Paint_textSize_J},
+                {"nSetTypeface", "(JJ)V", (void *)westlake_Paint_nSetLong},
+                {"nSetElegantTextHeight", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nIsElegantTextHeight", "(J)Z", (void *)westlake_Paint_false_J},
+                {"nSetLinearText", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetSubpixelText", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetUnderlineText", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetStrikeThruText", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetFakeBoldText", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetFilterBitmap", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetAntiAlias", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetDither", "(JZ)V", (void *)westlake_Paint_nSetBool},
+                {"nSetTextScaleX", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetTextScaleX", "(J)F", (void *)westlake_Paint_oneF_J},
+                {"nSetTextSkewX", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetTextSkewX", "(J)F", (void *)westlake_Paint_zeroF_J},
+                {"nSetLetterSpacing", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetLetterSpacing", "(J)F", (void *)westlake_Paint_zeroF_J},
+                {"nSetWordSpacing", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetWordSpacing", "(J)F", (void *)westlake_Paint_zeroF_J},
+                {"nSetHinting", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nGetHinting", "(J)I", (void *)westlake_Paint_zeroI_J},
+                {"nSetStyle", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nGetStyle", "(J)I", (void *)westlake_Paint_zeroI_J},
+                {"nSetTextAlign", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nGetTextAlign", "(J)I", (void *)westlake_Paint_zeroI_J},
+                {"nSetStrokeWidth", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetStrokeWidth", "(J)F", (void *)westlake_Paint_zeroF_J},
+                {"nSetStrokeMiter", "(JF)V", (void *)westlake_Paint_nSetFloat},
+                {"nGetStrokeMiter", "(J)F", (void *)westlake_Paint_zeroF_J},
+                {"nSetStrokeCap", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nGetStrokeCap", "(J)I", (void *)westlake_Paint_zeroI_J},
+                {"nSetStrokeJoin", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nGetStrokeJoin", "(J)I", (void *)westlake_Paint_zeroI_J},
+                {"nSetShader", "(JJ)J", (void *)westlake_Paint_nSetLongReturn},
+                {"nSetColorFilter", "(JJ)J", (void *)westlake_Paint_nSetLongReturn},
+                {"nSetXfermode", "(JI)V", (void *)westlake_Paint_nSetInt},
+                {"nHasShadowLayer", "(J)Z", (void *)westlake_Paint_false_J},
+            };
+            jint prc = (*env)->RegisterNatives(env, paint_class, pm,
+                (jint)(sizeof(pm) / sizeof(pm[0])));
+            if (prc == 0 && !(*env)->ExceptionCheck(env))
+                log_text("RegisterNatives Paint bootstrap ok");
+            else {
+                log_text("RegisterNatives Paint bootstrap failed");
+                (*env)->ExceptionClear(env);
+            }
+        } else {
+            (*env)->ExceptionClear(env);
         }
     }
     return 0;
@@ -2190,6 +2713,8 @@ static int register_trace_natives_on(JNIEnv *env, jclass trace_class, const char
         return -1;
     }
     JNINativeMethod tmethods[] = {
+        {"nativeGetEnabledTags", "()J",
+            (void *)Java_android_os_Trace_nativeGetEnabledTags},
         {"nativeIsTagEnabled", "(J)Z",
             (void *)Java_android_os_Trace_nativeIsTagEnabled},
         {"nativeSetAppTracingAllowed", "(Z)V",
@@ -2203,17 +2728,19 @@ static int register_trace_natives_on(JNIEnv *env, jclass trace_class, const char
         {"nativeTraceCounter", "(JLjava/lang/String;J)V",
             (void *)Java_android_os_Trace_nativeTraceCounter},
     };
-    jint trc = (*env)->RegisterNatives(
-        env, trace_class, tmethods, (jint)(sizeof(tmethods) / sizeof(tmethods[0])));
-    if (trc != 0 || (*env)->ExceptionCheck(env)) {
-        log_text(label);
-        log_text("RegisterNatives Trace failed");
-        (*env)->ExceptionClear(env);
-        return -1;
+    int registered = 0;
+    int count = (int)(sizeof(tmethods) / sizeof(tmethods[0]));
+    for (int i = 0; i < count; i++) {
+        jint trc = (*env)->RegisterNatives(env, trace_class, &tmethods[i], 1);
+        if (trc == 0 && !(*env)->ExceptionCheck(env)) {
+            registered++;
+        } else {
+            (*env)->ExceptionClear(env);
+        }
     }
     log_text(label);
-    log_text("RegisterNatives Trace ok");
-    return 0;
+    log_int("RegisterNatives Trace individual count=", registered);
+    return registered > 0 ? 0 : -1;
 }
 
 /* P2 (user-authorized 2026-07-11, revised after crash): bind the boot Trace natives by
@@ -2238,6 +2765,7 @@ static int westlake_p2_direct_bind_trace(JNIEnv *env, jclass trace_class)
 {
     struct trace_native { const char *name; const char *sig; const void *fn; };
     struct trace_native tb[] = {
+        {"nativeGetEnabledTags", "()J", (const void *)Java_android_os_Trace_nativeGetEnabledTags},
         {"nativeIsTagEnabled", "(J)Z", (const void *)Java_android_os_Trace_nativeIsTagEnabled},
         {"nativeSetAppTracingAllowed", "(Z)V", (const void *)Java_android_os_Trace_nativeSetAppTracingAllowed},
         {"nativeSetTracingEnabled", "(Z)V", (const void *)Java_android_os_Trace_nativeSetTracingEnabled},
@@ -2269,7 +2797,7 @@ static int westlake_p2_direct_bind_trace(JNIEnv *env, jclass trace_class)
         poked++;
     }
     log_text("W001 P2 poked");
-    mid0 = (*env)->GetStaticMethodID(env, trace_class, "nativeIsTagEnabled", "(J)Z");
+    mid0 = (*env)->GetStaticMethodID(env, trace_class, "nativeGetEnabledTags", "()J");
     if (mid0 == 0 || (*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
         return -4;
@@ -2286,7 +2814,7 @@ static int westlake_p2_direct_bind_trace(JNIEnv *env, jclass trace_class)
         vals[0] = (const void *)mid0;                                       labels[0] = "mid=";
         vals[1] = before0;                                                  labels[1] = " b4@16=";
         vals[2] = after0;                                                   labels[2] = " now@16=";
-        vals[3] = (const void *)Java_android_os_Trace_nativeIsTagEnabled;   labels[3] = " ourfn=";
+        vals[3] = (const void *)Java_android_os_Trace_nativeGetEnabledTags; labels[3] = " ourfn=";
         for (vi = 0; vi < 4; vi++) {
             const char *lp = labels[vi];
             unsigned long uv = (unsigned long)vals[vi];
@@ -2309,7 +2837,7 @@ static int westlake_p2_direct_bind_trace(JNIEnv *env, jclass trace_class)
         c_write_heartbeat("/data/local/tmp/w001-p2.txt", dbg);
     }
     log_text("W001 P2 recall begin");
-    (*env)->CallStaticBooleanMethod(env, trace_class, mid0, (jlong)0);
+    (*env)->CallStaticLongMethod(env, trace_class, mid0);
     if ((*env)->ExceptionCheck(env)) {
         jthrowable ex = (*env)->ExceptionOccurred(env);
         int rc = 2;
@@ -2826,12 +3354,12 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
      * its JNI_OnLoad DIRECTLY, LAST (after ohbridge), so its RegisterNatives wins.
      * Evidence its parser works when reached: probe-logs/nativeload.txt shows
      * "[WL] LoadedArsc::Load => OK" for the assetProbe apk. */
-    {
-        const char *fw_path =
-            "/data/local/tmp/westlake-dayu600-substrate/android/lib64/libandroidfw.so";
-        void *fw_handle = dlopen(fw_path, RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+    if (!streq(getenv("WESTLAKE_SKIP_ANDROIDFW_ONLOAD"), "1")) {
+        void *fw_handle = dlopen_exec("android/lib64/libandroidfw.so",
+            "libandroidfw.so", RTLD_NOW | 4 /*RTLD_NOLOAD*/);
         if (fw_handle == 0) {
-            fw_handle = dlopen(fw_path, RTLD_NOW | RTLD_GLOBAL);
+            fw_handle = dlopen_exec("android/lib64/libandroidfw.so",
+                "libandroidfw.so", RTLD_NOW | RTLD_GLOBAL);
         }
         if (fw_handle != 0) {
             call_optional_onload(fw_handle, "JNI_OnLoad", vm);
@@ -2841,9 +3369,39 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
             char *fe = dlerror();
             if (fe != 0) log_text(fe);
         }
+    } else {
+        log_text("libandroidfw JNI_OnLoad skipped by WESTLAKE_SKIP_ANDROIDFW_ONLOAD");
     }
     log_int("register_system_natives rc=", register_system_natives(env));
     log_int("seed_system_properties rc=", seed_system_properties(env));
+    /* [5583 post-reboot] BootClassLoader.getInstance() comes back NULL on some
+     * boots, and the W001 Trace-rebind + the dex's AssetManager bootstrap then
+     * die with "BootClassLoader.findLoadedClass on null" (rc=99). Force the
+     * singleton here, BEFORE the dex runs: if getInstance() is lazy this seeds
+     * it permanently; log the outcome either way. */
+    {
+        jclass bcl = (*env)->FindClass(env, "java/lang/BootClassLoader");
+        if (bcl != 0 && !(*env)->ExceptionCheck(env)) {
+            jmethodID gi = (*env)->GetStaticMethodID(env, bcl, "getInstance",
+                "()Ljava/lang/ClassLoader;");
+            if (gi == 0) {
+                gi = (*env)->GetStaticMethodID(env, bcl, "getInstance",
+                    "()Ljava/lang/BootClassLoader;");
+            }
+            if (gi != 0) {
+                jobject inst = (*env)->CallStaticObjectMethod(env, bcl, gi);
+                log_text("BootClassLoader.getInstance forced:");
+                log_text(inst != 0 ? "non-null" : "NULL");
+                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+            } else {
+                log_text("BootClassLoader.getInstance method missing");
+                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+            }
+        } else {
+            log_text("BootClassLoader class missing");
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+        }
+    }
     // Run android runtime startReg with signal-based crash recovery (sigsetjmp/siglongjmp).
     // If startReg crashes (SIGTRAP etc), we longjmp back here and continue to stage branch.
     int start_reg_rc = 0;
@@ -2855,8 +3413,14 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
         g_in_crash_region = 1;
         int saved_sig = sigsetjmp(g_crash_jmp, 1);
         if (saved_sig == 0) {
-            // normal path
-            start_reg_rc = call_android_runtime_start_reg(env);
+            // Noice fast lane: the stage supplies the minimal framework/native shims it
+            // needs. A full startReg now finds the bundled HWUI closure and spends the
+            // launch inside 54 incompatible graphics registrations before app code runs.
+            if (streq(getenv("WESTLAKE_SKIP_START_REG"), "1")) {
+                log_text("android runtime startReg skipped by WESTLAKE_SKIP_START_REG");
+            } else {
+                start_reg_rc = call_android_runtime_start_reg(env);
+            }
         } else {
             // crashed with signal saved_sig
             char buf[64];
@@ -3205,14 +3769,16 @@ call_java_probe:
         JNINativeMethod m6 = {"nativeW001BindTrace",
             "(Ljava/lang/Object;)V",
             (void *)westlake_native_w001_bind_trace};
-        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6 };
+        JNINativeMethod m7 = {"nativeRegisterHwuiRender", "()I",
+            (void *)westlake_native_register_hwui_render};
+        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6, &m7 };
         const char *names[] = {
             "nativeFindClass", "nativeWriteText", "nativeRegisterTraceNatives",
             "nativeCallAddAssetPath", "nativeAppendApkAssets", "nativeW001Append",
-            "nativeW001BindTrace"
+            "nativeW001BindTrace", "nativeRegisterHwuiRender"
         };
         int i;
-        for (i = 0; i < 7; i++) {
+        for (i = 0; i < 8; i++) {
             jint register_rc = (*env)->RegisterNatives(env, probe_class, all[i], 1);
             if (register_rc != 0 || (*env)->ExceptionCheck(env)) {
                 log_text("RegisterNatives ONE failed:");
@@ -3333,5 +3899,6 @@ __attribute__((constructor)) static void westlake_embedded_art_dlopen_probe_init
     }
 
     int vm_rc = run_stage_probe(westlake_art_handle, westlake_create_vm_symbol, 0);
+    westlake_ctor_vm_rc = vm_rc;
     log_int("embedded vm probe rc=", vm_rc);
 }
