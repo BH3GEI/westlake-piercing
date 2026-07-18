@@ -11,14 +11,15 @@
 #   make -f Makefile.ohos-arm64 status               # Show build progress
 # ═══════════════════════════════════════════════════════════════
 
-ART = /home/dspfac/aosp-art-15
-ART11 = /home/dspfac/aosp-android-11/art
-AOSP = /home/dspfac/aosp-android-11
-STUBS = /home/dspfac/art-latest/stubs
+ART = /Users/yao/westlake-local-build/aosp-art-15
+ART11 = /Users/yao/westlake-local-build/aosp-android-11/art
+AOSP = /Users/yao/westlake-local-build/aosp-android-11
+STUBS = /Users/yao/westlake-local-build/art-latest/stubs
+LNH_R9 = /home/yao/westlake-local-build/libnativehelper-r9
 
 # ── OHOS ARM64 Toolchain ──
-OHOS_LLVM = /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm
-OHOS_SYSROOT = /home/yao/ohos-sdk-6.0.0.47/linux/native/sysroot
+OHOS_LLVM = /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm
+OHOS_SYSROOT = /Users/yao/a2oh-source-audit/ohos-sdk/native/sysroot
 OHOS_LIBCXX = $(OHOS_LLVM)/include/libcxx-ohos/include/c++/v1
 
 CXX = $(OHOS_LLVM)/bin/clang++
@@ -37,6 +38,9 @@ CXXFLAGS = -std=c++2a -O2 -w -fPIC -DNDEBUG \
   $(TARGET_FLAGS) \
   -include $(STUBS)/art_ohos_compat.h \
   -Wno-attributes \
+  -Wno-invalid-partial-specialization \
+  -Wno-error=invalid-partial-specialization \
+  -Wno-invalid-partial-specialization \
   -I$(STUBS) \
   -I$(STUBS)/runtime \
   -I$(ART) \
@@ -57,6 +61,9 @@ CXXFLAGS = -std=c++2a -O2 -w -fPIC -DNDEBUG \
   -I$(AOSP)/system/core/libziparchive/include \
   -I$(AOSP)/system/core/libutils/include \
   -I$(AOSP)/system/core/libcutils/include \
+  -I$(LNH_R9)/include_jni \
+  -I$(LNH_R9)/header_only_include \
+  -I$(LNH_R9)/include \
   -I$(AOSP)/libnativehelper/include_jni \
   -I$(AOSP)/libnativehelper/header_only_include \
   -I$(AOSP)/libnativehelper/include \
@@ -90,8 +97,8 @@ BUILDDIR = build-ohos-arm64
 # Linker flags: static build for OHOS ARM64
 LDFLAGS = $(TARGET_FLAGS) -static \
   -stdlib=libc++ \
-  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++.a \
-  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
+  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++.a \
+  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
    \
   -lpthread -ldl -lm
 
@@ -155,7 +162,7 @@ COMPILER_SRCS = $(filter-out $(COMPILER_EXCLUDE),$(COMPILER_SRCS_ALL))
 COMPILER_OBJS = $(patsubst $(ART)/%.cc,$(BUILDDIR)/%.o,$(COMPILER_SRCS))
 
 # Patched reference_type_propagation.cc
-RTP_PATCH_SRC = patches/compiler/optimizing/reference_type_propagation.cc
+RTP_PATCH_SRC = $(ART)/compiler/optimizing/reference_type_propagation.cc  # WESTLAKE-DROP: zero westlake markers
 RTP_PATCH_OBJ = $(BUILDDIR)/compiler/optimizing/reference_type_propagation.o
 $(RTP_PATCH_OBJ): $(RTP_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -236,8 +243,10 @@ RUNTIME_EXCLUDE = %backtrace_helper.cc \
   %quick/quick_throw_entrypoints.cc \
   %quick/quick_trampoline_entrypoints.cc
 
-# Exclude ALL runtime/native/*.cc -- we compile patched copies from patches/runtime/native/
-RUNTIME_NATIVE_ORIG = $(filter-out %_test.cc %_fuzzer.cc %_bench.cc,$(wildcard $(ART)/runtime/native/*.cc))
+# Exclude only runtime/native/*.cc that HAVE patched copies under patches/runtime/native/;
+# unpatched stock native sources must still compile (e.g. java_lang_invoke_MethodHandle.cc,
+# whose register_* symbol is needed at dlopen time).
+RUNTIME_NATIVE_ORIG = $(filter $(patsubst patches/%,$(ART)/%,$(wildcard patches/runtime/native/*.cc)),$(filter-out %_test.cc %_fuzzer.cc %_bench.cc,$(wildcard $(ART)/runtime/native/*.cc)))
 RUNTIME_SRCS = $(filter-out $(RUNTIME_EXCLUDE) $(RUNTIME_NATIVE_ORIG),$(RUNTIME_SRCS_ALL))
 RUNTIME_OBJS = $(patsubst $(ART)/%.cc,$(BUILDDIR)/%.o,$(RUNTIME_SRCS))
 
@@ -250,7 +259,7 @@ $(RT_PATCH_OBJ): $(RT_PATCH_SRC)
 RUNTIME_OBJS += $(RT_PATCH_OBJ)
 
 # Patched class_linker.cc
-CL_PATCH_SRC = patches/runtime/class_linker.cc
+CL_PATCH_SRC = $(ART)/runtime/class_linker.cc  # WESTLAKE-DROP(wip): upstream for VM-lottery test; westlake hunks (clinit tolerance/cross-loader bypass/retired-class) to be forward-ported for noice later
 CL_PATCH_OBJ = $(BUILDDIR)/runtime/class_linker.o
 $(CL_PATCH_OBJ): $(CL_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -258,7 +267,7 @@ $(CL_PATCH_OBJ): $(CL_PATCH_SRC)
 RUNTIME_OBJS += $(CL_PATCH_OBJ)
 
 # Patched thread.cc
-THREAD_PATCH_SRC = patches/runtime/thread.cc
+THREAD_PATCH_SRC = $(ART)/runtime/thread.cc  # WESTLAKE-DROP: pure drift, delta was debug fprintf only
 THREAD_PATCH_OBJ = $(BUILDDIR)/runtime/thread.o
 $(THREAD_PATCH_OBJ): $(THREAD_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -274,7 +283,7 @@ $(AM_PATCH_OBJ): $(AM_PATCH_SRC)
 RUNTIME_OBJS += $(AM_PATCH_OBJ)
 
 # Patched well_known_classes.cc
-WKC_PATCH_SRC = patches/runtime/well_known_classes.cc
+WKC_PATCH_SRC = $(ART)/runtime/well_known_classes.cc  # WESTLAKE-DROP: pure drift, zero westlake markers
 WKC_PATCH_OBJ = $(BUILDDIR)/runtime/well_known_classes.o
 $(WKC_PATCH_OBJ): $(WKC_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -282,7 +291,7 @@ $(WKC_PATCH_OBJ): $(WKC_PATCH_SRC)
 RUNTIME_OBJS += $(WKC_PATCH_OBJ)
 
 # Patched runtime_intrinsics.cc
-RTI_PATCH_SRC = patches/runtime/runtime_intrinsics.cc
+RTI_PATCH_SRC = $(ART)/runtime/runtime_intrinsics.cc  # WESTLAKE-DROP: pure drift, zero westlake markers
 RTI_PATCH_OBJ = $(BUILDDIR)/runtime/runtime_intrinsics.o
 $(RTI_PATCH_OBJ): $(RTI_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -306,7 +315,7 @@ $(INTERPRETER_PATCH_OBJ): $(INTERPRETER_PATCH_SRC)
 RUNTIME_OBJS += $(INTERPRETER_PATCH_OBJ)
 
 # Patched hidden_api.cc
-HIDDENAPI_PATCH_SRC = patches/runtime/hidden_api.cc
+HIDDENAPI_PATCH_SRC = $(ART)/runtime/hidden_api.cc  # WESTLAKE-DROP: pure drift, zero westlake markers
 HIDDENAPI_PATCH_OBJ = $(BUILDDIR)/runtime/hidden_api.o
 $(HIDDENAPI_PATCH_OBJ): $(HIDDENAPI_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -322,7 +331,7 @@ $(VARHANDLES_PATCH_OBJ): $(VARHANDLES_PATCH_SRC)
 RUNTIME_OBJS += $(VARHANDLES_PATCH_OBJ)
 
 # Patched unstarted_runtime.cc
-UNSTARTED_PATCH_SRC = patches/runtime/interpreter/unstarted_runtime.cc
+UNSTARTED_PATCH_SRC = $(ART)/runtime/interpreter/unstarted_runtime.cc  # WESTLAKE-DROP: zero westlake markers
 UNSTARTED_PATCH_OBJ = $(BUILDDIR)/runtime/interpreter/unstarted_runtime.o
 $(UNSTARTED_PATCH_OBJ): $(UNSTARTED_PATCH_SRC)
 	@mkdir -p $(dir $@)
@@ -386,7 +395,7 @@ $(BUILDDIR)/runtime/native/%.o: patches/runtime/native/%.cc
 RUNTIME_OBJS += $(NATIVE_PATCH_OBJS)
 
 # ============ libelffile ============
-ELFFILE_SRCS = $(filter-out %_test.cc,$(wildcard \
+ELFFILE_SRCS = $(filter-out %_test.cc %xz_utils.cc,$(wildcard \
   $(ART)/libelffile/elf/*.cc \
   $(ART)/libelffile/stream/*.cc))
 ELFFILE_OBJS = $(patsubst $(ART)/%.cc,$(BUILDDIR)/%.o,$(ELFFILE_SRCS))
@@ -413,7 +422,7 @@ ABASE_SRCS = $(filter-out %_test.cpp %_benchmark.cpp %test_main.cpp %test_utils.
   $(AOSP)/system/core/base/*.cpp))
 ABASE_EXCLUDE = %chrono_utils.cpp %chrono_utils_test.cpp %process.cpp %process_test.cpp \
   %properties.cpp %properties_test.cpp %errors_windows.cpp %format_benchmark.cpp \
-  %utf8.cpp %cmsg.cpp
+  %utf8.cpp %cmsg.cpp %abi_compatibility.cpp %result_test_constraint.cpp
 ABASE_SRCS_FILTERED = $(filter-out $(ABASE_EXCLUDE),$(ABASE_SRCS))
 ABASE_OBJS = $(patsubst $(AOSP)/system/core/base/%.cpp,$(BUILDDIR)/android-base/%.o,$(ABASE_SRCS_FILTERED))
 ABASE_CXXFLAGS = -std=c++17 -O2 -w -fPIC \
@@ -422,7 +431,8 @@ ABASE_CXXFLAGS = -std=c++17 -O2 -w -fPIC \
   -I$(AOSP)/system/core/base/include \
   -I$(AOSP)/system/logging/liblog/include \
   -I$(AOSP)/system/core/liblog/include \
-  -I$(AOSP)/system/core/libcutils/include
+  -I$(AOSP)/system/core/libcutils/include \
+  -I$(AOSP)/external/fmtlib/include
 
 # ============ link stubs (ARM64 version) ============
 STUBS_OBJ = $(BUILDDIR)/stubs/link_stubs_arm64.o
@@ -531,13 +541,14 @@ $(ASM_QUICK): $(ART)/runtime/arch/arm64/quick_entrypoints_arm64.S
 	  $(ASM_QUICK_INCLUDES) \
 	  $< -o $@ 2>&1 && echo "OK: quick_entrypoints_arm64.S (A15)" || { echo "FAIL: quick_entrypoints_arm64.S"; rm -f $@; }
 
-# A11 jni_entrypoints_arm64.S (A15 version uses CFI macros not supported by OHOS clang)
-$(ASM_JNI): $(ART11)/runtime/arch/arm64/jni_entrypoints_arm64.S
+# A15 jni_entrypoints_arm64.S (A11 copy unavailable on this host; assembles fine with
+# OHOS clang-15 once ACCESS_FLAGS_METHOD_IS_NATIVE_BIT is provided by stubs/asm_defines.h)
+$(ASM_JNI): $(ART)/runtime/arch/arm64/jni_entrypoints_arm64.S
 	@mkdir -p $(ASM_DIR)
 	@$(CC) $(TARGET_FLAGS) \
 	  -c -x assembler-with-cpp \
-	  $(ASM_A11_INCLUDES) \
-	  $< -o $@ 2>&1 && echo "OK: jni_entrypoints_arm64.S (A11)" || { echo "FAIL: jni_entrypoints_arm64.S"; rm -f $@; }
+	  $(ASM_QUICK_INCLUDES) \
+	  $< -o $@ 2>&1 && echo "OK: jni_entrypoints_arm64.S (A15)" || { echo "FAIL: jni_entrypoints_arm64.S"; rm -f $@; }
 
 # memcmp16 from A15
 $(ASM_MEMCMP): $(ART)/runtime/arch/arm64/memcmp16_arm64.S
@@ -558,17 +569,19 @@ $(ASM_STUBS): $(STUBS)/quick_entrypoints_stubs_arm64.S
 # ziparchive
 ziparchive:
 	@mkdir -p $(BUILDDIR)/ziparchive
-	@for f in zip_archive.cc zip_archive_stream_entry.cc; do \
-	  $(CXX) -std=c++17 -O2 -w -fPIC \
+	@for f in zip_archive.cc zip_archive_stream_entry.cc zip_cd_entry_map.cc zip_error.cpp; do \
+	  $(CXX) -std=c++2a -O2 -w -fPIC \
 	    $(TARGET_FLAGS) \
 	    -I$(AOSP)/system/core/libziparchive/include \
 	    -I$(AOSP)/system/core/base/include \
 	    -I$(AOSP)/system/logging/liblog/include \
 	    -I$(AOSP)/system/core/liblog/include \
 	    -I$(AOSP)/external/zlib \
+    -I$(AOSP)/system/core/libziparchive/incfs_support/include \
 	    -DANDROID \
+    -DZLIB_CONST \
 	    -c $(AOSP)/system/core/libziparchive/$$f \
-	    -o $(BUILDDIR)/ziparchive/$${f%.cc}.o 2>&1 && echo "OK: $$f" || echo "FAIL: $$f"; \
+	    -o $(BUILDDIR)/ziparchive/$${f%.*}.o 2>&1 && echo "OK: $$f" || echo "FAIL: $$f"; \
 	done
 
 # sigchain (musl stub for static builds)
@@ -620,7 +633,8 @@ NATIVEHELPER_CXXFLAGS = -std=c++17 -O2 -w -fPIC -DNDEBUG \
   -I$(NATIVEHELPER)/platform_include \
   -I$(NATIVEHELPER) \
   -I$(AOSP)/system/core/liblog/include \
-  -I$(AOSP)/system/core/base/include
+  -I$(AOSP)/system/core/base/include \
+  -I$(STUBS)
 
 nativehelper:
 	@mkdir -p $(BUILDDIR)/nativehelper
@@ -710,8 +724,8 @@ link-runtime: all ziparchive sigchain nativehelper dalvikvm-main fault-handler-s
 	  $(BUILDDIR)/jni_stubs/openjdk_stub.o \
 	  $(BUILDDIR)/jni_stubs/ohbridge_stub.o \
 	  $(BUILDDIR)/jni_stubs/framework_native_stubs.o \
-	  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++.a \
-	  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++.a \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
 	   \
 	  -lpthread -ldl -lm
 	@echo "Built: $(BUILDDIR)/bin/dalvikvm"
@@ -869,6 +883,8 @@ link-dex2oat: all dex2oat-build ziparchive sigchain nativehelper fault-handler-s
 	  $(BUILDDIR)/stubs/template_instantiations.o \
 	  $(BUILDDIR)/stubs/metrics_stubs.o \
 	  $(BUILDDIR)/stubs/code_generator_vector_arm64_sve_stub.o \
+	  $(BUILDDIR)/stubs/thread_cpu_stub.o \
+	  $(BUILDDIR)/stubs/westlake_bionic_compat_stubs.o \
 	  $(BUILDDIR)/fmtlib/format.o \
 	  $(BUILDDIR)/tinyxml2/tinyxml2.o \
 	  $(BUILDDIR)/jni_stubs/icu_jni_stub.o \
@@ -876,9 +892,71 @@ link-dex2oat: all dex2oat-build ziparchive sigchain nativehelper fault-handler-s
 	  $(BUILDDIR)/jni_stubs/openjdk_stub.o \
 	  $(BUILDDIR)/jni_stubs/ohbridge_stub.o \
 	  $(BUILDDIR)/jni_stubs/framework_native_stubs.o \
-	  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++.a \
-	  /home/yao/ohos-sdk-6.0.0.47/linux/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++.a \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
 	   \
-	  /mnt/c/temp/libz.a -lpthread -ldl -lm -lrt
+	  /Users/yao/westlake-local-build/libz.a -lpthread -ldl -lm -lrt
 	@ls -la $(BUILDDIR)/bin/dex2oat
 	@file $(BUILDDIR)/bin/dex2oat
+
+# ============ link-libart (shared libart.so for runtime, with vtable fix) ============
+WESTLAKE_JNI_OBJ_OHOS = $(BUILDDIR)/stubs/westlake_jni.o
+$(WESTLAKE_JNI_OBJ_OHOS): stubs/westlake_jni.cc
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@ 2>&1 && echo "OK: westlake_jni.cc" || { echo "FAIL: westlake_jni.cc"; rm -f $@; }
+
+
+DISASM_STUB_OBJ = $(BUILDDIR)/stubs/disassembler_stub.o
+$(DISASM_STUB_OBJ): stubs/disassembler_stub.cc
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -fPIC -I$(ART)/disassembler -I$(AOSP)/system/core/base/include -c $< -o $@ 2>&1 && echo "OK: disassembler_stub.cc" || { echo "FAIL: disassembler_stub.cc"; rm -f $@; }
+
+link-libart: all $(WESTLAKE_JNI_OBJ_OHOS) $(DISASM_STUB_OBJ) ziparchive sigchain nativehelper fault-handler-stubs template-instantiations jni-stubs asm sve-stub metrics-stubs fmtlib tinyxml2
+	@echo "=== Linking libart.so (ARM64, shared, OHOS, vtable-fixed) ==="
+	@mkdir -p $(BUILDDIR)/lib
+	$(CXX) -o $(BUILDDIR)/lib/libart.so \
+	  $(TARGET_FLAGS) -shared -fPIC \
+	  -stdlib=libc++ \
+	  -fuse-ld=lld \
+	  -Wl,--no-gc-sections \
+	  -Wl,--unresolved-symbols=ignore-all \
+	  -Wl,--allow-multiple-definition \
+	  -Wl,--allow-shlib-undefined \
+	  -Wl,-soname,libwestlake_art.so \
+	  -Wl,--version-script=$(CURDIR)/stubs/westlake_exports.map \
+	  $(WESTLAKE_JNI_OBJ_OHOS) \
+	  $(DISASM_STUB_OBJ) \
+	  $$(find $(BUILDDIR)/nativehelper -name '*.o') \
+	  $$(find $(BUILDDIR)/compiler -name '*.o') \
+	  $$(find $(BUILDDIR)/runtime -name '*.o') \
+	  $$(find $(BUILDDIR)/libdexfile -name '*.o') \
+	  $$(find $(BUILDDIR)/libartbase -name '*.o') \
+	  $$(find $(BUILDDIR)/libelffile -name '*.o') \
+	  $$(find $(BUILDDIR)/libprofile -name '*.o') \
+	  $$(find $(BUILDDIR)/vixl -name '*.o') \
+	  $$(find $(BUILDDIR)/android-base -name '*.o') \
+	  $$(find $(BUILDDIR)/ziparchive -name '*.o') \
+	  $(BUILDDIR)/sigchain/sigchain.o \
+	  $(ASM_DIR)/quick_entrypoints_arm64.o \
+	  $(ASM_DIR)/jni_entrypoints_arm64.o \
+	  $(ASM_DIR)/memcmp16_arm64.o \
+	  $(BUILDDIR)/stubs/quick_entrypoints_stubs_arm64.o \
+	  $(BUILDDIR)/stubs/link_stubs_arm64.o \
+	  $(BUILDDIR)/stubs/fault_handler_stubs.o \
+	  $(BUILDDIR)/stubs/template_instantiations.o \
+	  $(BUILDDIR)/stubs/metrics_stubs.o \
+	  $(BUILDDIR)/stubs/code_generator_vector_arm64_sve_stub.o \
+	  $(BUILDDIR)/stubs/thread_cpu_stub.o \
+	  $(BUILDDIR)/stubs/westlake_bionic_compat_stubs.o \
+	  $(BUILDDIR)/fmtlib/format.o \
+	  $(BUILDDIR)/tinyxml2/tinyxml2.o \
+	  $(BUILDDIR)/jni_stubs/icu_jni_stub.o \
+	  $(BUILDDIR)/jni_stubs/javacore_stub.o \
+	  $(BUILDDIR)/jni_stubs/openjdk_stub.o \
+	  $(BUILDDIR)/jni_stubs/ohbridge_stub.o \
+	  $(BUILDDIR)/jni_stubs/framework_native_stubs.o \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++.a \
+	  /Users/yao/a2oh-source-audit/ohos-sdk/native/llvm/lib/aarch64-linux-ohos/libc++abi.a \
+	  /Users/yao/westlake-local-build/libz.a -ldl -lm
+	@echo "Built: $(BUILDDIR)/lib/libart.so"
+	@ls -l $(BUILDDIR)/lib/libart.so

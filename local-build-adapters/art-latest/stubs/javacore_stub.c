@@ -10,6 +10,48 @@
 #include <stdio.h>
 #include <limits.h>
 
+/* ==================== WESTLAKE: never leave an exception pending ==============
+ * JNI lookups that fail (FindClass / GetMethodID / GetFieldID) throw. The
+ * original code checked the returned pointer for NULL but did not clear, so a
+ * NoClassDefFoundError / NoSuchMethodError stayed pending and the *next* JNI or
+ * runtime call aborted the VM via Thread::AssertNoPendingException
+ * (thread.cc:2571) - observed as a SIGABRT in JNI_OnLoad_javacore with no
+ * indication of which lookup actually failed.
+ *
+ * These wrappers clear the exception and print what was missing under the
+ * greppable WL_JAVACORE tag. Same contract as registerNativesOrSkip() below.
+ * ========================================================================== */
+
+static jclass wlFindClass(JNIEnv* env, const char* name) {
+    jclass c = (*env)->FindClass(env, name);
+    if (c == NULL) {
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+        fprintf(stderr, "WL_JAVACORE: FindClass failed: %s\n", name);
+        fflush(stderr);
+    }
+    return c;
+}
+
+static jmethodID wlGetMethodID(JNIEnv* env, jclass cls, const char* name, const char* sig) {
+    jmethodID m = (*env)->GetMethodID(env, cls, name, sig);
+    if (m == NULL) {
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+        fprintf(stderr, "WL_JAVACORE: GetMethodID failed: %s%s\n", name, sig);
+        fflush(stderr);
+    }
+    return m;
+}
+
+static jfieldID wlGetFieldID(JNIEnv* env, jclass cls, const char* name, const char* sig) {
+    jfieldID f = (*env)->GetFieldID(env, cls, name, sig);
+    if (f == NULL) {
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+        fprintf(stderr, "WL_JAVACORE: GetFieldID failed: %s:%s\n", name, sig);
+        fflush(stderr);
+    }
+    return f;
+}
+
 /* Tolerant RegisterNatives — skip methods that don't exist in this DEX version */
 static void registerNativesOrSkip(JNIEnv* env, jclass clazz,
                                   const JNINativeMethod* methods, int numMethods) {
@@ -25,15 +67,15 @@ static void registerNativesOrSkip(JNIEnv* env, jclass clazz,
 static int getFd(JNIEnv* env, jobject fdObj) {
     if (!fdObj) return -1;
     jclass fdCls = (*env)->GetObjectClass(env, fdObj);
-    jfieldID descField = (*env)->GetFieldID(env, fdCls, "descriptor", "I");
+    jfieldID descField = wlGetFieldID(env, fdCls, "descriptor", "I");
     if (!descField) return -1;
     return (*env)->GetIntField(env, fdObj, descField);
 }
 
 static void throwErrnoException(JNIEnv* env, const char* functionName, int errnum) {
-    jclass cls = (*env)->FindClass(env, "android/system/ErrnoException");
+    jclass cls = wlFindClass(env, "android/system/ErrnoException");
     if (!cls) return;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(Ljava/lang/String;I)V");
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>", "(Ljava/lang/String;I)V");
     if (!ctor) return;
     jstring name = (*env)->NewStringUTF(env, functionName);
     jobject exc = (*env)->NewObject(env, cls, ctor, name, (jint)errnum);
@@ -51,9 +93,9 @@ static jobject linux_getpwuid(JNIEnv* env, jobject thiz, jint uid) {
     const char* pw_dir = pw ? pw->pw_dir : "/";
     const char* pw_shell = pw ? pw->pw_shell : "/bin/sh";
 
-    jclass cls = (*env)->FindClass(env, "android/system/StructPasswd");
+    jclass cls = wlFindClass(env, "android/system/StructPasswd");
     if (!cls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>",
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>",
         "(Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;)V");
     if (!ctor) return NULL;
     return (*env)->NewObject(env, cls, ctor,
@@ -67,9 +109,9 @@ static jobject linux_getpwuid(JNIEnv* env, jobject thiz, jint uid) {
 static jobject linux_uname(JNIEnv* env, jobject thiz) {
     struct utsname buf;
     uname(&buf);
-    jclass cls = (*env)->FindClass(env, "android/system/StructUtsname");
+    jclass cls = wlFindClass(env, "android/system/StructUtsname");
     if (!cls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>",
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     if (!ctor) return NULL;
     return (*env)->NewObject(env, cls, ctor,
@@ -169,13 +211,13 @@ static jobject linux_open(JNIEnv* env, jobject thiz, jstring jpath, jint flags, 
         throwErrnoException(env, "open", errno);
         return NULL;
     }
-    jclass fdCls = (*env)->FindClass(env, "java/io/FileDescriptor");
+    jclass fdCls = wlFindClass(env, "java/io/FileDescriptor");
     if (!fdCls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, fdCls, "<init>", "()V");
+    jmethodID ctor = wlGetMethodID(env, fdCls, "<init>", "()V");
     if (!ctor) return NULL;
     jobject fdObj = (*env)->NewObject(env, fdCls, ctor);
     if (!fdObj) return NULL;
-    jfieldID descField = (*env)->GetFieldID(env, fdCls, "descriptor", "I");
+    jfieldID descField = wlGetFieldID(env, fdCls, "descriptor", "I");
     if (!descField) return NULL;
     (*env)->SetIntField(env, fdObj, descField, fd);
     return fdObj;
@@ -200,9 +242,9 @@ static jobject linux_fstat(JNIEnv* env, jobject thiz, jobject fdObj) {
         throwErrnoException(env, "fstat", errno);
         return NULL;
     }
-    jclass cls = (*env)->FindClass(env, "android/system/StructStat");
+    jclass cls = wlFindClass(env, "android/system/StructStat");
     if (!cls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
     if (!ctor) return NULL;
     return (*env)->NewObject(env, cls, ctor,
         (jlong)sb.st_dev, (jlong)sb.st_ino, (jint)sb.st_mode, (jlong)sb.st_nlink,
@@ -221,9 +263,9 @@ static jobject linux_stat(JNIEnv* env, jobject thiz, jstring jpath) {
         throwErrnoException(env, "stat", errno);
         return NULL;
     }
-    jclass cls = (*env)->FindClass(env, "android/system/StructStat");
+    jclass cls = wlFindClass(env, "android/system/StructStat");
     if (!cls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
     if (!ctor) return NULL;
     return (*env)->NewObject(env, cls, ctor,
         (jlong)sb.st_dev, (jlong)sb.st_ino, (jint)sb.st_mode, (jlong)sb.st_nlink,
@@ -242,9 +284,9 @@ static jobject linux_lstat(JNIEnv* env, jobject thiz, jstring jpath) {
         throwErrnoException(env, "lstat", errno);
         return NULL;
     }
-    jclass cls = (*env)->FindClass(env, "android/system/StructStat");
+    jclass cls = wlFindClass(env, "android/system/StructStat");
     if (!cls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
+    jmethodID ctor = wlGetMethodID(env, cls, "<init>", "(JJIJIIJJJJJJJ)V");
     if (!ctor) return NULL;
     return (*env)->NewObject(env, cls, ctor,
         (jlong)sb.st_dev, (jlong)sb.st_ino, (jint)sb.st_mode, (jlong)sb.st_nlink,
@@ -270,7 +312,7 @@ static jobjectArray linux_environ(JNIEnv* env, jobject thiz) {
     extern char** environ;
     int count = 0;
     while (environ[count]) count++;
-    jclass stringClass = (*env)->FindClass(env, "java/lang/String");
+    jclass stringClass = wlFindClass(env, "java/lang/String");
     jobjectArray result = (*env)->NewObjectArray(env, count, stringClass, NULL);
     for (int i = 0; i < count; i++) {
         (*env)->SetObjectArrayElement(env, result, i, (*env)->NewStringUTF(env, environ[i]));
@@ -360,13 +402,13 @@ static jobject linux_dup(JNIEnv* env, jobject thiz, jobject fdObj) {
         throwErrnoException(env, "dup", errno);
         return NULL;
     }
-    jclass fdCls = (*env)->FindClass(env, "java/io/FileDescriptor");
+    jclass fdCls = wlFindClass(env, "java/io/FileDescriptor");
     if (!fdCls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, fdCls, "<init>", "()V");
+    jmethodID ctor = wlGetMethodID(env, fdCls, "<init>", "()V");
     if (!ctor) return NULL;
     jobject newFdObj = (*env)->NewObject(env, fdCls, ctor);
     if (!newFdObj) return NULL;
-    jfieldID descField = (*env)->GetFieldID(env, fdCls, "descriptor", "I");
+    jfieldID descField = wlGetFieldID(env, fdCls, "descriptor", "I");
     if (descField) (*env)->SetIntField(env, newFdObj, descField, newfd);
     return newFdObj;
 }
@@ -379,13 +421,13 @@ static jobject linux_dup2(JNIEnv* env, jobject thiz, jobject fdObj, jint newfd) 
         throwErrnoException(env, "dup2", errno);
         return NULL;
     }
-    jclass fdCls = (*env)->FindClass(env, "java/io/FileDescriptor");
+    jclass fdCls = wlFindClass(env, "java/io/FileDescriptor");
     if (!fdCls) return NULL;
-    jmethodID ctor = (*env)->GetMethodID(env, fdCls, "<init>", "()V");
+    jmethodID ctor = wlGetMethodID(env, fdCls, "<init>", "()V");
     if (!ctor) return NULL;
     jobject newFdObj = (*env)->NewObject(env, fdCls, ctor);
     if (!newFdObj) return NULL;
-    jfieldID descField = (*env)->GetFieldID(env, fdCls, "descriptor", "I");
+    jfieldID descField = wlGetFieldID(env, fdCls, "descriptor", "I");
     if (descField) (*env)->SetIntField(env, newFdObj, descField, result);
     return newFdObj;
 }
@@ -899,21 +941,21 @@ static jboolean NativeBN_BN_primality_test(JNIEnv* env, jclass cls, jlong candid
 
 /* Helper to set a String field on LocaleData */
 static void ld_setString(JNIEnv* env, jobject ld, jclass cls, const char* name, const char* val) {
-    jfieldID f = (*env)->GetFieldID(env, cls, name, "Ljava/lang/String;");
+    jfieldID f = wlGetFieldID(env, cls, name, "Ljava/lang/String;");
     if (f) (*env)->SetObjectField(env, ld, f, (*env)->NewStringUTF(env, val));
     else (*env)->ExceptionClear(env);
 }
 /* Helper to set a char field */
 static void ld_setChar(JNIEnv* env, jobject ld, jclass cls, const char* name, jchar val) {
-    jfieldID f = (*env)->GetFieldID(env, cls, name, "C");
+    jfieldID f = wlGetFieldID(env, cls, name, "C");
     if (f) (*env)->SetCharField(env, ld, f, val);
     else (*env)->ExceptionClear(env);
 }
 /* Helper to set an Integer field */
 static void ld_setInteger(JNIEnv* env, jobject ld, jclass cls, const char* name, int val) {
-    jfieldID f = (*env)->GetFieldID(env, cls, name, "Ljava/lang/Integer;");
+    jfieldID f = wlGetFieldID(env, cls, name, "Ljava/lang/Integer;");
     if (!f) { (*env)->ExceptionClear(env); return; }
-    jclass intCls = (*env)->FindClass(env, "java/lang/Integer");
+    jclass intCls = wlFindClass(env, "java/lang/Integer");
     jmethodID valueOf = (*env)->GetStaticMethodID(env, intCls, "valueOf", "(I)Ljava/lang/Integer;");
     jobject obj = (*env)->CallStaticObjectMethod(env, intCls, valueOf, val);
     (*env)->SetObjectField(env, ld, f, obj);
@@ -921,9 +963,9 @@ static void ld_setInteger(JNIEnv* env, jobject ld, jclass cls, const char* name,
 /* Helper to set a String[] field */
 static void ld_setStringArray(JNIEnv* env, jobject ld, jclass cls, const char* name,
                               const char** vals, int count) {
-    jfieldID f = (*env)->GetFieldID(env, cls, name, "[Ljava/lang/String;");
+    jfieldID f = wlGetFieldID(env, cls, name, "[Ljava/lang/String;");
     if (!f) { (*env)->ExceptionClear(env); return; }
-    jclass strCls = (*env)->FindClass(env, "java/lang/String");
+    jclass strCls = wlFindClass(env, "java/lang/String");
     jobjectArray arr = (*env)->NewObjectArray(env, count, strCls, NULL);
     for (int i = 0; i < count; i++)
         (*env)->SetObjectArrayElement(env, arr, i, (*env)->NewStringUTF(env, vals[i]));
@@ -948,19 +990,19 @@ static jstring ICU_getScript(JNIEnv* env, jclass cls, jstring locale) {
     return (*env)->NewStringUTF(env, "");
 }
 static jobjectArray ICU_getISOLanguagesNative(JNIEnv* env, jclass cls) {
-    jclass strCls = (*env)->FindClass(env, "java/lang/String");
+    jclass strCls = wlFindClass(env, "java/lang/String");
     jobjectArray arr = (*env)->NewObjectArray(env, 1, strCls, NULL);
     (*env)->SetObjectArrayElement(env, arr, 0, (*env)->NewStringUTF(env, "en"));
     return arr;
 }
 static jobjectArray ICU_getISOCountriesNative(JNIEnv* env, jclass cls) {
-    jclass strCls = (*env)->FindClass(env, "java/lang/String");
+    jclass strCls = wlFindClass(env, "java/lang/String");
     jobjectArray arr = (*env)->NewObjectArray(env, 1, strCls, NULL);
     (*env)->SetObjectArrayElement(env, arr, 0, (*env)->NewStringUTF(env, "US"));
     return arr;
 }
 static jobjectArray ICU_getAvailableLocalesNative(JNIEnv* env, jclass cls) {
-    jclass strCls = (*env)->FindClass(env, "java/lang/String");
+    jclass strCls = wlFindClass(env, "java/lang/String");
     const char* locales[] = {"en_US", "en", ""};
     jobjectArray arr = (*env)->NewObjectArray(env, 3, strCls, NULL);
     for (int i = 0; i < 3; i++)
@@ -1081,7 +1123,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
 
     /* Register native methods for libcore.io.Linux */
-    jclass linuxClass = (*env)->FindClass(env, "libcore/io/Linux");
+    jclass linuxClass = wlFindClass(env, "libcore/io/Linux");
     if (linuxClass) {
         JNINativeMethod methods[] = {
             {"getpwuid", "(I)Landroid/system/StructPasswd;", (void*)linux_getpwuid},
@@ -1136,7 +1178,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* Register OsConstants.initConstants() */
     {
-        jclass cls = (*env)->FindClass(env, "android/system/OsConstants");
+        jclass cls = wlFindClass(env, "android/system/OsConstants");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"initConstants", "()V", (void*)OsConstants_initConstants},
@@ -1148,7 +1190,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* AsynchronousCloseMonitor */
     {
-        jclass cls = (*env)->FindClass(env, "libcore/io/AsynchronousCloseMonitor");
+        jclass cls = wlFindClass(env, "libcore/io/AsynchronousCloseMonitor");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"signalBlockedThreads", "(Ljava/io/FileDescriptor;)V", (void*)ACM_signalBlockedThreads},
@@ -1160,7 +1202,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* java.math.NativeBN - BigInteger/BigDecimal support */
     {
-        jclass cls = (*env)->FindClass(env, "java/math/NativeBN");
+        jclass cls = wlFindClass(env, "java/math/NativeBN");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"getNativeFinalizer", "()J", (void*)NativeBN_getNativeFinalizer},
@@ -1207,7 +1249,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* libcore.io.Memory - direct memory access for NIO/mmap */
     {
-        jclass cls = (*env)->FindClass(env, "libcore/io/Memory");
+        jclass cls = wlFindClass(env, "libcore/io/Memory");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"peekByte", "(J)B", (void*)Memory_peekByte},
@@ -1234,7 +1276,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* ICU - initLocaleDataNative (required for NumberFormat, Currency, etc.) */
     {
-        jclass cls = (*env)->FindClass(env, "libcore/icu/ICU");
+        jclass cls = wlFindClass(env, "libcore/icu/ICU");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"initLocaleDataNative", "(Ljava/lang/String;Llibcore/icu/LocaleData;)Z",
@@ -1267,7 +1309,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 
     /* java.lang.Thread — nicenessForPriority (Android 14+) */
     {
-        jclass cls = (*env)->FindClass(env, "java/lang/Thread");
+        jclass cls = wlFindClass(env, "java/lang/Thread");
         if (cls) {
             JNINativeMethod methods[] = {
                 {"nicenessForPriority", "(I)I", (void*)Thread_nicenessForPriority},
