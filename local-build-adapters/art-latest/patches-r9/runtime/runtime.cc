@@ -4923,6 +4923,52 @@ bool Runtime::Start() {
     JNI_OnLoad_framework(raw_vm, nullptr);
     jni_env->PopLocalFrame(nullptr);
     if (self->IsExceptionPending()) self->ClearException();
+
+    // [DAYU600] libhwui.so carries the android.graphics / android.view natives
+    // (RenderNode.nCreate & co). Nothing else registers them here: liboh_android_
+    // runtime.so's startReg dlsyms them out of a hardcoded
+    // /system/android/lib64/libhwui.so that does not exist on this board, and we
+    // never call that shim. Without this, constructing a RenderNode throws
+    // UnsatisfiedLinkError. Best-effort: never fatal, so a framework-less
+    // bootclasspath still starts.
+    {
+      const char* wl_root = getenv("WESTLAKE_ROOT");
+      std::string hwui_path;
+      if (const char* explicit_path = getenv("WL_HWUI")) {
+        hwui_path = explicit_path;
+      } else if (wl_root != nullptr) {
+        hwui_path = std::string(wl_root) + "/android/lib64/libhwui.so";
+      } else {
+        hwui_path = "libhwui.so";
+      }
+      void* hwui = dlopen(hwui_path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+      if (hwui == nullptr) {
+        fprintf(stderr, "[RT]   libhwui not loaded (%s): %s\n",
+                hwui_path.c_str(), dlerror());
+        fflush(stderr);
+      } else {
+        // Mangled names as exported by the deployed libhwui.so. Note the two
+        // differ: Graphics is not inside namespace android, RenderNode is.
+        struct { const char* sym; const char* label; } kRegs[] = {
+          { "_Z34register_android_graphics_GraphicsP7_JNIEnv", "graphics" },
+          { "_ZN7android32register_android_view_RenderNodeEP7_JNIEnv", "RenderNode" },
+        };
+        for (const auto& r : kRegs) {
+          auto fn = reinterpret_cast<int (*)(JNIEnv*)>(dlsym(hwui, r.sym));
+          if (fn == nullptr) {
+            fprintf(stderr, "[RT]   libhwui: %s registrar absent\n", r.label);
+            fflush(stderr);
+            continue;
+          }
+          jni_env->PushLocalFrame(128);
+          int rc = fn(jni_env);
+          jni_env->PopLocalFrame(nullptr);
+          if (self->IsExceptionPending()) self->ClearException();
+          fprintf(stderr, "[RT]   libhwui: registered %s -> %d\n", r.label, rc);
+          fflush(stderr);
+        }
+      }
+    }
     jni_env->DeleteGlobalRef(java_lang_Object);
 
     // WellKnownClasses::LateInit may also crash -- skip for standalone
