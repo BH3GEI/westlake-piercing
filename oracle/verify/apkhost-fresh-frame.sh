@@ -38,13 +38,23 @@ actual="$(shasum -a 256 "$HAP" | awk '{print $1}')"
 [ "$actual" = "$WAH_HAP_SHA" ] || fail "hap sha mismatch: want $WAH_HAP_SHA got $actual"
 "$ROOT/oracle/board-health.sh" "$SERIAL" || fail "board health"
 
-echo "== uninstall old $BUNDLE (tolerated)"
+echo "== uninstall old $BUNDLE (tolerated) + clear app data (stale substrate guard)"
 $HDC -t "$SERIAL" shell "bm uninstall -n $BUNDLE" >/dev/null 2>&1 || true
+$HDC -t "$SERIAL" shell "bm clean -n $BUNDLE -d" >/dev/null 2>&1 || true
 
 echo "== install $HAP"
 inst="$($HDC -t "$SERIAL" install "$HAP" 2>&1 | tr -d '\r')"
 printf '%s\n' "$inst"
 grep -qi "successfully" <<<"$inst" || fail "install failed"
+
+echo "== unlock screen + keep-awake (LIFECYCLE_TIMEOUT guard: board re-locks in ~30s and AMS kills foreground abilities)"
+$HDC -t "$SERIAL" shell "power-shell wakeup" >/dev/null 2>&1 || true
+$HDC -t "$SERIAL" shell "uitest uiInput swipe 600 1700 600 600" >/dev/null 2>&1 || \
+  $HDC -t "$SERIAL" shell "uinput -T -m 600 1700 600 600 300" >/dev/null 2>&1 || true
+KA_PID=""
+( while :; do $HDC -t "$SERIAL" shell "power-shell wakeup" >/dev/null 2>&1; sleep 15; done ) & KA_PID=$!
+cleanup() { [ -n "$KA_PID" ] && kill "$KA_PID" 2>/dev/null || true; }
+trap cleanup EXIT
 
 echo "== clear hilog (best effort) + launch"
 $HDC -t "$SERIAL" shell "hilog -c" >/dev/null 2>&1 || true
