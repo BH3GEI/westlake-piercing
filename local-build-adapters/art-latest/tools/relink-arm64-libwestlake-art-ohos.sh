@@ -25,7 +25,7 @@ make -f "$MAKEFILE" \
   template-instantiations jni-stubs asm sve-stub metrics-stubs fmtlib tinyxml2 \
   ART="$ART" ART11="$AOSP/art" AOSP="$AOSP" STUBS="$STUBS" \
   OHOS_LLVM="$LLVM" OHOS_SYSROOT="$SYSROOT" BUILDDIR="$B" \
-  CXX="$CLANG" CC="$CLANG" TARGET_FLAGS="$TARGET_FLAGS" -j2
+  CXX="$CLANG" CC="$CLANG" TARGET_FLAGS="$TARGET_FLAGS" -j8
 
 mkdir -p "$B/stubs"
 "$CLANG" -std=c++2a -O2 -w -fPIC -DNDEBUG \
@@ -52,6 +52,9 @@ mkdir -p "$B/stubs"
   -I"$AOSP/system/core/libziparchive/include" \
   -I"$AOSP/system/core/libutils/include" \
   -I"$AOSP/system/core/libcutils/include" \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/include_jni \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/header_only_include \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/include \
   -I"$AOSP/libnativehelper/include_jni" \
   -I"$AOSP/libnativehelper/header_only_include" \
   -I"$AOSP/libnativehelper/include" \
@@ -87,6 +90,73 @@ mkdir -p "$B/stubs"
   -c "$STUBS/westlake_bionic_compat_stubs.c" \
   -o "$B/stubs/westlake_bionic_compat_stubs.o"
 
+# --- WESTLAKE UND fix: art::Unsafe_* offset natives + art::Xz* -------------
+# unsafe_offset_natives.cc defines the 7 external-linkage art::Unsafe_* symbols
+#   that patches/runtime/runtime.cc declares extern and patches into
+#   sun.misc.Unsafe / jdk.internal.misc.Unsafe (upstream ART no longer has them).
+# xz_stubs.cc defines art::XzCompress/XzDecompress, left undefined because the
+#   relink excludes libelffile/elf/xz_utils.cc (needs external/lzma C sources).
+# Without these the .so carries 9 undefined art:: relocations and RTLD_NOW
+# dlopen fails. Same flag set as westlake_jni.cc above.
+for _wl_stub in unsafe_offset_natives xz_stubs wl_method_probe; do
+"$CLANG" -std=c++2a -O2 -w -fPIC -DNDEBUG \
+  $TARGET_FLAGS \
+  -include "$STUBS/art_ohos_compat.h" \
+  -Wno-attributes \
+  -I"$STUBS" \
+  -I"$STUBS/runtime" \
+  -I"$ART" \
+  -I"$ART/libdexfile" \
+  -I"$ART/libartbase" \
+  -I"$ART/libartpalette/include" \
+  -isystem "$ART/runtime" \
+  -I"$ART/compiler" \
+  -I"$ART/compiler/export" \
+  -I"$ART/disassembler" \
+  -I"$ART/compiler/debug" \
+  -I"$ART/libelffile" \
+  -I"$ART/libprofile" \
+  -I"$ART/cmdline" \
+  -I"$ART/dex2oat" \
+  -I"$ART/dex2oat/include" \
+  -I"$AOSP/system/core/base/include" \
+  -I"$AOSP/system/core/libziparchive/include" \
+  -I"$AOSP/system/core/libutils/include" \
+  -I"$AOSP/system/core/libcutils/include" \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/include_jni \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/header_only_include \
+  -I/home/yao/westlake-local-build/libnativehelper-r9/include \
+  -I"$AOSP/libnativehelper/include_jni" \
+  -I"$AOSP/libnativehelper/header_only_include" \
+  -I"$AOSP/libnativehelper/include" \
+  -I"$AOSP/system/logging/liblog/include" \
+  -I"$AOSP/external/zlib" \
+  -I"$AOSP/external/lz4/lib" \
+  -I"$AOSP/external/vixl/src" \
+  -I"$AOSP/external/lzma/C" \
+  -I"$ART/sigchainlib" \
+  -I"$AOSP/libnativehelper/platform_include" \
+  -I"$ART/libnativebridge/include" \
+  -I"$AOSP/system/core/libbacktrace/include" \
+  -I"$ART/libnativeloader/include" \
+  -I"$AOSP/external/icu/icu4c/source/common" \
+  -I"$AOSP/external/tinyxml2" \
+  -I"$AOSP/external/fmtlib/include" \
+  -I"$ART/libdexfile/external/include" \
+  -DART_DEFAULT_GC_TYPE_IS_CMS \
+  -DBUILDING_LIBART \
+  -DART_BASE_ADDRESS=0x70000000 \
+  -DART_STACK_OVERFLOW_GAP_arm=8192 \
+  -DART_STACK_OVERFLOW_GAP_arm64=8192 \
+  -DART_STACK_OVERFLOW_GAP_x86=8192 \
+  -DART_STACK_OVERFLOW_GAP_x86_64=8192 \
+  -DART_STACK_OVERFLOW_GAP_riscv64=8192 \
+  -DUSE_D8_DESUGAR \
+  -DART_USE_CXX_INTERPRETER \
+  -c "$STUBS/${_wl_stub}.cc" \
+  -o "$B/stubs/${_wl_stub}.o"
+done
+
 mkdir -p "$B/lib"
 out="$B/lib/libwestlake_art.so"
 tmp="$out.tmp"
@@ -102,6 +172,9 @@ rm -f "$tmp"
   -Wl,--exclude-libs,ALL \
   "$B/stubs/westlake_jni.o" \
   "$B/stubs/westlake_bionic_compat_stubs.o" \
+  "$B/stubs/unsafe_offset_natives.o" \
+  "$B/stubs/xz_stubs.o" \
+  "$B/stubs/wl_method_probe.o" \
   $(find "$B/nativehelper" -name '*.o') \
   $(find "$B/runtime" -name '*.o') \
   $(find "$B/libdexfile" -name '*.o') \

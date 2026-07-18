@@ -13,13 +13,26 @@
  *   dalvik.system.VMRuntime.getFullGcCount()J
  * ) and the VM aborts with SIGABRT before finishing startup.
  *
- * Approach
- * --------
- * Register the table one method at a time and skip ONLY the methods whose
- * failure is "the Java side has no such (native) method" — which ART signals by
- * throwing java.lang.NoSuchMethodError from JNI::RegisterNatives (both the
- * "no such method" and the "method exists but is not native" branches).  Any
- * other failure is still LOG(FATAL), so genuine bugs are not silenced.
+ * Approach: probe before binding, never collide
+ * ---------------------------------------------
+ * An earlier revision registered per method and tolerated the resulting
+ * failure. That still let ART *construct* a NoSuchMethodError for every
+ * missing method, and on DAYU600 building that object is itself unsafe:
+ * NoSuchMethodError.<init> -> ... -> Throwable.<init>(Throwable.java:219)
+ * raised "IllegalMonitorStateException: object not locked by thread before
+ * notify()" and ART died on "Throwing new exception with unexpected pending
+ * exception" (thread.cc:2578) while registering java.io.FileInputStream.
+ *
+ * So we now ask first and only ever register methods that will succeed. The
+ * question cannot be put to JNI - GetMethodID/GetStaticMethodID throw
+ * NoSuchMethodError on a miss, which is the very object we are avoiding - so
+ * it goes to wl_native_method_probe() (stubs/wl_method_probe.cc), which reads
+ * ART's own class metadata and cannot throw.
+ *
+ * Anything the probe accepts is registered in a single bulk call. A failure
+ * there means probe and RegisterNatives disagree, which is a real bug: it is
+ * reported loudly and the offending methods are retried individually so one
+ * bad entry cannot cost the whole table.
  *
  * How it is installed
  * -------------------
@@ -35,7 +48,8 @@
  * to the stub versions, and the real definitions (NO_RETURN, UNREACHABLE, ...)
  * then never load.  Included at the normal site, the TU has already loaded the
  * real headers and these includes are no-ops - the same contract the older
- * stubs/tolerant_native_util.h relies on.
+ * stubs/tolerant_native_util.h relies on.  For the same reason the probe is
+ * declared extern "C" here rather than including any ART internal header.
  *
  * Everything logs under the greppable tag WL_SELBIND.
  */
@@ -50,31 +64,20 @@
 
 #include <jni.h>
 
+#include <vector>
+
 #include "android-base/logging.h"
 #include "base/macros.h"
 #include "nativehelper/scoped_local_ref.h"
 
-namespace art HIDDEN {
+/* stubs/wl_method_probe.cc. Returns 1 = present and native (registrable),
+ * -1 = present but implemented in Java, 0 = no such method. Never throws. */
+extern "C" int wl_native_method_probe(JNIEnv* env,
+                                      jclass java_class,
+                                      const char* name,
+                                      const char* sig);
 
-// Returns true iff a NoSuchMethodError is pending; consumes the pending
-// exception either way. Leaves no exception pending on return.
-inline bool WlSelBindConsumeNoSuchMethodError(JNIEnv* env) {
-  if (!env->ExceptionCheck()) {
-    return false;
-  }
-  ScopedLocalRef<jthrowable> pending(env, env->ExceptionOccurred());
-  env->ExceptionClear();
-  if (pending.get() == nullptr) {
-    return false;
-  }
-  ScopedLocalRef<jclass> nsme(env, env->FindClass("java/lang/NoSuchMethodError"));
-  if (nsme.get() == nullptr) {
-    // Cannot classify without the class; do not swallow.
-    env->ExceptionClear();
-    return false;
-  }
-  return env->IsInstanceOf(pending.get(), nsme.get()) == JNI_TRUE;
-}
+namespace art HIDDEN {
 
 ALWAYS_INLINE inline void RegisterNativeMethodsInternal(JNIEnv* env,
                                                         const char* jni_class_name,
@@ -93,36 +96,60 @@ ALWAYS_INLINE inline void RegisterNativeMethodsInternal(JNIEnv* env,
     return;
   }
 
-  // Fast path: whole table at once. Only on failure do we pay for per-method
-  // registration (and for ART's very verbose DumpClass on each failure).
-  if (env->RegisterNatives(c.get(), methods, method_count) == JNI_OK) {
-    return;
-  }
-  if (env->ExceptionCheck()) {
-    env->ExceptionClear();
-  }
+  std::vector<JNINativeMethod> registrable;
+  registrable.reserve(static_cast<size_t>(method_count));
+  jint absent = 0;
+  jint not_native = 0;
 
-  jint bound = 0;
-  jint skipped = 0;
   for (jint i = 0; i < method_count; ++i) {
-    if (env->RegisterNatives(c.get(), &methods[i], 1) == JNI_OK) {
-      ++bound;
+    const int probe = wl_native_method_probe(env, c.get(), methods[i].name, methods[i].signature);
+    if (probe == 1) {
+      registrable.push_back(methods[i]);
       continue;
     }
-    if (!WlSelBindConsumeNoSuchMethodError(env)) {
-      // Not a generational gap - a real registration bug. Keep it loud.
-      LOG(FATAL) << "WL_SELBIND fatal " << jni_class_name << "." << methods[i].name
-                 << methods[i].signature
-                 << " : RegisterNatives failed without a pending NoSuchMethodError";
+    if (probe == 0) {
+      ++absent;
+      LOG(ERROR) << "WL_SELBIND skip " << jni_class_name << "." << methods[i].name
+                 << methods[i].signature << " (absent from board jar)";
+    } else {
+      ++not_native;
+      LOG(ERROR) << "WL_SELBIND skip " << jni_class_name << "." << methods[i].name
+                 << methods[i].signature << " (present but implemented in Java)";
     }
-    ++skipped;
-    LOG(ERROR) << "WL_SELBIND skip " << jni_class_name << "." << methods[i].name
-               << methods[i].signature << " (absent from board jar)";
   }
 
-  LOG(ERROR) << "WL_SELBIND summary " << jni_class_name
-             << " bound=" << bound << " skipped=" << skipped
-             << " total=" << method_count;
+  jint bound = static_cast<jint>(registrable.size());
+  if (bound != 0 &&
+      env->RegisterNatives(c.get(), registrable.data(), bound) != JNI_OK) {
+    // The probe vetted every entry, so this should be unreachable. Do not let a
+    // single bad entry cost the whole table, but make the disagreement loud.
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+    }
+    LOG(ERROR) << "WL_SELBIND UNEXPECTED bulk RegisterNatives failed for " << jni_class_name
+               << " after probing - retrying per method";
+    bound = 0;
+    for (const JNINativeMethod& m : registrable) {
+      if (env->RegisterNatives(c.get(), &m, 1) == JNI_OK) {
+        ++bound;
+        continue;
+      }
+      if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+      }
+      ++absent;
+      LOG(ERROR) << "WL_SELBIND UNEXPECTED skip " << jni_class_name << "." << m.name
+                 << m.signature << " - probe said registrable but RegisterNatives refused";
+    }
+  }
+
+  if (absent != 0 || not_native != 0) {
+    LOG(ERROR) << "WL_SELBIND summary " << jni_class_name
+               << " bound=" << bound
+               << " absent=" << absent
+               << " non-native=" << not_native
+               << " total=" << method_count;
+  }
 }
 
 #define REGISTER_NATIVE_METHODS(jni_class_name) \

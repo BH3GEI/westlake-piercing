@@ -12,15 +12,41 @@
 #include <fcntl.h>
 #include <stdint.h>
 
-/* Register native methods one at a time, skipping failures */
+/* stubs/wl_method_probe.cc: 1 = present and native, -1 = present but Java,
+ * 0 = no such method. Reads ART's class metadata, so unlike GetMethodID it
+ * never throws - see that file for why that matters here. */
+extern int wl_native_method_probe(JNIEnv* env, jclass java_class,
+                                  const char* name, const char* sig);
+extern void wl_class_descriptor(JNIEnv* env, jclass java_class, char* buf, int buflen);
+
+/* Register native methods one at a time, probing first so ART is never asked
+ * to bind a method the board's jar does not have. Binding a missing method
+ * makes ART build a NoSuchMethodError, and on DAYU600 that construction itself
+ * aborts the VM: NoSuchMethodError.<init> -> Throwable.<init> raised
+ * IllegalMonitorStateException and ART died on "Throwing new exception with
+ * unexpected pending exception" (thread.cc:2578) registering FileInputStream. */
 static int registerNativesOrSkip(JNIEnv* env, jclass clazz,
                                   const JNINativeMethod* methods, int numMethods) {
     int registered = 0;
+    char cname[256];
+    wl_class_descriptor(env, clazz, cname, (int)sizeof(cname));
     for (int i = 0; i < numMethods; i++) {
+        int probe = wl_native_method_probe(env, clazz, methods[i].name, methods[i].signature);
+        if (probe != 1) {
+            fprintf(stderr, "WL_OPENJDK: skip %s.%s%s (%s)\n",
+                    cname, methods[i].name, methods[i].signature,
+                    probe == 0 ? "absent from board jar" : "present but implemented in Java");
+            fflush(stderr);
+            continue;
+        }
         if ((*env)->RegisterNatives(env, clazz, &methods[i], 1) == 0) {
             registered++;
         } else {
             (*env)->ExceptionClear(env);
+            fprintf(stderr, "WL_OPENJDK: UNEXPECTED %s.%s%s - probe said registrable "
+                            "but RegisterNatives refused\n",
+                    cname, methods[i].name, methods[i].signature);
+            fflush(stderr);
         }
     }
     return registered;
