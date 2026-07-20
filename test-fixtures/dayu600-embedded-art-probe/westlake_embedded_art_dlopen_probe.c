@@ -2416,6 +2416,28 @@ void _ZN4OHOS5Rosen13RSSurfaceNode15AttachToDisplayEm(void *self, unsigned long 
          * always-on-top overlays). Our node attaches to displayRenderNodeTop but is never
          * composited, so ask for that path directly. The enum value is not documented here,
          * so it is swept from the environment rather than guessed once. */
+        /* A surface node whose buffer should be consumed by the compositor generally has to
+         * be marked self-drawing / hardware-enabled; otherwise RS treats the node as a
+         * container and never picks up what the producer flushed. That matches everything
+         * observed: the node is on the tree (it is absent from nodeNotOnTree), has bounds,
+         * is visible and opaque, RS even runs its SurfaceNodeDrawable -- and still nothing
+         * from our buffer reaches the panel. */
+        if (getenv("WL_HW_ENABLED") != 0) {
+            static void (*set_hw)(void *, unsigned char, int, unsigned char);
+            if (set_hw == 0) set_hw = (void (*)(void *, unsigned char, int, unsigned char))
+                    dlsym(RTLD_DEFAULT,
+                          "_ZN4OHOS5Rosen13RSSurfaceNode18SetHardwareEnabledEbNS0_19SelfDrawingNodeTypeEb");
+            if (set_hw != 0) {
+                int ty = 0;
+                const char *t = getenv("WL_HW_TYPE");
+                if (t != 0) for (const char *q = t; *q >= '0' && *q <= '9'; q++) ty = ty * 10 + (*q - '0');
+                set_hw(self, 1, ty, 1);
+                log_int("attach: SetHardwareEnabled type=", ty);
+            } else {
+                log_text("attach: SetHardwareEnabled symbol missing");
+            }
+        }
+
         const char *cl = getenv("WL_COMPOSITE_LAYER");
         if (cl != 0 && cl[0] != 0) {
             static void (*set_composite)(void *, int);
