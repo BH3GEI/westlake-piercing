@@ -2306,6 +2306,43 @@ static const struct wl_hwui_table WL_HWUI_TABLES[] = {
  * is taken from the variable so it can be swept without a rebuild.
  *
  * The mangled name is a valid C identifier, so it can be defined directly. */
+/* The node pointer the prebuilt renderer never exposes, captured from AttachToDisplay so
+ * the blit can mark it dirty once the frame is actually in the buffer. */
+static void *g_wl_surface_node;
+/* Snapshot of the last frame, so repeat submissions do not need the Java pixel array. */
+static int *g_wl_last_frame;
+
+/* Ask the compositor to redraw the harness surface.
+ *
+ * hilog shows RS drawing our SurfaceNodeDrawable twice, but both times immediately after
+ * attach -- long before the pipeline produces a frame ~50s later -- and then screen 0 goes
+ * to ClearFrameBuffers. So the node is composited, just never again after our content
+ * lands. Touch a node property to dirty it and flush the transaction, which is what a
+ * normal producer's buffer-available notification would have triggered. */
+static void wl_surface_mark_dirty(void)
+{
+    if (g_wl_surface_node == 0) { log_text("dirty: no node captured"); return; }
+    static void (*set_alpha)(void *, float);
+    static void (*flush_tx)(void);
+    static int resolved;
+    if (!resolved) {
+        resolved = 1;
+        set_alpha = (void (*)(void *, float))dlsym(RTLD_DEFAULT,
+                "_ZN4OHOS5Rosen6RSNode8SetAlphaEf");
+        flush_tx = (void (*)(void))dlsym(RTLD_DEFAULT,
+                "_ZN4OHOS5Rosen13RSTransaction24FlushImplicitTransactionEv");
+    }
+    /* Alternate the alpha so the value genuinely changes -- an identical write may be
+     * dropped as a no-op before it ever reaches the server. */
+    static int flip;
+    if (set_alpha != 0) {
+        set_alpha(g_wl_surface_node, (flip++ & 1) ? 0.99f : 1.0f);
+        log_text("dirty: SetAlpha toggled");
+    } else log_text("dirty: SetAlpha symbol missing");
+    if (flush_tx != 0) { flush_tx(); log_text("dirty: transaction flushed"); }
+    else log_text("dirty: FlushImplicitTransaction symbol missing");
+}
+
 /* Give the harness surface a size before it is attached.
  *
  * The prebuilt renderer creates the node, sets Z and attaches it, but its dynamic symbol
@@ -2331,6 +2368,7 @@ void _ZN4OHOS5Rosen13RSSurfaceNode15AttachToDisplayEm(void *self, unsigned long 
         set_frame = (void (*)(void *, float, float, float, float))dlsym(RTLD_DEFAULT,
                 "_ZN4OHOS5Rosen6RSNode8SetFrameEffff");
     }
+    g_wl_surface_node = self;
     float bw = 1200.0f, bh = 1920.0f;
     const char *ws = getenv("WL_SURFACE_W");
     const char *hs = getenv("WL_SURFACE_H");
@@ -3076,8 +3114,63 @@ static jint westlake_native_blit_argb(JNIEnv *env, jclass clazz)
 
     unsigned char region[32];
     for (int i = 0; i < 32; i++) region[i] = 0;
+    /* Keep a copy of the frame so it can be resent without touching the Java array again
+     * (the jint* is released as soon as the first flush is done). */
+    if (g_wl_last_frame == 0) g_wl_last_frame = (int *)malloc((size_t)w * (size_t)h * 4);
+    if (g_wl_last_frame != 0 && dst != 0) {
+        for (int y = 0; y < (int)h; y++) {
+            unsigned int *srow = (unsigned int *)(dst + (long)y * stride);
+            for (int x = 0; x < (int)w; x++) g_wl_last_frame[(long)y * (long)w + x] = (int)srow[x];
+        }
+    }
     rc = flush(win, buf, -1, (void *)region, 0, 0, 0);
     log_int("blit: FlushBuffer rc=", (int)rc);
+    wl_surface_mark_dirty();
+
+    /* Send the same frame again a few times.
+     * The pipeline produces exactly one frame ~50s after the node is attached, and hilog
+     * shows RS drawing the SurfaceNodeDrawable only in the first moments after attach,
+     * then parking screen 0 at ClearFrameBuffers. If the first buffer after that idle
+     * period is dropped (no consumer listener, or it lands between composition passes),
+     * a single flush can never be seen. Repeat so a dropped first frame is not the end
+     * of it. Off unless WL_BLIT_REPEAT is set. */
+    {
+        const char *rep = getenv("WL_BLIT_REPEAT");
+        int n = 0;
+        if (rep != 0) for (const char *p = rep; *p >= '0' && *p <= '9'; p++) n = n * 10 + (*p - '0');
+        for (int k = 1; k < n; k++) {
+            void *buf2 = 0; int fence2 = -1;
+            if (req(win, &buf2, &fence2) != 0 || buf2 == 0) {
+                log_int("blit-repeat: request failed at ", k);
+                break;
+            }
+            wl_bh_head *bh2 = (wl_bh_head *)gethandle(buf2);
+            if (bh2 != 0 && g_wl_last_frame != 0) {
+                unsigned char *d2 = (unsigned char *)bh2->virAddr;
+                void *m2 = 0;
+                if (d2 == 0 && bh2->fd >= 0 && bh2->size > 0) {
+                    m2 = mmap(0, (size_t)bh2->size, PROT_READ | PROT_WRITE, MAP_SHARED, bh2->fd, 0);
+                    if (m2 == MAP_FAILED) m2 = 0;
+                    d2 = (unsigned char *)m2;
+                }
+                if (d2 != 0) {
+                    int bw2 = bh2->width > 0 ? bh2->width : (int)w;
+                    int bh2h = bh2->height > 0 ? bh2->height : (int)h;
+                    int st2 = bh2->stride > 0 ? bh2->stride : bw2 * 4;
+                    for (int y = 0; y < bh2h && y < (int)h; y++) {
+                        unsigned int *row = (unsigned int *)(d2 + (long)y * st2);
+                        for (int x = 0; x < bw2 && x < (int)w; x++) {
+                            row[x] = (unsigned int)g_wl_last_frame[(long)y * (long)w + x];
+                        }
+                    }
+                }
+                if (m2 != 0) munmap(m2, (size_t)bh2->size);
+            }
+            flush(win, buf2, -1, (void *)region, 0, 0, 0);
+            wl_surface_mark_dirty();
+        }
+        if (n > 1) log_int("blit-repeat: frames=", n);
+    }
     if (mapped != 0) munmap(mapped, (size_t)map_len);
     return rc == 0 ? 0 : 7;
 }
