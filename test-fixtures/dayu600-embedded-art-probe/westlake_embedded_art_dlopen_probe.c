@@ -4916,7 +4916,24 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     options[5].extraInfo = 0;
     options[6].optionString = "-Duser.home=/";
     options[6].extraInfo = 0;
-    options[7].optionString = "-Xint";
+    /* -Xint makes every native call go through ART's InterpreterJni, whose dispatch is a
+     * set of hand-written shorty branches -- anything unhandled is silently dropped and
+     * returns a typed zero, indistinguishable from success. That single fact is behind a
+     * whole class of failures here: FontFamily.nAddFontWeightStyle (ZJLIII),
+     * Font$Builder.nBuild (JJLLLIZI), and the resource natives that leave the whole UI
+     * unstyled -- AssetManager.nativeThemeGetAttributeValue (IJJILZ) and
+     * nativeRetrieveAttributes (ZJJLLL). Without -Xint, ART builds a real JNI stub per
+     * method and marshals every signature correctly -- in principle.
+     *
+     * Measured on this board (WL_NO_XINT=1): it makes no difference. Both with -Xint replaced
+     * by an inert option and with -Xusejit:false, the run still logs 408 "unhandled shorty"
+     * lines and the frame is still empty. This ART goes through InterpreterJni regardless, so
+     * the dropped-shorty class of failures cannot be escaped by relaxing the mode; it has to
+     * be fixed in the interpreter's dispatch. The switch is kept only to keep that negative
+     * result reproducible. */
+    /* When switched off, substitute an inert option rather than shrinking the array: ART
+     * then runs with its default JIT-backed configuration and builds real JNI stubs. */
+    options[7].optionString = (getenv("WL_NO_XINT") != 0) ? "-Duser.language=en" : "-Xint";
     options[7].extraInfo = 0;
 
     int dayu_nopt = 8;
