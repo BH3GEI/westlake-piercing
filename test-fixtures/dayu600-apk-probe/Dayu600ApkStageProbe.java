@@ -30,6 +30,294 @@ public final class Dayu600ApkStageProbe {
     private static native double nativeGenericJniDffProbe(float a, float b);
     private static native int nativeRegisterHwuiRender();
 
+    // ()I on purpose: the interpreter's static-JNI chain has no 'IZ' branch, so a
+    // boolean-arg native is dropped and returns 0 without ever running.
+    private static native int nativeClearHwuiIsolated();
+
+    /** Blit ARGB_8888 pixels straight into the display window, bypassing hwui (which on this
+     *  board has no window-surface path at all). Pass null to paint a built-in test pattern. */
+    // ()I plus static-field inputs: the interpreter drops natives whose shorty it has no
+    // branch for (here 'ILII'), returning 0 without ever entering the function.
+    static int[] sBlitPixels;
+    static int sBlitW, sBlitH;
+
+    private static native int nativeBlitArgb();
+
+    static Class<?> sAllocClass;
+    /* Path handed to nativeDirectBufferFromFile(); zero-arg native, so it travels
+     * through a static field like the other probe natives. */
+    static String sDirectBufPath;
+    /* Arguments for nativeAddFontWeightStyle(); see sDirectBufPath for why they travel
+     * as statics rather than as native parameters. */
+    static long sFfBuilderPtr;
+    static Object sFfBuffer;
+    static native int nativeAddFontWeightStyle();
+
+    static native Object nativeDirectBufferFromFile();
+
+    static String sSrgbSeedResult = "n/a";
+
+    /** Constructor-less allocation of sAllocClassName (JNI AllocObject). */
+    private static native Object nativeAllocByName();
+
+    static Object sCopySrc;
+
+    /** Mutable copy via libhwui's harvested nativeCopy pointer (bypasses the boolean marshal). */
+    private static native Object nativeMutableCopy();
+
+    private static native Object nativeAllocColorSpaceRgb();
+
+    /** Runs libhwui's real Bitmap registrar so its cached jclass globals exist. */
+    private static native int nativeRegisterBitmapJni();
+
+    /** Re-runs wlresjni's StringBlock registrar (OHBridge's stubs overwrite it at boot). */
+    private static native int nativeRegisterStringBlock();
+
+    /**
+     * Obtain a usable RGB ColorSpace on a substrate where the named-colour-space registry was
+     * never populated: every ColorSpace.get(Named.X) returns null.
+     *
+     * The registry is a HashMap field named sNamedColorSpaceMap (established by parsing
+     * framework.jar's dex field table -- reflection alone is misleading here, and the storage
+     * is neither an array nor a ColorSpace-typed field, which is why earlier scans found
+     * nothing). Seeding it is still circular on its own: ColorSpace.Rgb's constructor calls
+     * isSrgb(), which dereferences get(Named.SRGB). So put a constructor-less placeholder
+     * (JNI AllocObject) in first, build the real sRGB on top of it, then replace it.
+     *
+     * The sRGB primaries, D65 white point and transfer parameters are already present as
+     * constants on the class, so use those rather than re-deriving them.
+     */
+    private static Object wlObtainSrgb(Class<?> csCls, Class<?> namedCls) throws Exception {
+        java.lang.reflect.Method csGet = csCls.getMethod("get", namedCls);
+        Object srgbNamed = null;
+        for (Object n : namedCls.getEnumConstants()) {
+            if ("SRGB".equals(n.toString())) { srgbNamed = n; break; }
+        }
+        Object cs = srgbNamed == null ? null : csGet.invoke(null, srgbNamed);
+        if (cs != null) return cs;
+
+        // Seeding the registry is only needed to stop isSrgb() from dereferencing
+        // get(Named.SRGB). The id-taking constructor short-circuits isSrgb() with
+        // `if (id == 0) return true;` before it ever looks the registry up, so when that
+        // constructor exists we skip the whole seeding dance -- which also avoids
+        // HashMap.put(enumKey, ...) and therefore Enum.hashCode() -> Object.hashCode(),
+        // a native whose entry is null on this substrate.
+        Object primaries = wlStatic(csCls, "SRGB_PRIMARIES");
+        Object white = wlStatic(csCls, "ILLUMINANT_D65");
+        Object tp = wlStatic(csCls, "SRGB_TRANSFER_PARAMETERS");
+        if (primaries == null || white == null || tp == null) {
+            throw new IllegalStateException("sRGB constants missing: primaries=" + (primaries != null)
+                    + " white=" + (white != null) + " tp=" + (tp != null));
+        }
+        Class<?> rgbCls = Class.forName("android.graphics.ColorSpace$Rgb");
+        Class<?> tpCls = Class.forName("android.graphics.ColorSpace$Rgb$TransferParameters");
+        // isSrgb() short-circuits with `if (id == 0) return true;` before it ever touches
+        // get(Named.SRGB).mOetf, so route through the internal constructor that takes an id
+        // and pass 0. The public 4-arg form passes MIN_ID and walks straight into the
+        // comparison loop, which calls applyAsDouble() on the placeholder's null mOetf.
+        java.util.Map<Object, Object> map = null;
+        Object placeholder = null;
+        java.lang.reflect.Constructor<?> withId = null;
+        StringBuilder ctors = new StringBuilder();
+        for (java.lang.reflect.Constructor<?> c : rgbCls.getDeclaredConstructors()) {
+            Class<?>[] ps = c.getParameterTypes();
+            StringBuilder sig = new StringBuilder();
+            for (Class<?> pt : ps) sig.append(pt.getSimpleName()).append(',');
+            ctors.append('(').append(sig).append(") ");
+            // Rgb(String name, float[] primaries, float[] whitePoint, float[] transform,
+            //     TransferParameters parameters, int id)  -- the only form that lets us pass id.
+            if (ps.length == 6 && ps[0] == String.class && ps[1] == float[].class
+                    && ps[2] == float[].class && ps[3] == float[].class
+                    && ps[4] == tpCls && ps[5] == int.class) {
+                withId = c;
+            }
+        }
+        Object real;
+        try {
+            if (withId != null) {
+                withId.setAccessible(true);
+                real = withId.newInstance("wl-sRGB", primaries, white, null, tp, Integer.valueOf(0));
+            } else {
+                // No id-taking ctor: fall back to seeding the registry with a
+                // constructor-less placeholder so isSrgb() has something non-null to read.
+                java.lang.reflect.Field mapF = csCls.getDeclaredField("sNamedColorSpaceMap");
+                mapF.setAccessible(true);
+                Object mapObj = mapF.get(null);
+                if (mapObj == null) { mapObj = new java.util.HashMap<Object, Object>(); mapF.set(null, mapObj); }
+                @SuppressWarnings("unchecked")
+                java.util.Map<Object, Object> m = (java.util.Map<Object, Object>) mapObj;
+                map = m;
+                placeholder = nativeAllocColorSpaceRgb();
+                if (placeholder != null && srgbNamed != null) map.put(srgbNamed, placeholder);
+                real = rgbCls.getConstructor(String.class, float[].class, float[].class, tpCls)
+                        .newInstance("wl-sRGB", primaries, white, tp);
+            }
+        } catch (Throwable rt) {
+            Throwable rc = rt;
+            while (rc instanceof java.lang.reflect.InvocationTargetException && rc.getCause() != null) {
+                rc = rc.getCause();
+            }
+            throw new IllegalStateException("Rgb ctor failed (withId=" + (withId != null)
+                    + " mapSeeded=" + (map != null) + "): "
+                    + rc.getClass().getName() + ":" + rc.getMessage());
+        }
+        // Seed the registry with the real instance now that we have one: it makes the plain
+        // createBitmap(w,h,config) overload work, and that path returns a MUTABLE bitmap --
+        // the colour-space overload returns an immutable one, which Canvas rejects.
+        try {
+            java.lang.reflect.Field mapF2 = csCls.getDeclaredField("sNamedColorSpaceMap");
+            mapF2.setAccessible(true);
+            Object m2 = mapF2.get(null);
+            if (m2 == null) { m2 = new java.util.HashMap<Object, Object>(); mapF2.set(null, m2); }
+            if (srgbNamed != null) ((java.util.Map<Object, Object>) m2).put(srgbNamed, real);
+        } catch (Throwable ig) {}
+        if (map != null && srgbNamed != null) map.put(srgbNamed, real);
+        // Verify the seeding actually takes: if get(Named.SRGB) now answers, the plain
+        // createBitmap(w,h,config) path becomes available -- worth knowing because that path
+        // does not depend on the colour-space overload.
+        try {
+            Object after = csGet.invoke(null, srgbNamed);
+            sSrgbSeedResult = (after != null) ? "get-ok" : "get-still-null";
+        } catch (Throwable gt) {
+            sSrgbSeedResult = "get-throw:" + gt.getClass().getSimpleName();
+        }
+        return real;
+    }
+
+    private static Object wlStatic(Class<?> c, String name) {
+        try {
+            java.lang.reflect.Field f = c.getDeclaredField(name);
+            f.setAccessible(true);
+            return f.get(null);
+        } catch (Throwable t) { return null; }
+    }
+
+    /** Software-render a view tree into an ARGB_8888 int[] via Bitmap + Canvas. */
+    private static int[] wlRenderViewToPixels(android.view.View v, int w, int h,
+                                             StringBuilder out, String log) throws Exception {
+        out.append("10r0 render-enter\n"); writeText(log, out.toString());
+        Class<?> bmCls = Class.forName("android.graphics.Bitmap");
+        Class<?> cfgCls = Class.forName("android.graphics.Bitmap$Config");
+        Object argb = null;
+        for (Object c : cfgCls.getEnumConstants()) {
+            if ("ARGB_8888".equals(c.toString())) { argb = c; break; }
+        }
+        // Table binding alone leaves libhwui's Bitmap JNI globals uninitialised, and
+        // nativeCreate then dies in GetMethodID with a null class.
+        nativeRegisterBitmapJni();
+        out.append("10r1 bitmap-registrar\n"); writeText(log, out.toString());
+        Class<?> csCls = Class.forName("android.graphics.ColorSpace");
+        Class<?> namedCls = Class.forName("android.graphics.ColorSpace$Named");
+        Object srgb = wlObtainSrgb(csCls, namedCls);
+        out.append("10r2 srgb=").append(srgb != null)
+           .append(" seed=").append(sSrgbSeedResult).append('\n');
+        writeText(log, out.toString());
+
+        Object bm;
+        String bmHow = "plain";
+        try {
+            // Mutable path -- works once the registry lookup succeeds.
+            bm = bmCls.getMethod("createBitmap", int.class, int.class, cfgCls)
+                    .invoke(null, Integer.valueOf(w), Integer.valueOf(h), argb);
+        } catch (Throwable plain) {
+            Throwable pc0 = plain;
+            while (pc0 instanceof java.lang.reflect.InvocationTargetException && pc0.getCause() != null) {
+                pc0 = pc0.getCause();
+            }
+            bmHow = "cs-overload(plain failed: " + pc0.getClass().getSimpleName() + ":" + pc0.getMessage() + ")";
+            bm = bmCls.getMethod("createBitmap", int.class, int.class, cfgCls,
+                                 boolean.class, csCls)
+                    .invoke(null, Integer.valueOf(w), Integer.valueOf(h), argb, Boolean.TRUE, srgb);
+        }
+        // createBitmap's colour-space overload hands back an immutable bitmap, and Canvas
+        // rejects those. The pixels are writable either way -- only the Java-side flag gates
+        // the constructor -- so flip it.
+        try {
+            java.lang.reflect.Field mut = bmCls.getDeclaredField("mIsMutable");
+            mut.setAccessible(true);
+            mut.setBoolean(bm, true);
+        } catch (Throwable ig) {}
+        // nativeCreate takes 8 args, so on AAPCS64 the trailing `mutable` and colour-space
+        // pointer spill to the stack -- and the bitmap comes back immutable regardless of what
+        // Java passed. Bitmap.copy(config, true) goes through nativeCopy, which has few enough
+        // arguments to stay entirely in registers, and yields the mutable copy Canvas needs.
+        // Decisive check for the boolean-return hypothesis: the bitmap straight out of
+        // createBitmap's colour-space overload is KNOWN immutable (Canvas rejected it). If
+        // isMutable() reports true for it, the marshal's boolean return is broken and every
+        // boolean-returning native is suspect -- no compile machine needed to prove it.
+        String preCopyMutable;
+        try {
+            preCopyMutable = String.valueOf(bmCls.getMethod("isMutable").invoke(bm));
+        } catch (Throwable pt) { preCopyMutable = "throw:" + pt.getClass().getSimpleName(); }
+        out.append("10r3p preCopyMutable=").append(preCopyMutable).append('\n');
+        writeText(log, out.toString());
+        // Call copy() DIRECTLY, not through reflection. Evidence: isMutable() answers true via
+        // reflection but false to Canvas's own bytecode call (5/5 runs, deterministic), i.e. the
+        // reflective path mangles booleans. The same reflective call is what passed `true` to
+        // copy(), so the copy came back immutable.
+        String copyHow;
+        try {
+            // Java cannot get a mutable copy at all here (the boolean argument never reaches the
+            // native), so go through libhwui's own nativeCopy pointer instead.
+            sCopySrc = bm;
+            Object viaNative = nativeMutableCopy();
+            if (viaNative != null) {
+                bm = viaNative;
+                copyHow = "native-ok mutable=" + ((android.graphics.Bitmap) bm).isMutable();
+            } else {
+                android.graphics.Bitmap src = (android.graphics.Bitmap) bm;
+                android.graphics.Bitmap mut = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true);
+                if (mut != null) { bm = mut; copyHow = "direct-fallback mutable=" + mut.isMutable(); }
+                else { copyHow = "both-null"; }
+            }
+        } catch (Throwable ct) {
+            Throwable cc2 = ct instanceof java.lang.reflect.InvocationTargetException
+                    && ct.getCause() != null ? ct.getCause() : ct;
+            copyHow = "throw:" + cc2.getClass().getSimpleName() + ":" + cc2.getMessage();
+        }
+        out.append("10r3c copy=").append(copyHow).append('\n');
+        writeText(log, out.toString());
+        StringBuilder mutFields = new StringBuilder();
+        for (java.lang.reflect.Field f : bmCls.getDeclaredFields()) {
+            if (f.getName().toLowerCase().contains("mutable")) mutFields.append(f.getName()).append(' ');
+        }
+        out.append("10r3 bitmap-created how=").append(bmHow)
+           .append(" mutable=").append(String.valueOf(bmCls.getMethod("isMutable").invoke(bm)))
+           .append(" fields=[").append(mutFields).append("]\n");
+        writeText(log, out.toString());
+        Class<?> canvasCls = Class.forName("android.graphics.Canvas");
+        Object canvas = canvasCls.getConstructor(bmCls).newInstance(bm);
+        out.append("10r4 canvas-ready\n"); writeText(log, out.toString());
+        android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
+        out.append("10r5 draw-done\n"); writeText(log, out.toString());
+        int[] px = new int[w * h];
+        // Report what we are actually about to blit. Judging success from a screenshot alone
+        // is unsafe -- a transient system frame can look like a plausible app background.
+        int nonZero = 0, distinct = 0;
+        int c0 = px.length > 0 ? px[0] : 0;
+        int cMid = px.length > 0 ? px[px.length / 2] : 0;
+        java.util.HashSet<Integer> seenColors = new java.util.HashSet<Integer>();
+        for (int i = 0; i < px.length; i += 997) {
+            if (px[i] != 0) nonZero++;
+            if (seenColors.size() < 24) seenColors.add(Integer.valueOf(px[i]));
+        }
+        distinct = seenColors.size();
+        out.append("10r6 getPixels px[0]=0x").append(Integer.toHexString(c0))
+           .append(" px[mid]=0x").append(Integer.toHexString(cMid))
+           .append(" sampledNonZero=").append(String.valueOf(nonZero))
+           .append(" distinct=").append(String.valueOf(distinct)).append('\n');
+        writeText(log, out.toString());
+        bmCls.getMethod("getPixels", int[].class, int.class, int.class,
+                        int.class, int.class, int.class, int.class)
+             .invoke(bm, px, Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(0),
+                     Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(h));
+        return px;
+    }
+
+    private static boolean streqEnv(String name, String want) {
+        try { return want.equals(System.getenv(name)); } catch (Throwable t) { return false; }
+    }
+
     private static Class<?> tryNativeFindClass(String name) {
         try {
             return nativeFindClass(name);
@@ -542,6 +830,22 @@ public final class Dayu600ApkStageProbe {
             implements android.os.IServiceManager {
         private final android.os.IBinder binder = new android.os.Binder();
         public android.os.IBinder getService(String name) { return binder; }
+        /* A15's IServiceManager. Returning a Service wrapping the same local binder
+           keeps ViewConfiguration/AppCompat happy without a real service manager. */
+        public android.os.Service getService2(String name) {
+            try {
+                Class<?> sc = Class.forName("android.os.Service");
+                Object s = sc.getDeclaredConstructor().newInstance();
+                // Field name is guesswork against the real A15 union -- seed whatever
+                // IBinder-typed field it actually has rather than assuming "binder".
+                for (java.lang.reflect.Field f : sc.getDeclaredFields()) {
+                    if (android.os.IBinder.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true); f.set(s, binder);
+                    }
+                }
+                return (android.os.Service) s;
+            } catch (Throwable ignored) { return null; }
+        }
         public android.os.IBinder checkService(String name) { return binder; }
         public void addService(String name, android.os.IBinder service,
                 boolean allowIsolated, int dumpPriority) {}
@@ -615,14 +919,385 @@ public final class Dayu600ApkStageProbe {
             decor.addView(content);
             return decor;
         }
+        /* TextView inflation dies in Typeface.create(null, style) because sDefaultTypeface is
+         * null -- this lane has no AOSP font assets and no system server to push a font map.
+         * Before guessing at AOSP internals, enumerate what this exact framework build offers:
+         * static field names/types/nullness and static method signatures. */
+        private void wlDumpTypeface() {
+            StringBuilder o = new StringBuilder();
+            try {
+                Class<?> tc = Class.forName("android.graphics.Typeface", false,
+                        ctx.getClass().getClassLoader());
+                o.append("class=ok initialized-lazily\n");
+                java.lang.reflect.Field[] fs = tc.getDeclaredFields();
+                for (int i = 0; i < fs.length; i++) {
+                    java.lang.reflect.Field f = fs[i];
+                    if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    String val;
+                    try {
+                        Object v = f.get(null);
+                        val = (v == null) ? "null"
+                                : (v instanceof java.util.Map)
+                                        ? ("Map[" + ((java.util.Map<?, ?>) v).size() + "]")
+                                        : (v.getClass().isArray()
+                                                ? ("arr[" + java.lang.reflect.Array.getLength(v) + "]")
+                                                : "nonnull");
+                    } catch (Throwable t) { val = "ERR:" + t.getClass().getSimpleName(); }
+                    o.append("F ").append(f.getType().getSimpleName()).append(' ')
+                     .append(f.getName()).append(" = ").append(val).append('\n');
+                }
+                java.lang.reflect.Method[] ms = tc.getDeclaredMethods();
+                for (int i = 0; i < ms.length; i++) {
+                    java.lang.reflect.Method m = ms[i];
+                    if (!java.lang.reflect.Modifier.isStatic(m.getModifiers())) continue;
+                    o.append("M ").append(m.getName()).append('(');
+                    Class<?>[] ps = m.getParameterTypes();
+                    for (int j = 0; j < ps.length; j++) {
+                        if (j > 0) o.append(',');
+                        o.append(ps[j].getSimpleName());
+                    }
+                    o.append(")\n");
+                }
+            } catch (Throwable t) {
+                o.append("DUMP-FAIL ").append(t.getClass().getName()).append(' ')
+                 .append(String.valueOf(t.getMessage())).append('\n');
+            }
+            try { writeText("/data/local/tmp/noice-typeface.txt", o.toString()); } catch (Throwable ig) {}
+        }
+
+        /* Stand up a default Typeface from a font that actually exists on this board.
+         * Everything downstream of TextView reads one of these slots, and all of them are
+         * null here: no AOSP font assets ship in the lane and no system server pushes a
+         * font map, so Typeface's clinit leaves sSystemFontMap empty. setDefault() is
+         * first because it is what hands libhwui its gDefaultTypeface -- without it the
+         * native side aborts the moment any Paint resolves a null typeface. */
+        private void wlEnsureTypeface() {
+            StringBuilder o = new StringBuilder();
+            try {
+                Class<?> tc = Class.forName("android.graphics.Typeface", true,
+                        ctx.getClass().getClassLoader());
+                java.lang.reflect.Field def = tc.getDeclaredField("sDefaultTypeface");
+                def.setAccessible(true);
+                if (def.get(null) != null) { o.append("already-set\n"); }
+                else {
+                    // The runner bind-mounts a one-file directory over /system/fonts, so
+                    // inside this namespace Roboto-Regular.ttf is the only font that exists
+                    // (it is a copy of HarmonyOS_Sans, named for the path libhwui hardcodes).
+                    String[] cand = new String[] {
+                        "/system/fonts/Roboto-Regular.ttf",
+                    };
+                    Object tf = null;
+                    for (int i = 0; i < cand.length && tf == null; i++) {
+                        try {
+                            tf = wlTypefaceFromFile(cand[i]);
+                            o.append("build ").append(cand[i]).append(" -> ")
+                             .append(tf == null ? "null" : "ok").append('\n');
+                        } catch (Throwable t) {
+                            o.append("build ").append(cand[i]).append(" FAIL ");
+                            wlAppendCauses(o, t);
+                        }
+                    }
+                    // Falling back to a Typeface with no native peer: minikin rejects every
+                    // board font (FreeTypeFontMgr().makeFromStream returns null), but the
+                    // wall we are actually against is inflation, not glyph rasterisation --
+                    // TextView only needs Typeface.create(null, style) to stop returning
+                    // null so the rest of the view tree can inflate and draw.
+                    boolean synthetic = false;
+                    if (tf == null) {
+                        sAllocClass = tc;
+                        tf = nativeAllocByName();
+                        synthetic = tf != null;
+                        o.append("synthetic typeface=").append(synthetic).append('\n');
+                        if (synthetic) {
+                            String[] fld = {"mStyle", "mWeight"};
+                            int[] fval = {0, 400};
+                            for (int i = 0; i < fld.length; i++) {
+                                try {
+                                    java.lang.reflect.Field ff = tc.getDeclaredField(fld[i]);
+                                    ff.setAccessible(true);
+                                    ff.setInt(tf, fval[i]);
+                                } catch (Throwable ig) {}
+                            }
+                        }
+                    }
+                    if (tf != null) {
+                        // setDefault() hands the native pointer to libhwui; with no native
+                        // peer there is nothing to hand over, so set the field directly.
+                        if (synthetic) {
+                            def.set(null, tf);
+                            o.append("setDefault field-only (synthetic)\n");
+                        } else {
+                            tc.getMethod("setDefault", tc).invoke(null, tf);
+                            o.append("setDefault ok\n");
+                        }
+
+                        // Static finals are write-protected by the JIT's assumption that they
+                        // never change; the framework ships a native escape hatch for exactly
+                        // this, used by its own font-map install path.
+                        java.lang.reflect.Method force = tc.getDeclaredMethod(
+                                "nativeForceSetStaticFinalField", String.class, tc);
+                        force.setAccessible(true);
+                        java.lang.reflect.Method create2 =
+                                tc.getMethod("create", tc, int.class);
+                        String[] slot = {"DEFAULT", "DEFAULT_BOLD", "SANS_SERIF",
+                                         "SERIF", "MONOSPACE"};
+                        int[] slotStyle = {0, 1, 0, 0, 0};
+                        for (int i = 0; i < slot.length; i++) {
+                            try {
+                                Object v = (synthetic || slotStyle[i] == 0) ? tf
+                                        : create2.invoke(null, tf, Integer.valueOf(slotStyle[i]));
+                                force.invoke(null, slot[i], v);
+                            } catch (Throwable t) {
+                                o.append("slot ").append(slot[i]).append(" FAIL ");
+                                wlAppendCauses(o, t);
+                            }
+                        }
+                        o.append("statics forced\n");
+
+                        // defaultFromStyle(int) indexes this directly; a null array NPEs.
+                        java.lang.reflect.Field sd = tc.getDeclaredField("sDefaults");
+                        sd.setAccessible(true);
+                        Object arr = java.lang.reflect.Array.newInstance(tc, 4);
+                        for (int i = 0; i < 4; i++) {
+                            java.lang.reflect.Array.set(arr, i,
+                                    (synthetic || i == 0) ? tf
+                                            : create2.invoke(null, tf, Integer.valueOf(i)));
+                        }
+                        sd.set(null, arr);
+                        o.append("sDefaults filled\n");
+
+                        // Typeface.create(String,int) misses to sSystemFontMap; an empty map
+                        // returns null and TextView then re-enters the null-default path.
+                        java.lang.reflect.Field sfm = tc.getDeclaredField("sSystemFontMap");
+                        sfm.setAccessible(true);
+                        Object cur = sfm.get(null);
+                        if (cur instanceof java.util.Map) {
+                            java.util.Map<Object, Object> m = new java.util.HashMap<Object, Object>(
+                                    (java.util.Map<Object, Object>) cur);
+                            String[] fam = {"sans-serif", "serif", "monospace", "default",
+                                            "sans-serif-medium", "sans-serif-light",
+                                            "sans-serif-condensed", "cursive"};
+                            for (int i = 0; i < fam.length; i++) m.put(fam[i], tf);
+                            sfm.set(null, m);
+                            o.append("sSystemFontMap=").append(m.size()).append('\n');
+                        }
+                    }
+                }
+                o.append("final sDefaultTypeface=")
+                 .append(def.get(null) == null ? "null" : "nonnull").append('\n');
+            } catch (Throwable t) {
+                o.append("ENSURE-FAIL ");
+                wlAppendCauses(o, t);
+            }
+            try { writeText("/data/local/tmp/noice-typeface-ensure.txt", o.toString()); }
+            catch (Throwable ig) {}
+        }
+
+        /* Typeface.createFromFile() is unusable here: it goes through FileChannel.map, and
+         * this lane's FileChannelImpl has allocationGranularity == 0 (an unbound native
+         * returned zero), so it dies with "divide by zero" before any font code runs.
+         * Read the bytes ourselves into a direct buffer and drive the same underlying
+         * Font -> FontFamily -> Typeface chain that createFromFile would have. */
+        private Object wlTypefaceFromFile(String path) throws Exception {
+            ClassLoader cl = ctx.getClass().getClassLoader();
+            // Both Java routes to a direct buffer are dead here: allocateDirect+put needs
+            // libcore.io.Memory (no library in this lane implements it) and the File
+            // constructor needs FileChannel.map (allocationGranularity == 0 -> divide by
+            // zero). The probe native reads the file and hands back a NewDirectByteBuffer.
+            sDirectBufPath = path;
+            Object dbuf = nativeDirectBufferFromFile();
+            if (!(dbuf instanceof java.nio.ByteBuffer)) {
+                throw new java.io.IOException("no direct buffer for " + path);
+            }
+            java.nio.ByteBuffer bb = (java.nio.ByteBuffer) dbuf;
+
+            /* The modern android.graphics.fonts path is unusable in this lane: its
+             * Font$Builder.nBuild has shorty 'JJLLLIZI', which this interpreter has no
+             * hand-written branch for, so the call is silently dropped and returns 0 --
+             * surfacing later as "nativePtr is null" from NativeAllocationRegistry rather
+             * than as a link error. The deprecated android.graphics.FontFamily API reaches
+             * the same minikin code through much shorter shortys, and both the Java class
+             * and its libhwui table are still present here. */
+            Class<?> legacyCls = Class.forName("android.graphics.FontFamily", true, cl);
+            Object fam = legacyCls.getConstructor().newInstance();
+
+            Class<?> axisCls = Class.forName("android.graphics.fonts.FontVariationAxis", true, cl);
+            Class<?> axisArr = java.lang.reflect.Array.newInstance(axisCls, 0).getClass();
+            // addFontFromBuffer() bottoms out in nAddFontWeightStyle, whose shorty 'ZJLIII'
+            // this interpreter drops -- it returns false without ever calling minikin. Hand
+            // the builder pointer and buffer to the probe native, which calls the same
+            // libhwui entry directly with the real C ABI.
+            java.lang.reflect.Field bp = legacyCls.getDeclaredField("mBuilderPtr");
+            bp.setAccessible(true);
+            sFfBuilderPtr = bp.getLong(fam);
+            sFfBuffer = bb;
+            if (sFfBuilderPtr == 0L) throw new java.io.IOException("mBuilderPtr is 0");
+            if (nativeAddFontWeightStyle() == 0) {
+                throw new java.io.IOException("nAddFontWeightStyle rejected the font");
+            }
+
+            Object frozen = legacyCls.getMethod("freeze").invoke(fam);
+            if (Boolean.FALSE.equals(frozen)) throw new java.io.IOException("freeze failed");
+
+            Class<?> tc2 = Class.forName("android.graphics.Typeface", true, cl);
+            Object famArr = java.lang.reflect.Array.newInstance(legacyCls, 1);
+            java.lang.reflect.Array.set(famArr, 0, fam);
+            // RESOLVE_BY_FONT_TABLE == -1: let minikin read weight/slant off the file.
+            java.lang.reflect.Method cfd = tc2.getDeclaredMethod("createFromFamiliesWithDefault",
+                    famArr.getClass(), String.class, int.class, int.class);
+            cfd.setAccessible(true);
+            return cfd.invoke(null, famArr, "sans-serif",
+                    Integer.valueOf(-1), Integer.valueOf(-1));
+        }
+
+        private void wlAppendCauses(StringBuilder o, Throwable t) {
+            Throwable deepest = t;
+            for (int d = 0; t != null && d < 12; d++) {
+                o.append(d == 0 ? "" : " <- ").append(t.getClass().getName())
+                 .append(':').append(String.valueOf(t.getMessage()));
+                deepest = t;
+                t = t.getCause();
+            }
+            o.append('\n');
+            // The cause chain names the failure but not the frame; for "unbound native
+            // returned 0" symptoms (divide by zero, NPE on a native result) only the frame
+            // identifies which native is missing.
+            try {
+                StackTraceElement[] st = deepest.getStackTrace();
+                for (int i = 0; i < st.length && i < 14; i++) {
+                    o.append("    at ").append(st[i].getClassName()).append('.')
+                     .append(st[i].getMethodName()).append(':')
+                     .append(st[i].getLineNumber()).append('\n');
+                }
+            } catch (Throwable ig) {}
+        }
+
         private android.view.View buildNoiceMainActivity() {
             try {
+                wlDumpTypeface();
+                wlEnsureTypeface();
                 android.widget.LinearLayout ll = new android.widget.LinearLayout(ctx);
                 call(ll, "setOrientation", new Class[] { int.class }, new Object[] { Integer.valueOf(1) });
                 call(ll, "setId", new Class[] { int.class }, new Object[] { Integer.valueOf(0x7f090168) });
                 setLayoutParams(ll, -1, -1, 0f);
 
                 Object fm = ctx.getClass().getMethod("getSupportFragmentManager").invoke(ctx);
+                // Host synthesis has to happen here, before any transaction work: the manager
+                // instantiates fragments by class name via o0.a(String), which dereferences its
+                // own host. Wiring it later (next to mHost) is too late -- that call already ran.
+                Object wlSynthHost = null;
+                StringBuilder hostTrace = new StringBuilder();
+                try {
+                    // Declared here because the block was lifted out of a later scope.
+                    Object host = null;
+                    ClassLoader cl = targetClassLoader();
+                    if (cl == null) cl = ctx.getClass().getClassLoader();
+                // Nothing on the activity or the manager holds an i0, because this lane
+                // builds the Activity with Unsafe.allocateInstance -- FragmentActivity's
+                // constructor, which is what creates FragmentController/HostCallbacks,
+                // never ran. Synthesise the host instead: androidx.fragment.app.c0 is the
+                // concrete i0 subclass (found by parsing the APK's class_defs for
+                // superclass Landroidx/fragment/app/i0; -- acc=0x11, public final).
+                if (host == null) {
+                    try {
+                        // Resolve with the app's loader -- the native's own
+                        // FindClass cannot see noice's dex.
+                        sAllocClass = Class.forName("androidx.fragment.app.c0", false, cl);
+                        host = nativeAllocByName();
+                        if (host != null) {
+                            Class<?> i0 = Class.forName("androidx.fragment.app.i0", true, cl);
+                            for (Class<?> hk = host.getClass(); hk != null; hk = hk.getSuperclass()) {
+                                for (java.lang.reflect.Field hf2 : hk.getDeclaredFields()) {
+                                    if (java.lang.reflect.Modifier.isStatic(hf2.getModifiers())) continue;
+                                    hf2.setAccessible(true);
+                                    Class<?> ht = hf2.getType();
+                                    try {
+                                if (ht == android.content.Context.class
+                                        || ht.getName().equals("android.app.Activity")) {
+                                    hf2.set(host, ctx);
+                                } else if (ht.getName().equals("android.os.Handler")) {
+                                    // Shim's Handler has no (Looper) ctor at
+                                    // compile time; build it reflectively.
+                                    hf2.set(host, android.os.Handler.class
+                                            .getConstructor(android.os.Looper.class)
+                                            .newInstance(android.os.Looper.getMainLooper()));
+                                } else if (ht.getName().endsWith(".u0")
+                                        || ht.getName().endsWith(".v0")) {
+                                    // The manager slot on i0 is declared v0 here, not u0 --
+                                    // matching only u0 left i0.p null.
+                                    hf2.set(host, fm);
+                                } else if (ht.getName().endsWith(".d0") && ht.isInstance(ctx)) {
+                                    // c0.q is the concrete FragmentActivity reference; with it
+                                    // null, getOnBackPressedDispatcher() NPEs. Guarded by
+                                    // isInstance so we only fill it when it really fits.
+                                    hf2.set(host, ctx);
+                                }
+                                    } catch (Throwable ig) {}
+                                }
+                            }
+                            // Dump the host field table before wiring anything else: guessing which slot
+                            // holds the Activity has already cost two regressions.
+                            StringBuilder hostFields = new StringBuilder();
+                            for (Class<?> hk3 = host.getClass(); hk3 != null && hk3 != Object.class; hk3 = hk3.getSuperclass()) {
+                                hostFields.append('[').append(hk3.getSimpleName()).append("] ");
+                                for (java.lang.reflect.Field h3 : hk3.getDeclaredFields()) {
+                                    if (java.lang.reflect.Modifier.isStatic(h3.getModifiers())) continue;
+                                    h3.setAccessible(true);
+                                    Object hv3 = null;
+                                    try { hv3 = h3.get(host); } catch (Throwable ig) {}
+                                    hostFields.append(h3.getName()).append(':').append(h3.getType().getName())
+                                              .append('=').append(hv3 == null ? "null" : "set").append(' ');
+                                }
+                            }
+                            earlyWriteLiteral("/data/local/tmp/noice-hostfields.txt", hostFields.toString());
+                            hostTrace.append("synthesised:c0");
+                        }
+                    } catch (Throwable st) {
+                        hostTrace.append("synth-fail:").append(st.getClass().getSimpleName());
+                    }
+                }
+
+                    wlSynthHost = host;
+                    // Wire the host into every manager reachable from here BEFORE any
+                    // transaction: FragmentManager.o0.a(String) instantiates fragments by name
+                    // and dereferences its manager's host.
+                    if (host != null) {
+                        int w1 = 0;
+                        java.util.ArrayList<Object> mgrs = new java.util.ArrayList<Object>();
+                        mgrs.add(fm);
+                        for (java.lang.reflect.Method fmx : fm.getClass().getMethods()) {
+                            if (fmx.getParameterTypes().length != 0) continue;
+                            if (!fmx.getReturnType().getName().endsWith(".o0")) continue;
+                            Object facx;
+                            try { facx = fmx.invoke(fm); } catch (Throwable ig) { continue; }
+                            if (facx == null) continue;
+                            for (Class<?> fkx = facx.getClass(); fkx != null; fkx = fkx.getSuperclass()) {
+                                for (java.lang.reflect.Field fx : fkx.getDeclaredFields()) {
+                                    if (java.lang.reflect.Modifier.isStatic(fx.getModifiers())) continue;
+                                    if (!fx.getType().getName().endsWith(".u0")) continue;
+                                    try { fx.setAccessible(true); Object mg = fx.get(facx);
+                                          if (mg != null) mgrs.add(mg); } catch (Throwable ig) {}
+                                }
+                            }
+                        }
+                        for (Object mg : mgrs) {
+                            for (Class<?> gk2 = mg.getClass(); gk2 != null; gk2 = gk2.getSuperclass()) {
+                                for (java.lang.reflect.Field g2 : gk2.getDeclaredFields()) {
+                                    if (java.lang.reflect.Modifier.isStatic(g2.getModifiers())) continue;
+                                    if (!g2.getType().getName().endsWith(".i0")) continue;
+                                    try { g2.setAccessible(true); g2.set(mg, host); w1++; }
+                                    catch (Throwable ig) {}
+                                }
+                            }
+                        }
+                        hostTrace.append(" earlyMgrHost=").append(String.valueOf(w1))
+                                 .append(" mgrs=").append(String.valueOf(mgrs.size()));
+                    }
+                } catch (Throwable et) {
+                    hostTrace.append("early-fail:").append(et.getClass().getSimpleName());
+                }
+                earlyWriteLiteral("/data/local/tmp/noice-hostwire.txt", hostTrace.toString());
                 ClassLoader cl = Thread.currentThread().getContextClassLoader();
                 if (cl == null) cl = ctx.getClass().getClassLoader();
                 Class<?> fcvCls = Class.forName("androidx.fragment.app.FragmentContainerView", true, cl);
@@ -697,6 +1372,465 @@ public final class Dayu600ApkStageProbe {
                     fm.getClass().getMethod("z", opCls, boolean.class)
                             .invoke(fm, tx, Boolean.TRUE);
 
+                    // fm.z(tx, true) only enqueues; the fragment is still unattached, and
+                    // NavHostFragment's navHostController lazy throws
+                    // "NavController cannot be created before the fragment is attached".
+                    // Drain pending transactions first -- executePendingTransactions() is one of
+                    // the obfuscated no-arg boolean methods, so try each.
+                    for (java.lang.reflect.Method drain : fm.getClass().getMethods()) {
+                        if (drain.getParameterTypes().length != 0) continue;
+                        if (drain.getReturnType() != boolean.class) continue;
+                        String dn = drain.getName();
+                        if (dn.startsWith("is") || "equals".equals(dn)) continue;
+                        try { drain.invoke(fm); } catch (Throwable ig) {}
+                    }
+                    // Still unattached after draining: Fragment.getContext() reads mHost, which
+                    // only gets set when the manager moves the fragment through its states. Wire
+                    // it directly -- dump both field tables so the mapping is evidence, not guess.
+                    // Fragment's own field names survived R8 (mHost:i0, mFragmentManager:u0),
+                    // so wire the fragment to the host directly instead of relying on the manager
+                    // to move it through its states. Without mHost, Fragment.getContext() is null
+                    // and NavHostFragment's lazy navHostController throws
+                    // "NavController cannot be created before the fragment is attached".
+                    try {
+                        // The manager has no i0 field set, but FragmentActivity normally owns the
+                        // host inside its FragmentController. Look on the activity first, one level
+                        // deep (controller -> host), before concluding none exists.
+                        Object host = null;
+                        // hostTrace/host come from the early synthesis block above.
+                        for (Class<?> ak = ctx.getClass(); ak != null && host == null; ak = ak.getSuperclass()) {
+                            for (java.lang.reflect.Field af : ak.getDeclaredFields()) {
+                                if (java.lang.reflect.Modifier.isStatic(af.getModifiers())) continue;
+                                Object av;
+                                try { af.setAccessible(true); av = af.get(ctx); } catch (Throwable ig) { continue; }
+                                if (av == null) continue;
+                                String an = av.getClass().getName();
+                                if (an.endsWith(".i0")) { host = av; hostTrace.append("direct:").append(af.getName()); break; }
+                                if (!an.startsWith("androidx.fragment.app.")) continue;
+                                for (Class<?> ck = av.getClass(); ck != null && host == null; ck = ck.getSuperclass()) {
+                                    for (java.lang.reflect.Field cf : ck.getDeclaredFields()) {
+                                        if (java.lang.reflect.Modifier.isStatic(cf.getModifiers())) continue;
+                                        try { cf.setAccessible(true); } catch (Throwable ig) { continue; }
+                                        Object cv;
+                                        try { cv = cf.get(av); } catch (Throwable ig) { continue; }
+                                        if (cv != null && cv.getClass().getName().endsWith(".i0")) {
+                                            host = cv;
+                                            hostTrace.append("via:").append(af.getName()).append('.').append(cf.getName());
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (host != null) break;
+                            }
+                        }
+                        for (Class<?> mk = fm.getClass(); mk != null && host == null; mk = mk.getSuperclass()) {
+                            for (java.lang.reflect.Field hf : mk.getDeclaredFields()) {
+                                if (java.lang.reflect.Modifier.isStatic(hf.getModifiers())) continue;
+                                if (!hf.getType().getName().endsWith(".i0")) continue;
+                                hf.setAccessible(true);
+                                Object hv = hf.get(fm);
+                                if (hv != null) { host = hv; break; }
+                            }
+                        }
+                        Object wlHost = wlSynthHost;   // synthesised before any transaction ran
+                        java.lang.reflect.Field hostF = fragmentCls.getDeclaredField("mHost");
+                        hostF.setAccessible(true);
+                        if (wlHost != null) hostF.set(fragment, wlHost);
+                        // The FragmentFactory reads the MANAGER's host (o0.a -> i0.n), not the
+                        // fragment's, so the manager needs the same instance or instantiate()
+                        // NPEs on a null host.
+                        if (wlHost != null) {
+                            int wired = 0;
+                            for (Class<?> mk2 = fm.getClass(); mk2 != null; mk2 = mk2.getSuperclass()) {
+                                for (java.lang.reflect.Field mf3 : mk2.getDeclaredFields()) {
+                                    if (java.lang.reflect.Modifier.isStatic(mf3.getModifiers())) continue;
+                                    if (!mf3.getType().getName().endsWith(".i0")) continue;
+                                    try { mf3.setAccessible(true); mf3.set(fm, wlHost); wired++; }
+                                    catch (Throwable ig) {}
+                                }
+                            }
+                            // The FragmentFactory keeps its own i0 reference (o0.a reads i0.n on
+                            // it), so wiring only the manager is not enough.
+                            int facWired = 0;
+                            for (java.lang.reflect.Method fmm : fm.getClass().getMethods()) {
+                                if (fmm.getParameterTypes().length != 0) continue;
+                                if (!fmm.getReturnType().getName().endsWith(".o0")) continue;
+                                Object fac;
+                                try { fac = fmm.invoke(fm); } catch (Throwable ig) { continue; }
+                                if (fac == null) continue;
+                                for (Class<?> fk = fac.getClass(); fk != null; fk = fk.getSuperclass()) {
+                                    for (java.lang.reflect.Field ff3 : fk.getDeclaredFields()) {
+                                        if (java.lang.reflect.Modifier.isStatic(ff3.getModifiers())) continue;
+                                        if (!ff3.getType().getName().endsWith(".i0")) continue;
+                                        try { ff3.setAccessible(true); ff3.set(fac, wlHost); facWired++; }
+                                        catch (Throwable ig) {}
+                                    }
+                                }
+                            }
+                            // Two rounds of guessing by declared type failed, so enumerate the
+                            // factory completely: every field, static and instance, any type.
+                            StringBuilder facDump = new StringBuilder();
+                            for (java.lang.reflect.Method fmm2 : fm.getClass().getMethods()) {
+                                if (fmm2.getParameterTypes().length != 0) continue;
+                                if (!fmm2.getReturnType().getName().endsWith(".o0")) continue;
+                                Object fac2;
+                                try { fac2 = fmm2.invoke(fm); } catch (Throwable ig) { continue; }
+                                if (fac2 == null) continue;
+                                facDump.append("cls=").append(fac2.getClass().getName()).append(' ');
+                                for (Class<?> fk2 = fac2.getClass(); fk2 != null && fk2 != Object.class;
+                                        fk2 = fk2.getSuperclass()) {
+                                    for (java.lang.reflect.Field f4 : fk2.getDeclaredFields()) {
+                                        f4.setAccessible(true);
+                                        Object v4 = null;
+                                        try { v4 = f4.get(java.lang.reflect.Modifier.isStatic(f4.getModifiers()) ? null : fac2); }
+                                        catch (Throwable ig) {}
+                                        facDump.append(java.lang.reflect.Modifier.isStatic(f4.getModifiers()) ? "S:" : "")
+                                               .append(f4.getName()).append(':')
+                                               .append(f4.getType().getSimpleName()).append('=')
+                                               .append(v4 == null ? "null" : v4.getClass().getSimpleName())
+                                               .append(' ');
+                                    }
+                                }
+                                break;
+                            }
+                            earlyWriteLiteral("/data/local/tmp/noice-facdump.txt", facDump.toString());
+                            // o0's only instance field is a FragmentManager (a:u0). o0.a(String)
+                            // goes through THAT manager's host, which may be a different instance
+                            // from the one getSupportFragmentManager() handed us -- wire it too.
+                            int viaFacMgr = 0;
+                            for (java.lang.reflect.Method fmm3 : fm.getClass().getMethods()) {
+                                if (fmm3.getParameterTypes().length != 0) continue;
+                                if (!fmm3.getReturnType().getName().endsWith(".o0")) continue;
+                                Object fac3;
+                                try { fac3 = fmm3.invoke(fm); } catch (Throwable ig) { continue; }
+                                if (fac3 == null) continue;
+                                for (Class<?> fk3 = fac3.getClass(); fk3 != null; fk3 = fk3.getSuperclass()) {
+                                    for (java.lang.reflect.Field f5 : fk3.getDeclaredFields()) {
+                                        if (java.lang.reflect.Modifier.isStatic(f5.getModifiers())) continue;
+                                        if (!f5.getType().getName().endsWith(".u0")) continue;
+                                        f5.setAccessible(true);
+                                        Object mgr2;
+                                        try { mgr2 = f5.get(fac3); } catch (Throwable ig) { continue; }
+                                        if (mgr2 == null) continue;
+                                        for (Class<?> gk = mgr2.getClass(); gk != null; gk = gk.getSuperclass()) {
+                                            for (java.lang.reflect.Field g1 : gk.getDeclaredFields()) {
+                                                if (java.lang.reflect.Modifier.isStatic(g1.getModifiers())) continue;
+                                                if (!g1.getType().getName().endsWith(".i0")) continue;
+                                                try { g1.setAccessible(true); g1.set(mgr2, wlHost); viaFacMgr++; }
+                                                catch (Throwable ig) {}
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                            hostTrace.append(" facMgrHost=").append(String.valueOf(viaFacMgr));
+                            hostTrace.append(" mgrHostFields=").append(String.valueOf(wired))
+                                     .append(" facHostFields=").append(String.valueOf(facWired));
+                        }
+                        java.lang.reflect.Field fmF = fragmentCls.getDeclaredField("mFragmentManager");
+                        fmF.setAccessible(true);
+                        fmF.set(fragment, fm);
+                        // The fragment carries its own child FragmentManager, created fresh with
+                        // no host; that is the remaining manager o0.a(String) can land on.
+                        try {
+                            java.lang.reflect.Field cfmF = fragmentCls.getDeclaredField("mChildFragmentManager");
+                            cfmF.setAccessible(true);
+                            Object cfm = cfmF.get(fragment);
+                            if (cfm != null && wlHost != null) {
+                                for (Class<?> ck2 = cfm.getClass(); ck2 != null; ck2 = ck2.getSuperclass()) {
+                                    for (java.lang.reflect.Field c2 : ck2.getDeclaredFields()) {
+                                        if (java.lang.reflect.Modifier.isStatic(c2.getModifiers())) continue;
+                                        if (!c2.getType().getName().endsWith(".i0")) continue;
+                                        try { c2.setAccessible(true); c2.set(cfm, wlHost); } catch (Throwable ig) {}
+                                    }
+                                }
+                            }
+                        } catch (Throwable ig) {}
+                        java.lang.reflect.Field addedF = fragmentCls.getDeclaredField("mAdded");
+                        addedF.setAccessible(true);
+                        addedF.setBoolean(fragment, true);
+                        // getViewModelStore() refuses while the fragment is still INITIALIZED
+                        // ("Calling getViewModelStore() before a Fragment reaches onCreate()"),
+                        // which is what NavHostFragment's lazy controller hits next. Push both the
+                        // cap and the registry past that state. Lifecycle$State keeps its name.
+                        try {
+                            Class<?> stateCls = Class.forName("androidx.lifecycle.Lifecycle$State", true, cl);
+                            Object resumed = null;
+                            for (Object st : stateCls.getEnumConstants()) {
+                                if ("RESUMED".equals(st.toString())) { resumed = st; break; }
+                            }
+                            java.lang.reflect.Field maxF = fragmentCls.getDeclaredField("mMaxState");
+                            maxF.setAccessible(true);
+                            if (resumed != null) maxF.set(fragment, resumed);
+                            java.lang.reflect.Field lrF = fragmentCls.getDeclaredField("mLifecycleRegistry");
+                            lrF.setAccessible(true);
+                            Object lr = lrF.get(fragment);
+                            if (lr != null && resumed != null) {
+                                for (java.lang.reflect.Method lm : lr.getClass().getMethods()) {
+                                    Class<?>[] lp = lm.getParameterTypes();
+                                    if (lp.length == 1 && lp[0] == stateCls
+                                            && lm.getReturnType() == void.class) {
+                                        try { lm.invoke(lr, resumed); } catch (Throwable ig) {}
+                                    }
+                                }
+                            }
+                            hostTrace.append(" state=").append(String.valueOf(maxF.get(fragment)));
+                            // NavHostController reads saved state via
+                            // SavedStateRegistry.consumeRestoredStateForKey, which refuses until
+                            // performRestore() has run ("only after super.onCreate of
+                            // corresponding component"). The fragment never went through
+                            // onCreate here, so drive the restore directly. Fragment's own field
+                            // names are not obfuscated; the controller's method is, so match it
+                            // by shape: (Bundle) -> void.
+                            java.lang.reflect.Field ssrcF = null;
+                            for (java.lang.reflect.Field sf : fragmentCls.getDeclaredFields()) {
+                                if (sf.getName().equals("mSavedStateRegistryController")) { ssrcF = sf; break; }
+                            }
+                            if (ssrcF != null) {
+                                ssrcF.setAccessible(true);
+                                Object ssrc = ssrcF.get(fragment);
+                                if (ssrc != null) {
+                                    boolean restored = false;
+                                    StringBuilder ctlApi = new StringBuilder();
+                                    for (java.lang.reflect.Method rm : ssrc.getClass().getMethods()) {
+                                        Class<?>[] rp = rm.getParameterTypes();
+                                        if (rp.length > 1) continue;
+                                        String rn = rm.getReturnType().getSimpleName();
+                                        ctlApi.append(rm.getName()).append('(')
+                                              .append(rp.length == 0 ? "" : rp[0].getSimpleName())
+                                              .append(")->").append(rn).append(' ');
+                                        if (rp.length == 1 && rp[0] == android.os.Bundle.class
+                                                && rm.getReturnType() == void.class) {
+                                            try { rm.invoke(ssrc, (Object) null); restored = true; }
+                                            catch (Throwable ig) {}
+                                        }
+                                    }
+                                    // performRestore is obfuscated and may reject a null Bundle, so
+                                    // also flip the registry's own "restored" flag directly: that
+                                    // boolean is exactly what consumeRestoredStateForKey checks.
+                                    StringBuilder regFlags = new StringBuilder();
+                                    for (java.lang.reflect.Field cfld : ssrc.getClass().getDeclaredFields()) {
+                                        cfld.setAccessible(true);
+                                        Object reg;
+                                        try { reg = cfld.get(ssrc); } catch (Throwable ig) { continue; }
+                                        if (reg == null) continue;
+                                        for (java.lang.reflect.Field rf : reg.getClass().getDeclaredFields()) {
+                                            if (rf.getType() != boolean.class) continue;
+                                            if (java.lang.reflect.Modifier.isStatic(rf.getModifiers())) continue;
+                                            rf.setAccessible(true);
+                                            try {
+                                                regFlags.append(rf.getName()).append('=')
+                                                        .append(String.valueOf(rf.getBoolean(reg)));
+                                                if (!rf.getBoolean(reg)) { rf.setBoolean(reg, true); regFlags.append("->true"); }
+                                                regFlags.append(' ');
+                                            } catch (Throwable ig) {}
+                                        }
+                                    }
+                                    hostTrace.append(" restore=").append(String.valueOf(restored))
+                                             .append(" ctl=[").append(ctlApi).append(']')
+                                             .append(" regFlags=[").append(regFlags).append(']');
+                                } else {
+                                    hostTrace.append(" restore=no-controller");
+                                }
+                            } else {
+                                hostTrace.append(" restore=no-field");
+                            }
+                        } catch (Throwable lt) {
+                            hostTrace.append(" state-fail:").append(lt.getClass().getSimpleName());
+                        }
+                        earlyWriteLiteral("/data/local/tmp/noice-fragfields.txt",
+                                "hostTrace=" + hostTrace
+                                + " host=" + (host == null ? "null" : host.getClass().getName())
+                                + " ctx=" + String.valueOf(
+                                        fragmentCls.getMethod("getContext").invoke(fragment)));
+                    } catch (Throwable wt) {
+                        earlyWriteLiteral("/data/local/tmp/noice-fragfields.txt",
+                                "wire-fail:" + wt.getClass().getName() + ":" + wt.getMessage());
+                    }
+                    // Create the fragment's View and put it in the container: without this the
+                    // NavHost exists but the container stays empty, so the whole tree draws
+                    // nothing. onCreateView is renamed by R8, so match it by shape.
+                    try {
+                        Class<?> liC = Class.forName("android.view.LayoutInflater");
+                        Class<?> vgC = Class.forName("android.view.ViewGroup");
+                        Class<?> vC  = Class.forName("android.view.View");
+                        java.lang.reflect.Method onCreateView = null;
+                        for (Class<?> nk = navHostCls; nk != null && onCreateView == null;
+                                nk = nk.getSuperclass()) {
+                            for (java.lang.reflect.Method nm2 : nk.getDeclaredMethods()) {
+                                Class<?>[] np2 = nm2.getParameterTypes();
+                                if (np2.length != 3) continue;
+                                if (np2[0] != liC || np2[1] != vgC) continue;
+                                if (!android.os.Bundle.class.isAssignableFrom(np2[2])) continue;
+                                if (!vC.isAssignableFrom(nm2.getReturnType())) continue;
+                                nm2.setAccessible(true); onCreateView = nm2; break;
+                            }
+                        }
+                        if (onCreateView == null) {
+                            earlyWriteLiteral("/data/local/tmp/noice-fragview.txt", "onCreateView=not-found");
+                        } else {
+                            Object fragView = onCreateView.invoke(fragment,
+                                    android.view.LayoutInflater.class
+                                        .getMethod("from", android.content.Context.class)
+                                        .invoke(null, ctx),
+                                    nav, null);
+                            if (fragView != null) {
+                                // FragmentContainerView.addView rejects children that are not
+                                // associated with a Fragment; the association is a tag keyed by
+                                // androidx's fragment_container_view_tag (resource names survive
+                                // R8, so it can be resolved by name).
+                                try {
+                                    android.content.res.Resources rs2 =
+                                            ((android.content.Context) ctx).getResources();
+                                    int tagId = rs2.getIdentifier("fragment_container_view_tag",
+                                            "id", rs2.getResourcePackageName(0x7f090167));
+                                    if (tagId != 0) {
+                                        vC.getMethod("setTag", int.class, Object.class)
+                                          .invoke(fragView, Integer.valueOf(tagId), fragment);
+                                    }
+                                } catch (Throwable ig) {}
+                                android.view.ViewGroup.class
+                                        .getMethod("addView", vC)
+                                        .invoke(nav, fragView);
+                            }
+                            // One level down: the view we just added is NavHost's INNER
+                            // container, still empty. Repeat the same pattern for the actual
+                            // destination fragment so there is finally something to draw.
+                            String homeState = "skipped";
+                            if (fragView != null) {
+                                try {
+                                    Class<?> homeCls = Class.forName(
+                                            "com.github.ashutoshgngwr.noice.fragment.HomeFragment",
+                                            true, cl);
+                                    Object home2 = homeCls.getConstructor().newInstance();
+                                    java.lang.reflect.Field hh = fragmentCls.getDeclaredField("mHost");
+                                    hh.setAccessible(true); hh.set(home2, wlSynthHost);
+                                    java.lang.reflect.Field hfm = fragmentCls.getDeclaredField("mFragmentManager");
+                                    hfm.setAccessible(true); hfm.set(home2, fm);
+                                    java.lang.reflect.Method hOnCreate = null;
+                                    for (Class<?> hk4 = homeCls; hk4 != null && hOnCreate == null;
+                                            hk4 = hk4.getSuperclass()) {
+                                        for (java.lang.reflect.Method hm4 : hk4.getDeclaredMethods()) {
+                                            Class<?>[] hp4 = hm4.getParameterTypes();
+                                            if (hp4.length != 3) continue;
+                                            if (hp4[0] != liC || hp4[1] != vgC) continue;
+                                            if (!android.os.Bundle.class.isAssignableFrom(hp4[2])) continue;
+                                            if (!vC.isAssignableFrom(hm4.getReturnType())) continue;
+                                            hm4.setAccessible(true); hOnCreate = hm4; break;
+                                        }
+                                    }
+                                    if (hOnCreate == null) { homeState = "no-onCreateView"; }
+                                    else {
+                                        // AppCompat widgets refuse to inflate unless the theme
+                                        // descends from Theme.AppCompat. Apply the app's real
+                                        // theme: prefer the id the package declares, fall back to
+                                        // the usual style names (style names survive R8).
+                                        try {
+                                            android.content.res.Resources rs4 =
+                                                    ((android.content.Context) ctx).getResources();
+                                            String pkg4 = rs4.getResourcePackageName(0x7f090167);
+                                            int themeId = 0;
+                                            try {
+                                                Object ai = ctx.getClass()
+                                                        .getMethod("getApplicationInfo").invoke(ctx);
+                                                java.lang.reflect.Field tf4 = ai.getClass().getField("theme");
+                                                themeId = ((Integer) tf4.get(ai)).intValue();
+                                            } catch (Throwable ig) {}
+                                            if (themeId == 0) {
+                                                for (String cand : new String[] {
+                                                        "Theme.App", "AppTheme", "Theme_App",
+                                                        "Theme.Noice", "Base.Theme.App" }) {
+                                                    themeId = rs4.getIdentifier(cand, "style", pkg4);
+                                                    if (themeId != 0) break;
+                                                }
+                                            }
+                                            if (themeId != 0) {
+                                                Object th = ctx.getClass().getMethod("getTheme").invoke(ctx);
+                                                th.getClass().getMethod("applyStyle", int.class, boolean.class)
+                                                  .invoke(th, Integer.valueOf(themeId), Boolean.TRUE);
+                                                earlyWriteLiteral("/data/local/tmp/noice-theme.txt",
+                                                        "applied=0x" + Integer.toHexString(themeId));
+                                            } else {
+                                                earlyWriteLiteral("/data/local/tmp/noice-theme.txt", "no-theme-id");
+                                            }
+                                        } catch (Throwable tt4) {
+                                            earlyWriteLiteral("/data/local/tmp/noice-theme.txt",
+                                                    "theme-fail:" + tt4.getClass().getSimpleName());
+                                        }
+                                        // A bare LayoutInflater has no FragmentManager Factory2,
+                                        // so a <fragment> tag in the layout (home_fragment line 17)
+                                        // reaches Activity.onCreateView and throws
+                                        // UnsupportedOperationException("Fragment"). Install the
+                                        // manager's factory on a cloned inflater first.
+                                        Class<?> liC2 = Class.forName("android.view.LayoutInflater");
+                                        Object hInf = liC2.getMethod("from", android.content.Context.class)
+                                                .invoke(null, ctx);
+                                        hInf = liC2.getMethod("cloneInContext", android.content.Context.class)
+                                                .invoke(hInf, ctx);
+                                        Object hFactory = null;
+                                        for (Class<?> mk5 = fm.getClass(); mk5 != null && hFactory == null;
+                                                mk5 = mk5.getSuperclass()) {
+                                            for (java.lang.reflect.Field f5 : mk5.getDeclaredFields()) {
+                                                if (java.lang.reflect.Modifier.isStatic(f5.getModifiers())) continue;
+                                                f5.setAccessible(true);
+                                                Object fv5;
+                                                try { fv5 = f5.get(fm); } catch (Throwable ig) { continue; }
+                                                if (fv5 instanceof android.view.LayoutInflater.Factory2) {
+                                                    hFactory = fv5; break;
+                                                }
+                                            }
+                                        }
+                                        if (hFactory != null) {
+                                            liC2.getMethod("setFactory2",
+                                                    Class.forName("android.view.LayoutInflater$Factory2"))
+                                                .invoke(hInf, hFactory);
+                                        }
+                                        Object homeView = hOnCreate.invoke(home2, hInf, fragView, null);
+                                        if (homeView == null) { homeState = "view-null"; }
+                                        else {
+                                            android.content.res.Resources rs3 =
+                                                    ((android.content.Context) ctx).getResources();
+                                            int tag3 = rs3.getIdentifier("fragment_container_view_tag",
+                                                    "id", rs3.getResourcePackageName(0x7f090167));
+                                            if (tag3 != 0) {
+                                                vC.getMethod("setTag", int.class, Object.class)
+                                                  .invoke(homeView, Integer.valueOf(tag3), home2);
+                                            }
+                                            android.view.ViewGroup.class.getMethod("addView", vC)
+                                                    .invoke(fragView, homeView);
+                                            homeState = "added:" + homeView.getClass().getSimpleName()
+                                                    + " kids=" + viewChildCount((android.view.View) fragView);
+                                        }
+                                    }
+                                } catch (Throwable ht2) {
+                                    // "Error inflating class <unknown>" is only the outer wrapper;
+                                    // the real reason is further down the cause chain.
+                                    StringBuilder chain = new StringBuilder();
+                                    Throwable c5 = ht2;
+                                    for (int d = 0; c5 != null && d < 12; d++) {
+                                        chain.append(d == 0 ? "" : " <- ")
+                                             .append(c5.getClass().getName()).append(':')
+                                             .append(String.valueOf(c5.getMessage()));
+                                        if (c5.getCause() == c5) break;
+                                        c5 = c5.getCause();
+                                    }
+                                    homeState = "fail:" + chain;
+                                }
+                            }
+                            earlyWriteLiteral("/data/local/tmp/noice-fragview.txt",
+                                    "onCreateView=" + onCreateView.getName()
+                                    + " view=" + (fragView == null ? "null"
+                                                 : fragView.getClass().getSimpleName())
+                                    + " navKids=" + viewChildCount(nav)
+                                    + " | home=" + homeState);
+                        }
+                    } catch (Throwable vt) {
+                        Throwable vc2 = vt instanceof java.lang.reflect.InvocationTargetException
+                                && vt.getCause() != null ? vt.getCause() : vt;
+                        earlyWriteLiteral("/data/local/tmp/noice-fragview.txt",
+                                "onCreateView-fail:" + vc2.getClass().getName() + ":" + vc2.getMessage());
+                    }
                     Object controller = navHostCls.getMethod("m").invoke(fragment);
                     Object provider = null;
                     for (Class<?> owner = controller.getClass(); owner != null && provider == null;
@@ -982,10 +2116,20 @@ public final class Dayu600ApkStageProbe {
         }
         // The app's onCreate touches real storage dirs (cache/files). Back them with a
         // writable subtree under the substrate root so getCacheDir()/etc. don't NPE.
+        private static final java.util.HashMap<String, java.io.File> APP_DIRS =
+                new java.util.HashMap<String, java.io.File>();
         private static java.io.File appDir(String sub) {
-            java.io.File d = new java.io.File(rootPath() + "/appdata/" + sub);
-            d.mkdirs();
-            return d;
+            // Cached: View.<init> -> hasRtlSupport -> getApplicationInfo lands here for every
+            // single View, and re-running File+mkdirs on that path is both pathological and
+            // where the VM aborted (a NoSuchFieldError it could not even materialise).
+            synchronized (APP_DIRS) {
+                java.io.File hit = APP_DIRS.get(sub);
+                if (hit != null) return hit;
+                java.io.File d = new java.io.File(rootPath() + "/appdata/" + sub);
+                d.mkdirs();
+                APP_DIRS.put(sub, d);
+                return d;
+            }
         }
         public java.io.File getCacheDir() { return appDir("cache"); }
         public java.io.File getCodeCacheDir() { return appDir("code_cache"); }
@@ -1018,13 +2162,42 @@ public final class Dayu600ApkStageProbe {
                 android.database.DatabaseErrorHandler errorHandler) {
             return openOrCreateDatabase(name, mode, factory);
         }
+        private static android.content.pm.ApplicationInfo cachedAppInfo;
+        /* ContextWrapper methods ProbeContext does not override fall through to mBase, which is
+         * null here (ctxChain = MainActivity > ProbeContext > null). View.<init> calls
+         * isRestricted() on every inflate, so without this every widget inflation NPEs.
+         * Declared without @Override on purpose: the compile-time framework shim does not know
+         * these, but at runtime they override by signature. */
+        public boolean isRestricted() { return false; }
+
+        public int getDisplayId() { return 0; }
+
+        /* Batch the rest of the hidden Context surface that View construction / inflation walks
+         * into, rather than discovering them one NPE per build cycle. All of these would
+         * otherwise fall through ContextWrapper to the null mBase. */
+        public boolean canLoadUnsafeResources() { return true; }
+
+        public boolean isUiContext() { return true; }
+
+        public boolean isConfigurationContext() { return false; }
+
+        public int getNextAutofillId() { return 0; }
+
+        public boolean isDeviceProtectedStorage() { return false; }
+
+        public boolean isCredentialProtectedStorage() { return false; }
+
+        public int getUserId() { return 0; }
+
         public android.content.pm.ApplicationInfo getApplicationInfo() {
+            if (cachedAppInfo != null) return cachedAppInfo;
             android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
             ai.packageName = getPackageName();
             ai.dataDir = rootPath() + "/appdata";
             ai.nativeLibraryDir = appDir("lib").getAbsolutePath();
             ai.targetSdkVersion = 34;
             ai.uid = 10000;
+            cachedAppInfo = ai;
             return ai;
         }
         private String appApkPath() {
@@ -1805,7 +2978,13 @@ public final class Dayu600ApkStageProbe {
             Throwable cause = t.getCause();
             int guard = 0;
             while (cause != null && guard < 4) {
-                try { sb.append("cause=").append(cause.getClass().getName()).append('\n'); } catch (Throwable ig) {}
+                // The message is where androidx explains itself ("ViewModelStore should be set
+                // before setGraph", "not attached", ...); without it the frame list alone forces
+                // guesswork.
+                try {
+                    sb.append("cause=").append(cause.getClass().getName())
+                      .append(": ").append(String.valueOf(cause.getMessage())).append('\n');
+                } catch (Throwable ig) {}
                 appendFrames(sb, cause);
                 cause = cause.getCause();
                 guard++;
@@ -3364,6 +4543,18 @@ public final class Dayu600ApkStageProbe {
                 writeText(log, out.toString());
             }
             try {
+                // Must land before 08d: AppCompat's delegate walk reaches ServiceManager.getService(),
+                // and an unseeded sServiceManager NPEs on the A15 getService2() call.
+                java.lang.reflect.Field smF0 = Class.forName("android.os.ServiceManager")
+                        .getDeclaredField("sServiceManager");
+                smF0.setAccessible(true);
+                if (smF0.get(null) == null) { smF0.set(null, new WestlakeServiceManager()); }
+                out.append("08c2 serviceManager=early\n"); writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08c2 serviceManager=early-fail:").append(t.getClass().getName()).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
                 Object appCompatDelegate = mainCls.getMethod("getDelegate").invoke(activity);
                 Object activityWindow = null;
                 try {
@@ -3503,32 +4694,67 @@ public final class Dayu600ApkStageProbe {
                         .getResources().getDisplayMetrics();
                 int densityKey = (int) (metrics.density * 100.0f);
                 Class<?> vcCls = Class.forName("android.view.ViewConfiguration");
-                Object unsafe = null;
-                Class<?> uc = null;
-                for (String n : new String[] { "sun.misc.Unsafe", "jdk.internal.misc.Unsafe" }) {
-                    try {
-                        uc = Class.forName(n);
-                        java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
-                        tf.setAccessible(true);
-                        unsafe = tf.get(null);
-                        break;
-                    } catch (Throwable ignored) {}
+                // ViewConfiguration's deprecated no-arg ctor fills every field from the
+                // platform default constants and never touches Context -- unlike
+                // Unsafe.allocateInstance (not bound in this VM) it also leaves no zeroed fields.
+                Object vc;
+                String vcHow;
+                try {
+                    java.lang.reflect.Constructor<?> vcCtor = vcCls.getDeclaredConstructor();
+                    vcCtor.setAccessible(true);
+                    vc = vcCtor.newInstance();
+                    vcHow = "ctor";
+                } catch (Throwable noCtor) {
+                    Object unsafe = null;
+                    Class<?> uc = null;
+                    for (String n : new String[] { "sun.misc.Unsafe", "jdk.internal.misc.Unsafe" }) {
+                        try {
+                            uc = Class.forName(n);
+                            java.lang.reflect.Field tf = uc.getDeclaredField("theUnsafe");
+                            tf.setAccessible(true);
+                            unsafe = tf.get(null);
+                            break;
+                        } catch (Throwable ignored) {}
+                    }
+                    vc = unsafe != null && uc != null
+                            ? uc.getMethod("allocateInstance", Class.class).invoke(unsafe, vcCls)
+                            : null;
+                    vcHow = "unsafe";
                 }
-                Object vc = unsafe != null && uc != null
-                        ? uc.getMethod("allocateInstance", Class.class).invoke(unsafe, vcCls)
-                        : null;
                 java.lang.reflect.Field cfgF = vcCls.getDeclaredField("sConfigurations");
                 cfgF.setAccessible(true);
                 Object cfg = cfgF.get(null);
                 cfg.getClass().getMethod("put", int.class, Object.class)
                         .invoke(cfg, Integer.valueOf(densityKey), vc);
-                out.append("08g viewConfig=seeded:").append(densityKey).append('\n');
+                out.append("08g viewConfig=seeded:").append(vcHow).append('/').append(densityKey)
+                   .append('\n');
                 writeText(log, out.toString());
             } catch (Throwable t) {
                 Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
                         ? t.getCause() : t;
                 out.append("08g viewConfig=fail:").append(c.getClass().getName()).append(':')
                    .append(String.valueOf(c.getMessage())).append('\n');
+                writeText(log, out.toString());
+            }
+            try {
+                // Walk Activity -> mBase -> mBase ... : the chain bottoming out in null is what
+                // makes every hidden Context method (getDisplayId, getUser, ...) NPE.
+                java.lang.reflect.Field chainBaseF = android.content.ContextWrapper.class
+                        .getDeclaredField("mBase");
+                chainBaseF.setAccessible(true);
+                StringBuilder chain = new StringBuilder();
+                Object cur = activity;
+                for (int i = 0; i < 8; i++) {
+                    if (cur == null) { chain.append("null"); break; }
+                    if (i > 0) chain.append('>');
+                    chain.append(cur.getClass().getSimpleName());
+                    if (!(cur instanceof android.content.ContextWrapper)) { chain.append("(leaf)"); break; }
+                    cur = chainBaseF.get(cur);
+                }
+                out.append("08g2 ctxChain=").append(chain).append('\n');
+                writeText(log, out.toString());
+            } catch (Throwable t) {
+                out.append("08g2 ctxChain=fail:").append(t.getClass().getName()).append('\n');
                 writeText(log, out.toString());
             }
             try {
@@ -3613,6 +4839,7 @@ public final class Dayu600ApkStageProbe {
             try {
                 onCreate.invoke(activity, new Object[] { null });
                 out.append("09 MainActivity.onCreate=ok\n");
+                writeText(log, out.toString());
             } catch (Throwable t) {
                 Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
                         ? t.getCause() : t;
@@ -3642,12 +4869,24 @@ public final class Dayu600ApkStageProbe {
                 if (heavy == null || heavy.length() == 0) {
                     throw new IllegalStateException("WESTLAKE_HEAVY_BRIDGE_PATH missing");
                 }
-                wlLoadLib("/system/lib64/platformsdk/libace.z.so");
-                wlLoadLib("/system/lib64/platformsdk/libconfiguration.z.so");
+                out.append("10p0 heavy=").append(heavy).append('\n'); writeText(log, out.toString());
+                // libace (ArkUI) is app-lane baggage: the renderer's DT_NEEDED wants
+                // librender_service_client/libsurface, not ArkUI, and loading libace into this
+                // process SIGSEGVs (uncatchable) before the bridge is even reached. Opt-in only.
+                if (streqEnv("WESTLAKE_LOAD_ACE", "1")) {
+                    wlLoadLib("/system/lib64/platformsdk/libace.z.so");
+                    out.append("10p1 libace=ok\n"); writeText(log, out.toString());
+                    wlLoadLib("/system/lib64/platformsdk/libconfiguration.z.so");
+                    out.append("10p2 libconfiguration=ok\n"); writeText(log, out.toString());
+                } else {
+                    out.append("10p1 libace=skipped\n"); writeText(log, out.toString());
+                }
                 java.lang.Runtime.getRuntime().load(heavy);
                 out.append("10 renderer=loaded\n");
+                writeText(log, out.toString());
                 int hwuiRc = nativeRegisterHwuiRender();
                 out.append("10a hwuiSubset=").append(String.valueOf(hwuiRc)).append('\n');
+                writeText(log, out.toString());
 
                 android.view.View root = (android.view.View) mainCls
                         .getMethod("findViewById", int.class)
@@ -3657,34 +4896,435 @@ public final class Dayu600ApkStageProbe {
                 int realNodes = wlReplaceRenderNodes(root);
                 wlBootstrapTextViews(root);
                 wlBootstrapViewGroupFlags(root);
+                // A real measure+layout pass first: wlForceViewBounds only pokes mLeft/mRight
+                // and the measured dims by reflection, so onMeasure/onLayout never run and a
+                // TextView never builds its text Layout -- the recorded display list then comes
+                // out essentially empty and the overlay composites as transparent (screenshot on
+                // 5583 showed the launcher straight through it, 2026-07-19).
+                String measureState;
+                try {
+                    int wSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+                            w, android.view.View.MeasureSpec.EXACTLY);
+                    int hSpec = android.view.View.MeasureSpec.makeMeasureSpec(
+                            h, android.view.View.MeasureSpec.EXACTLY);
+                    root.measure(wSpec, hSpec);
+                    root.layout(0, 0, w, h);
+                    measureState = root.getMeasuredWidth() + "x" + root.getMeasuredHeight();
+                } catch (Throwable mt) {
+                    measureState = "fail:" + mt.getClass().getName() + ":" + mt.getMessage();
+                }
+                // Decisive probe (WL_TINT=<argb>): paint a solid colour onto the root before
+                // recording. If it reaches the panel, the whole record->RSSurfaceNode->drawFrame
+                // chain is proven and any remaining blankness is noice's own views having no
+                // background to draw (08a shows PhoneWindow/decor never came up, so the theme
+                // background drawable is absent). If it does NOT reach the panel, the overlay
+                // itself is not being presented and the problem is z-order/alpha, not content.
+                String tint = System.getenv("WL_TINT");
+                if (tint != null && tint.length() > 0) {
+                    try {
+                        // Reflection: the compile-time framework shim's View has no
+                        // setBackgroundColor, but the real A15 View on the board does.
+                        android.view.View.class.getMethod("setBackgroundColor", int.class)
+                                .invoke(root, Integer.valueOf((int) Long.parseLong(tint, 16)));
+                        out.append("10b0t tint=").append(tint).append('\n');
+                    } catch (Throwable tt) {
+                        out.append("10b0t tint=fail:").append(tt.getClass().getName()).append('\n');
+                    }
+                }
+                // Why the render comes out empty: report each child's post-layout geometry,
+                // visibility and whether it even has a background to paint.
+                StringBuilder kids = new StringBuilder();
+                try {
+                    int kc = viewChildCount(root);
+                    for (int i = 0; i < kc && i < 6; i++) {
+                        android.view.View ch = viewChildAt(root, i);
+                        if (ch == null) { kids.append("[null] "); continue; }
+                        Object bg = null;
+                        try { bg = android.view.View.class.getMethod("getBackground").invoke(ch); }
+                        catch (Throwable ig) {}
+                        kids.append(ch.getClass().getSimpleName()).append('(')
+                            .append(String.valueOf(android.view.View.class.getMethod("getMeasuredWidth").invoke(ch)))
+                            .append('x')
+                            .append(String.valueOf(android.view.View.class.getMethod("getMeasuredHeight").invoke(ch)))
+                            .append(" vis=")
+                            .append(String.valueOf(android.view.View.class.getMethod("getVisibility").invoke(ch)))
+                            .append(" bg=").append(bg == null ? "null" : bg.getClass().getSimpleName())
+                            .append(" kids=").append(String.valueOf(viewChildCount(ch)))
+                            .append(") ");
+                    }
+                } catch (Throwable t2) { kids.append("scan-fail:").append(t2.getClass().getSimpleName()); }
+                Object rootBg = null;
+                try { rootBg = android.view.View.class.getMethod("getBackground").invoke(root); }
+                catch (Throwable ig) {}
+                out.append("10b0c rootBg=").append(rootBg == null ? "null" : rootBg.getClass().getSimpleName())
+                   .append(" children=[").append(kids).append("]\n");
+                out.append("10b0 measureLayout=").append(measureState).append('\n');
+                writeText(log, out.toString());
+                // Only as a fallback: wlForceViewBounds recursively slams EVERY descendant to
+                // (0,0,w,h), so running it after a successful measure/layout flattens the whole
+                // tree into full-screen overlapping views -- which is exactly why the render came
+                // out as one uniform background colour with no widgets.
+                // Keep applying it: the real measure/layout leaves every child at zero size
+                // (noice's content is fragment-hosted and the nav host never inflated), so
+                // skipping this draws an entirely transparent frame. Forcing the bounds is what
+                // makes the one thing that does exist -- the theme background -- paintable.
                 wlForceViewBounds(root, 0, 0, w, h);
+                out.append("10b0f forceBounds=applied\n");
+                writeText(log, out.toString());
                 out.append("10b root=").append(root.getClass().getName())
                    .append(" children=").append(String.valueOf(viewChildCount(root)))
                    .append(" realNodes=").append(String.valueOf(realNodes)).append('\n');
+                writeText(log, out.toString());
 
-                Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
-                Object node = ups.getMethod("record", android.view.View.class, int.class, int.class)
-                        .invoke(null, root, Integer.valueOf(w), Integer.valueOf(h));
-                java.lang.reflect.Method nPtr = ups.getDeclaredMethod(
-                        "nativeRenderNodePtr", Class.forName("android.graphics.RenderNode"));
-                nPtr.setAccessible(true);
-                long ptr = ((Long) nPtr.invoke(null, node)).longValue();
-                wlLoadLib("/system/lib64/libskia_canvaskit.z.so");
-                java.lang.reflect.Method nInit = ups.getDeclaredMethod(
-                        "nativeInit", long.class, int.class, int.class);
-                nInit.setAccessible(true);
-                int initRc = ((Integer) nInit.invoke(null, Long.valueOf(ptr),
-                        Integer.valueOf(w), Integer.valueOf(h))).intValue();
-                out.append("10c nativeInit=").append(String.valueOf(initRc))
-                   .append(" ptr=").append(String.valueOf(ptr)).append('\n');
-                if (initRc != 2) throw new IllegalStateException("Noice nativeInit=" + initRc);
-                java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
-                nDraw.setAccessible(true);
-                nDraw.invoke(null);
-                java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
-                nSwap.setAccessible(true);
-                long swap = ((Long) nSwap.invoke(null)).longValue();
-                out.append("10d noiceSurface=drawn swapArgb=").append(String.valueOf(swap)).append('\n');
+                // WL_BLIT owns the panel: the renderer's nativeInit creates its own opaque
+                // full-screen RSSurfaceNode, and an empty one on top of ours would hide the blit.
+                // hwui cannot present on this board anyway (no window-surface path in libhwui),
+                // so when blitting we skip the whole record -> nativeInit -> drawFrame section.
+                if (System.getenv("WL_BLIT") == null || System.getenv("WL_BLIT").length() == 0) {
+                    out.append("10b1 upscreen=resolving\n"); writeText(log, out.toString());
+                    Class<?> ups = Class.forName("adapter.window.WestlakeUpscreen");
+                    out.append("10b2 upscreen=class-ok\n"); writeText(log, out.toString());
+                    Object node = ups.getMethod("record", android.view.View.class, int.class, int.class)
+                            .invoke(null, root, Integer.valueOf(w), Integer.valueOf(h));
+                    out.append("10b3 record=ok\n"); writeText(log, out.toString());
+                    java.lang.reflect.Method nPtr = ups.getDeclaredMethod(
+                            "nativeRenderNodePtr", Class.forName("android.graphics.RenderNode"));
+                    nPtr.setAccessible(true);
+                    long ptr = ((Long) nPtr.invoke(null, node)).longValue();
+                    wlLoadLib("/system/lib64/libskia_canvaskit.z.so");
+                    java.lang.reflect.Method nInit = ups.getDeclaredMethod(
+                            "nativeInit", long.class, int.class, int.class);
+                    nInit.setAccessible(true);
+                    out.append("10b4 nativeInit=calling ptr=").append(String.valueOf(ptr)).append('\n');
+                    writeText(log, out.toString());
+                    int initRc = ((Integer) nInit.invoke(null, Long.valueOf(ptr),
+                            Integer.valueOf(w), Integer.valueOf(h))).intValue();
+                    out.append("10c nativeInit=").append(String.valueOf(initRc))
+                       .append(" ptr=").append(String.valueOf(ptr)).append('\n');
+                    writeText(log, out.toString());
+                    if (initRc != 2) throw new IllegalStateException("Noice nativeInit=" + initRc);
+                    // Between init and the first frame: clear hwui's isolatedProcess flag, which the
+                    // frozen renderer sets and which otherwise keeps the RenderThread from ever
+                    // bringing up a GL context (hence swapArgb=-1 and an empty composited layer).
+                    // Gated: clearing it turns hwui's GPU path on, which currently dies in Skia's
+                    // GrContext creation. Left set, the pipeline completes (RC=0) and the only thing
+                    // that can reach the panel is the renderer's own background flush -- which is
+                    // exactly what the historic full-screen-blue evidence was.
+                    try {
+                        int isoRc = streqEnv("WL_HWUI_GPU", "1") ? nativeClearHwuiIsolated() : -1;
+                        out.append("10c2 hwuiIsolated=").append(isoRc == -1 ? "left-set" : "cleared:" + isoRc)
+                           .append('\n');
+                    } catch (Throwable it) {
+                        out.append("10c2 hwuiIsolated=fail:").append(it.getClass().getName()).append('\n');
+                    }
+                    writeText(log, out.toString());
+                    java.lang.reflect.Method nDraw = ups.getDeclaredMethod("nativeDrawFrame");
+                    nDraw.setAccessible(true);
+                    nDraw.invoke(null);
+                    java.lang.reflect.Method nSwap = ups.getDeclaredMethod("nativeLastSwapArgb");
+                    nSwap.setAccessible(true);
+                    long swap = ((Long) nSwap.invoke(null)).longValue();
+                    out.append("10d noiceSurface=drawn swapArgb=").append(String.valueOf(swap)).append('\n');
+                } else {
+                    out.append("10b1 upscreen=skipped (WL_BLIT owns the panel)\n");
+                    writeText(log, out.toString());
+                }
+                writeText(log, out.toString());
+                // hwui cannot present on this board (no eglCreateWindowSurface/eglSwapBuffers in
+                // libhwui at all), so drive the panel ourselves. WL_BLIT=test paints a pattern to
+                // prove the path; WL_BLIT=view renders the real view tree through a software
+                // Canvas and blits that.
+                // The FragmentContainerView is full-size and visible but has zero children:
+                // the NavHost fragment was never inflated, which is why the tree has nothing to
+                // paint. Drive the FragmentManager to materialise pending transactions.
+                try {
+                    Object fm = null;
+                    for (String m : new String[] { "getSupportFragmentManager", "getFragmentManager" }) {
+                        try { fm = mainCls.getMethod(m).invoke(activity); if (fm != null) break; }
+                        catch (Throwable ig) {}
+                    }
+                    if (fm == null) {
+                        out.append("09f fragments=no-manager\n");
+                    } else {
+                        // R8 renamed the API, so match by shape: a public no-arg method
+                        // returning boolean is executePendingTransactions().
+                        java.lang.reflect.Method exec = null;
+                        StringBuilder cands = new StringBuilder();
+                        for (java.lang.reflect.Method m2 : fm.getClass().getMethods()) {
+                            if (m2.getParameterTypes().length != 0) continue;
+                            String rn = m2.getReturnType().getName();
+                            if ("boolean".equals(rn) || "void".equals(rn)) {
+                                cands.append(m2.getName()).append(':').append(rn.charAt(0)).append(' ');
+                            }
+                            if ("boolean".equals(rn) && exec == null
+                                    && !m2.getName().startsWith("is")
+                                    && !m2.getName().equals("equals")) {
+                                exec = m2;
+                            }
+                        }
+                        // androidx is R8-obfuscated, so build a map before touching anything:
+                        // every no-arg method with its return type, which is enough to spot
+                        // beginTransaction() (returns a FragmentTransaction-shaped object).
+                        StringBuilder noArg = new StringBuilder();
+                        for (java.lang.reflect.Method m3 : fm.getClass().getMethods()) {
+                            if (m3.getParameterTypes().length != 0) continue;
+                            String rt = m3.getReturnType().getName();
+                            if (rt.startsWith("java.lang.") || rt.startsWith("[")) continue;
+                            noArg.append(m3.getName()).append("->")
+                                 .append(rt.substring(rt.lastIndexOf('.') + 1)).append(' ');
+                        }
+                        out.append("09e fmClass=").append(fm.getClass().getName())
+                           .append(" noArg=[").append(noArg).append("]\n");
+                        // What does the container know about the fragment it should host?
+                        try {
+                            android.view.View fcv = viewChildAt(root, 0);
+                            StringBuilder ff = new StringBuilder();
+                            if (fcv != null) {
+                                for (java.lang.reflect.Field f3 : fcv.getClass().getDeclaredFields()) {
+                                    f3.setAccessible(true);
+                                    Object v3 = null;
+                                    try { v3 = f3.get(fcv); } catch (Throwable ig) {}
+                                    ff.append(f3.getName()).append(':')
+                                      .append(f3.getType().getSimpleName()).append('=')
+                                      .append(v3 == null ? "null" : String.valueOf(v3)).append(' ');
+                                }
+                                out.append("09e containerCls=").append(fcv.getClass().getName())
+                                   .append(" id=0x").append(Integer.toHexString(
+                                        ((Integer) android.view.View.class.getMethod("getId").invoke(fcv)).intValue()))
+                                   .append(" fields=[").append(ff).append("]\n");
+                            }
+                        } catch (Throwable ig) {}
+                        // F() -> o0 is beginTransaction(): map the transaction API too, plus
+                        // whether NavHostFragment survived obfuscation under its real name.
+                        try {
+                            java.lang.reflect.Method beginTx = null;
+                            for (java.lang.reflect.Method m4 : fm.getClass().getMethods()) {
+                                if (m4.getParameterTypes().length == 0
+                                        && m4.getReturnType().getName().endsWith("o0")) {
+                                    beginTx = m4; break;
+                                }
+                            }
+                            if (beginTx != null) {
+                                Object tx = beginTx.invoke(fm);
+                                StringBuilder txm = new StringBuilder();
+                                for (java.lang.reflect.Method m5 : tx.getClass().getMethods()) {
+                                    Class<?>[] ps = m5.getParameterTypes();
+                                    if (ps.length > 3) continue;
+                                    StringBuilder sig = new StringBuilder();
+                                    for (Class<?> pt : ps) {
+                                        String pn = pt.getName();
+                                        sig.append(pn.substring(pn.lastIndexOf('.') + 1)).append(',');
+                                    }
+                                    String rn = m5.getReturnType().getName();
+                                    txm.append(m5.getName()).append('(').append(sig).append(")->")
+                                       .append(rn.substring(rn.lastIndexOf('.') + 1)).append(' ');
+                                }
+                                out.append("09e txCls=").append(tx.getClass().getName())
+                                   .append(" api=[").append(txm).append("]\n");
+                            }
+                        } catch (Throwable ig) {
+                            out.append("09e txProbe=fail:").append(ig.getClass().getSimpleName()).append('\n');
+                        }
+                        // o0 turned out to be FragmentFactory, not a transaction. Probe every
+                        // no-arg fm method whose return type looks like a class we can act on,
+                        // and report which one exposes add/commit-shaped methods.
+                        for (java.lang.reflect.Method m6 : fm.getClass().getMethods()) {
+                            if (m6.getParameterTypes().length != 0) continue;
+                            String rt6 = m6.getReturnType().getName();
+                            if (!rt6.startsWith("androidx.")) continue;
+                            Object got = null;
+                            try { got = m6.invoke(fm); } catch (Throwable ig) {}
+                            if (got == null) continue;
+                            StringBuilder api6 = new StringBuilder();
+                            for (java.lang.reflect.Method m7 : got.getClass().getMethods()) {
+                                Class<?>[] ps7 = m7.getParameterTypes();
+                                if (ps7.length == 0 || ps7.length > 3) continue;
+                                boolean takesIntAndObj = false;
+                                for (Class<?> pt7 : ps7) if (pt7 == int.class) takesIntAndObj = true;
+                                if (!takesIntAndObj) continue;
+                                StringBuilder sg = new StringBuilder();
+                                for (Class<?> pt7 : ps7) {
+                                    String pn7 = pt7.getName();
+                                    sg.append(pn7.substring(pn7.lastIndexOf('.') + 1)).append(',');
+                                }
+                                api6.append(m7.getName()).append('(').append(sg).append(") ");
+                            }
+                            out.append("09e via ").append(m6.getName()).append("->")
+                               .append(got.getClass().getName()).append(" intMethods=[")
+                               .append(api6).append("]\n");
+                        }
+                        for (String cn : new String[] { "androidx.navigation.fragment.NavHostFragment",
+                                                       "androidx.fragment.app.FragmentTransaction" }) {
+                            boolean present;
+                            try { Class.forName(cn, false, targetClassLoader()); present = true; }
+                            catch (Throwable ig) { present = false; }
+                            out.append("09e class ").append(cn).append('=').append(present).append('\n');
+                        }
+                        writeText(log, out.toString());
+                        Object pending = exec == null ? "no-candidate" : exec.invoke(fm);
+                        int kidsAfter = -1;
+                        try {
+                            android.view.View fc = viewChildAt(root, 0);
+                            if (fc != null) kidsAfter = viewChildCount(fc);
+                        } catch (Throwable ig) {}
+                        out.append("09f fragments=executed:").append(String.valueOf(pending))
+                           .append(" containerKids=").append(String.valueOf(kidsAfter)).append('\n');
+                    }
+                } catch (Throwable ft) {
+                    Throwable fc2 = ft instanceof java.lang.reflect.InvocationTargetException
+                            && ft.getCause() != null ? ft.getCause() : ft;
+                    out.append("09f fragments=fail:").append(fc2.getClass().getName()).append(':')
+                       .append(String.valueOf(fc2.getMessage())).append('\n');
+                }
+                writeText(log, out.toString());
+                // Step 1 of the fragment line: resource NAMES survive R8 (only Java classes are
+                // renamed), so the layout id is reachable through Resources rather than by hand
+                // parsing resources.arsc.
+                try {
+                    android.content.res.Resources rs = ((android.content.Context) activity).getResources();
+                    String contName = rs.getResourceName(0x7f090167);
+                    String pkg = rs.getResourcePackageName(0x7f090167);
+                    out.append("09g container=").append(contName).append(" pkg=").append(pkg).append('\n');
+                    // Brute-forcing the id space (~720k getResourceTypeName calls) aborts the VM,
+                    // so ask by name instead -- resource names are not obfuscated.
+                    StringBuilder layouts = new StringBuilder();
+                    String[] guesses = { "activity_main", "main_activity", "activity_home",
+                                         "activity_launcher", "main", "activity_noice",
+                                         "activity_single_fragment", "activity_nav_host" };
+                    for (String g : guesses) {
+                        int id = rs.getIdentifier(g, "layout", pkg);
+                        if (id != 0) layouts.append(g).append("=0x").append(Integer.toHexString(id)).append(' ');
+                    }
+                    out.append("09g layoutGuesses=[").append(layouts).append("]\n");
+                } catch (Throwable rt2) {
+                    out.append("09g resScan=fail:").append(rt2.getClass().getName()).append(':')
+                       .append(String.valueOf(rt2.getMessage())).append('\n');
+                }
+                // Step 2: FragmentContainerView only creates its fragment when the
+                // LayoutInflater carries FragmentManager's Factory2. The lane's custom inflater
+                // has none, which is why the container came up empty. Find that factory, put it
+                // on a fresh inflater, and re-inflate main_activity (0x7f0c0055).
+                try {
+                    Object fm2 = null;
+                    for (String m : new String[] { "getSupportFragmentManager", "getFragmentManager" }) {
+                        try { fm2 = mainCls.getMethod(m).invoke(activity); if (fm2 != null) break; }
+                        catch (Throwable ig) {}
+                    }
+                    Object factory = null;
+                    String factoryVia = "none";
+                    if (fm2 != null) {
+                        for (java.lang.reflect.Method mf : fm2.getClass().getMethods()) {
+                            if (mf.getParameterTypes().length != 0) continue;
+                            Object got;
+                            try { got = mf.invoke(fm2); } catch (Throwable ig) { continue; }
+                            if (got instanceof android.view.LayoutInflater.Factory2) {
+                                factory = got; factoryVia = mf.getName(); break;
+                            }
+                        }
+                    }
+                    // No no-arg accessor returns one. Look wider: the manager itself may
+                    // implement Factory2, or hold it in a field (R8 inlines small accessors).
+                    if (factory == null && fm2 != null) {
+                        if (fm2 instanceof android.view.LayoutInflater.Factory2) {
+                            factory = fm2; factoryVia = "manager-itself";
+                        } else {
+                            Class<?> k = fm2.getClass();
+                            outer:
+                            while (k != null && k != Object.class) {
+                                for (java.lang.reflect.Field ff2 : k.getDeclaredFields()) {
+                                    ff2.setAccessible(true);
+                                    Object fv;
+                                    try { fv = ff2.get(fm2); } catch (Throwable ig) { continue; }
+                                    if (fv instanceof android.view.LayoutInflater.Factory2) {
+                                        factory = fv; factoryVia = "field:" + ff2.getName();
+                                        break outer;
+                                    }
+                                }
+                                k = k.getSuperclass();
+                            }
+                        }
+                    }
+                    out.append("09h factory=").append(factory == null ? "null" : factory.getClass().getName())
+                       .append(" via=").append(factoryVia).append('\n');
+                    writeText(log, out.toString());
+                    if (factory != null) {
+                        nativeRegisterStringBlock();
+                        // Reflection throughout: the compile-time framework shim's LayoutInflater
+                        // has neither from() nor setFactory2().
+                        // Use the lane's own inflater, not a fresh system one: the original
+                        // setContentView inflate succeeded through NoiceLayoutInflater, so that
+                        // path is known to work here. A stock LayoutInflater takes a different
+                        // route into XmlBlock/StringBlock, whose natives ART force-re-resolves by
+                        // dlsym and which are not all present.
+                        Class<?> liCls2 = Class.forName("android.view.LayoutInflater");
+                        Object inf;
+                        String infHow;
+                        try {
+                            inf = new NoiceLayoutInflater((android.content.Context) activity);
+                            infHow = "NoiceLayoutInflater";
+                        } catch (Throwable ni) {
+                            inf = liCls2.getMethod("from", android.content.Context.class)
+                                    .invoke(null, (android.content.Context) activity);
+                            inf = liCls2.getMethod("cloneInContext", android.content.Context.class)
+                                    .invoke(inf, (android.content.Context) activity);
+                            infHow = "system-clone";
+                        }
+                        out.append("09h inflater=").append(infHow).append('\n');
+                        writeText(log, out.toString());
+                        liCls2.getMethod("setFactory2", Class.forName("android.view.LayoutInflater$Factory2"))
+                                .invoke(inf, factory);
+                        Object reinflated = liCls2
+                                .getMethod("inflate", int.class, android.view.ViewGroup.class, boolean.class)
+                                .invoke(inf, Integer.valueOf(0x7f0c0055), null, Boolean.FALSE);
+                        android.view.View nr = (android.view.View) reinflated;
+                        int nk = nr == null ? -1 : viewChildCount(nr);
+                        int fragKids = -1;
+                        if (nr != null && nk > 0) {
+                            android.view.View c0 = viewChildAt(nr, 0);
+                            if (c0 != null) fragKids = viewChildCount(c0);
+                        }
+                        out.append("09h reinflate root=")
+                           .append(nr == null ? "null" : nr.getClass().getSimpleName())
+                           .append(" kids=").append(String.valueOf(nk))
+                           .append(" fragKids=").append(String.valueOf(fragKids)).append('\n');
+                        if (nr != null && fragKids > 0) { root = nr; }
+                    }
+                } catch (Throwable ht) {
+                    Throwable hc = ht instanceof java.lang.reflect.InvocationTargetException
+                            && ht.getCause() != null ? ht.getCause() : ht;
+                    out.append("09h reinflate=fail:").append(hc.getClass().getName()).append(':')
+                       .append(String.valueOf(hc.getMessage())).append('\n');
+                }
+                writeText(log, out.toString());
+                String blitMode = System.getenv("WL_BLIT");
+                if (blitMode != null && blitMode.length() > 0) {
+                    try {
+                        int[] px = null;
+                        if ("view".equals(blitMode)) {
+                            px = wlRenderViewToPixels(root, w, h, out, log);
+                        }
+                        sBlitPixels = px; sBlitW = w; sBlitH = h;
+                        int brc = nativeBlitArgb();
+                        out.append("10e blit=").append(blitMode).append(" rc=")
+                           .append(String.valueOf(brc))
+                           .append(px == null ? " (pattern)" : " px=" + px.length).append('\n');
+                    } catch (Throwable bt) {
+                        Throwable bc = bt;
+                        while (bc instanceof java.lang.reflect.InvocationTargetException
+                                && bc.getCause() != null) {
+                            bc = bc.getCause();
+                        }
+                        out.append("10e blit=fail:").append(bc.getClass().getName()).append(':')
+                           .append(String.valueOf(bc.getMessage())).append('\n');
+                        try {
+                            java.io.StringWriter sw = new java.io.StringWriter();
+                            bc.printStackTrace(new java.io.PrintWriter(sw));
+                            String st = sw.toString();
+                            out.append(st.substring(0, Math.min(st.length(), 2500))).append('\n');
+                        } catch (Throwable ignored) {}
+                    }
+                    writeText(log, out.toString());
+                }
             } catch (Throwable t) {
                 Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
                         ? t.getCause() : t;

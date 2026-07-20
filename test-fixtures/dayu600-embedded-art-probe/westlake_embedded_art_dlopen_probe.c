@@ -1,7 +1,13 @@
 #include <jni.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <poll.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <sys/mman.h>
+#include <ucontext.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdlib.h>
 
 #define AT_FDCWD -100
@@ -1291,6 +1297,402 @@ static jobject westlake_loader_for_am(JNIEnv *env, jobject am)
     return (*env)->CallObjectMethod(env, am_runtime, get_cl);
 }
 
+/* [W-005 2026-07-19] AOSP libc++ exports std::__1::__libcpp_verbose_abort(const char*, ...);
+ * OHOS's libc++ does not, so relocating a stock AOSP libandroidfw.so into this process
+ * fails with "symbol not found". This probe is LD_PRELOADed with RTLD_GLOBAL, so defining
+ * the mangled name here satisfies the relocation for every later dlopen. It is only ever
+ * reached on a libc++ hard-abort path, where trapping is the correct behaviour anyway. */
+__attribute__((visibility("default")))
+void _ZNSt3__122__libcpp_verbose_abortEPKcz(const char *fmt, ...)
+{
+    (void)fmt;
+    __builtin_trap();
+}
+
+/* [W-005 2026-07-19] bionic _FORTIFY_SOURCE shims. Stock AOSP libs (libandroidfw,
+ * libbase, libutils, libcutils ...) are compiled against bionic and reference its
+ * __*_chk / __*_2 fortified entry points, which musl does not provide -> "symbol not
+ * found" at relocation time. Each one below is the documented bionic behaviour minus
+ * the compile-time size check, which we cannot reconstruct anyway. Exported from this
+ * LD_PRELOADed .so so every later dlopen resolves against them. */
+extern int open(const char *, int, ...);
+extern int openat(int, const char *, int, ...);
+extern void *memcpy(void *, const void *, unsigned long);
+extern void *memmove(void *, const void *, unsigned long);
+extern void *memset(void *, int, unsigned long);
+extern unsigned long strlen(const char *);
+extern char *strcpy(char *, const char *);
+extern char *strcat(char *, const char *);
+extern char *strncpy(char *, const char *, unsigned long);
+extern long read(int, void *, unsigned long);
+extern int vsnprintf(char *, unsigned long, const char *, __builtin_va_list);
+
+#define WL_EXPORT __attribute__((visibility("default")))
+WL_EXPORT int __open_2(const char *p, int f) { return open(p, f); }
+WL_EXPORT int __openat_2(int d, const char *p, int f) { return openat(d, p, f); }
+WL_EXPORT void *__memcpy_chk(void *d, const void *s, unsigned long n, unsigned long b)
+{ (void)b; return memcpy(d, s, n); }
+WL_EXPORT void *__memmove_chk(void *d, const void *s, unsigned long n, unsigned long b)
+{ (void)b; return memmove(d, s, n); }
+WL_EXPORT void *__memset_chk(void *d, int c, unsigned long n, unsigned long b)
+{ (void)b; return memset(d, c, n); }
+WL_EXPORT unsigned long __strlen_chk(const char *s, unsigned long b)
+{ (void)b; return strlen(s); }
+WL_EXPORT char *__strcpy_chk(char *d, const char *s, unsigned long b)
+{ (void)b; return strcpy(d, s); }
+WL_EXPORT char *__strcat_chk(char *d, const char *s, unsigned long b)
+{ (void)b; return strcat(d, s); }
+WL_EXPORT char *__strncpy_chk(char *d, const char *s, unsigned long n, unsigned long b)
+{ (void)b; return strncpy(d, s, n); }
+WL_EXPORT long __read_chk(int fd, void *buf, unsigned long n, unsigned long b)
+{ (void)b; return read(fd, buf, n); }
+WL_EXPORT int __vsnprintf_chk(char *s, unsigned long n, int flag, unsigned long b,
+                              const char *fmt, __builtin_va_list ap)
+{ (void)flag; (void)b; return vsnprintf(s, n, fmt, ap); }
+
+/* bionic exposes CMSG_NXTHDR as a real function (__cmsg_nxthdr); musl only has the
+ * macro, so libbase.so fails to relocate. Bridge one to the other. */
+WL_EXPORT struct cmsghdr *__cmsg_nxthdr(struct msghdr *msg, struct cmsghdr *cmsg)
+{
+    return CMSG_NXTHDR(msg, cmsg);
+}
+
+/* bionic's newer property API (libbase uses find + read_callback rather than the
+ * legacy __system_property_get this file already stubs). The handle is opaque to
+ * callers, so a slot carrying the name is enough; reads go through the existing
+ * __system_property_get implementation above. */
+struct wl_prop_info { char name[96]; };
+static struct wl_prop_info g_wl_props[96];
+static int g_wl_prop_n = 0;
+
+/* MUST return NULL for properties that do not exist. Handing back a live handle for
+ * every name makes libbase believe every property is present but empty, and its
+ * GetProperty/GetBoolProperty path then spins (measured: libbase mapped, one thread at
+ * 100% CPU, VM init never completes). Probe the legacy getter first and only vend a
+ * handle when there is a real value. */
+WL_EXPORT const void *__system_property_find(const char *name)
+{
+    int i;
+    unsigned int j;
+    char probe[92];
+    if (name == 0 || name[0] == 0) return 0;
+    probe[0] = 0;
+    if (__system_property_get(name, probe) <= 0 || probe[0] == 0) return 0;
+    for (i = 0; i < g_wl_prop_n; i++) {
+        if (streq(g_wl_props[i].name, name)) return &g_wl_props[i];
+    }
+    if (g_wl_prop_n >= (int)(sizeof(g_wl_props) / sizeof(g_wl_props[0]))) return 0;
+    for (j = 0; j + 1 < sizeof(g_wl_props[0].name) && name[j] != 0; j++) {
+        g_wl_props[g_wl_prop_n].name[j] = name[j];
+    }
+    g_wl_props[g_wl_prop_n].name[j] = 0;
+    return &g_wl_props[g_wl_prop_n++];
+}
+
+WL_EXPORT void __system_property_read_callback(const void *pi,
+    void (*cb)(void *, const char *, const char *, unsigned int), void *cookie)
+{
+    char val[92];
+    const struct wl_prop_info *p = (const struct wl_prop_info *)pi;
+    if (p == 0 || cb == 0) return;
+    val[0] = 0;
+    __system_property_get(p->name, val);
+    cb(cookie, p->name, val, 1u);
+}
+
+WL_EXPORT int __system_property_read(const void *pi, char *name, char *value)
+{
+    const struct wl_prop_info *p = (const struct wl_prop_info *)pi;
+    unsigned int j;
+    if (p == 0) return 0;
+    if (name != 0) {
+        for (j = 0; j + 1 < sizeof(p->name) && p->name[j] != 0; j++) name[j] = p->name[j];
+        name[j] = 0;
+    }
+    if (value == 0) return 0;
+    value[0] = 0;
+    return __system_property_get(p->name, value);
+}
+
+/* Remaining bionic property entry points libbase/libcutils reference. Writes are
+ * accepted and dropped (this lane has no property service); the readers above are
+ * what actually matter for resource/asset bring-up. */
+WL_EXPORT int __system_property_set(const char *name, const char *value)
+{ (void)name; (void)value; return 0; }
+/* The serial MUST advance on every read. A constant serial means "value never changed",
+ * and any caller doing the standard wait-for-change loop then spins at 100% CPU forever
+ * (observed: single thread, State R, no progress). */
+static unsigned int g_wl_prop_serial = 1u;
+WL_EXPORT unsigned int __system_property_serial(const void *pi)
+{ (void)pi; return ++g_wl_prop_serial; }
+WL_EXPORT int __system_property_wait(const void *pi, unsigned int old_serial,
+                                     unsigned int *new_serial, const void *timeout)
+{
+    (void)pi; (void)old_serial; (void)timeout;
+    if (new_serial) *new_serial = ++g_wl_prop_serial;
+    return 1;   /* bionic: true == "the serial moved", so the waiter proceeds */
+}
+WL_EXPORT unsigned int __system_property_area_serial(void) { return 1u; }
+WL_EXPORT int __system_properties_init(void) { return 0; }
+WL_EXPORT int __system_property_foreach(
+    void (*cb)(const void *, void *), void *cookie)
+{ (void)cb; (void)cookie; return 0; }
+
+/* bionic fdsan (file-descriptor ownership sanitizer) — libcutils/libbase call into it
+ * on every fd close. musl has no equivalent; making the whole API a no-op is safe:
+ * fdsan only ever *detects* double-close, it is not load-bearing.
+ * NOTE: the OH sysroot already declares/provides create_owner_tag,
+ * exchange_owner_tag, close_with_tag and android_get_device_api_level, so redefining
+ * those is a compile error; only the genuinely absent ones are stubbed here. */
+WL_EXPORT unsigned long android_fdsan_get_owner_tag(int fd) { (void)fd; return 0ul; }
+WL_EXPORT unsigned int android_fdsan_get_tag_type(unsigned long tag) { (void)tag; return 0u; }
+WL_EXPORT unsigned long android_fdsan_get_tag_value(unsigned long tag) { return tag; }
+WL_EXPORT int android_get_application_target_sdk_version(void) { return 35; }
+
+/* bionic fortifies the fd_set macros into real calls; musl keeps them as macros. */
+WL_EXPORT void __FD_SET_chk(int fd, fd_set *s, unsigned long n)
+{ (void)n; if (s) FD_SET(fd, s); }
+WL_EXPORT void __FD_CLR_chk(int fd, fd_set *s, unsigned long n)
+{ (void)n; if (s) FD_CLR(fd, s); }
+WL_EXPORT int __FD_ISSET_chk(int fd, const fd_set *s, unsigned long n)
+{ (void)n; return s ? FD_ISSET(fd, (fd_set *)s) : 0; }
+
+/* The rest of bionic's _FORTIFY_SOURCE surface, batched so the staged AOSP closure
+ * stops failing one symbol per run. All are the plain libc call with the compile-time
+ * size argument(s) discarded — the check they encode cannot be reconstructed here. */
+extern unsigned long strlcpy(char *, const char *, unsigned long);
+extern unsigned long strlcat(char *, const char *, unsigned long);
+extern char *strchr(const char *, int);
+extern char *strrchr(const char *, int);
+extern char *realpath(const char *, char *);
+extern long readlink(const char *, char *, unsigned long);
+extern long readlinkat(int, const char *, char *, unsigned long);
+extern char *getcwd(char *, unsigned long);
+extern long pread(int, void *, unsigned long, long);
+extern int snprintf(char *, unsigned long, const char *, ...);
+extern int vsprintf(char *, const char *, __builtin_va_list);
+extern int poll(struct pollfd *, unsigned long, int);
+
+WL_EXPORT char *__strncpy_chk2(char *d, const char *s, unsigned long n,
+                               unsigned long dl, unsigned long sl)
+{ (void)dl; (void)sl; return strncpy(d, s, n); }
+WL_EXPORT unsigned long __strlcpy_chk(char *d, const char *s, unsigned long n,
+                                      unsigned long b)
+{ (void)b; return strlcpy(d, s, n); }
+WL_EXPORT unsigned long __strlcat_chk(char *d, const char *s, unsigned long n,
+                                      unsigned long b)
+{ (void)b; return strlcat(d, s, n); }
+WL_EXPORT char *__strchr_chk(const char *s, int c, unsigned long b)
+{ (void)b; return strchr(s, c); }
+WL_EXPORT char *__strrchr_chk(const char *s, int c, unsigned long b)
+{ (void)b; return strrchr(s, c); }
+WL_EXPORT char *__realpath_chk(const char *p, char *out, unsigned long b)
+{ (void)b; return realpath(p, out); }
+WL_EXPORT long __readlink_chk(const char *p, char *b, unsigned long n, unsigned long z)
+{ (void)z; return readlink(p, b, n); }
+WL_EXPORT long __readlinkat_chk(int d, const char *p, char *b, unsigned long n,
+                                unsigned long z)
+{ (void)z; return readlinkat(d, p, b, n); }
+WL_EXPORT char *__getcwd_chk(char *b, unsigned long n, unsigned long z)
+{ (void)z; return getcwd(b, n); }
+
+/* bionic linker-namespace API (libapexsupport / libvndksupport / libbinder). musl has
+ * no namespaces, so everything degrades to the single flat namespace this lane already
+ * is. These must live in the LD_PRELOADed probe rather than a side .so: OHOS musl does
+ * not feed RTLD_GLOBAL dlopen'd symbols into a later dlopen's resolution scope, but a
+ * genuinely preloaded object is in the global scope proper (that is how the FORTIFY
+ * shims above already reach the staged AOSP libs). */
+WL_EXPORT void *android_get_exported_namespace(const char *name) { (void)name; return 0; }
+WL_EXPORT void *android_create_namespace(const char *n, const char *ld, const char *dp,
+                                         unsigned long t, const char *pp, void *parent)
+{ (void)n; (void)ld; (void)dp; (void)t; (void)pp; (void)parent; return 0; }
+WL_EXPORT int android_link_namespaces(void *from, void *to, const char *libs)
+{ (void)from; (void)to; (void)libs; return 1; }
+WL_EXPORT int android_link_namespaces_all_libs(void *from, void *to)
+{ (void)from; (void)to; return 1; }
+
+/* Android's libnativehelper AFileDescriptor_* API. The resource JNI code uses it to get
+ * at the int behind a java.io.FileDescriptor; OHOS has no libnativehelper, so implement
+ * it directly against the well-known `descriptor` field. */
+WL_EXPORT int AFileDescriptor_getFd(JNIEnv *env, jobject fileDescriptor)
+{
+    if (env == 0 || fileDescriptor == 0) return -1;
+    jclass c = (*env)->GetObjectClass(env, fileDescriptor);
+    if (c == 0) { (*env)->ExceptionClear(env); return -1; }
+    jfieldID f = (*env)->GetFieldID(env, c, "descriptor", "I");
+    if (f == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return -1; }
+    return (int)(*env)->GetIntField(env, fileDescriptor, f);
+}
+WL_EXPORT void AFileDescriptor_setFd(JNIEnv *env, jobject fileDescriptor, int fd)
+{
+    if (env == 0 || fileDescriptor == 0) return;
+    jclass c = (*env)->GetObjectClass(env, fileDescriptor);
+    if (c == 0) { (*env)->ExceptionClear(env); return; }
+    jfieldID f = (*env)->GetFieldID(env, c, "descriptor", "I");
+    if (f == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return; }
+    (*env)->SetIntField(env, fileDescriptor, f, (jint)fd);
+}
+WL_EXPORT jobject AFileDescriptor_create(JNIEnv *env)
+{
+    if (env == 0) return 0;
+    jclass c = (*env)->FindClass(env, "java/io/FileDescriptor");
+    if (c == 0) { (*env)->ExceptionClear(env); return 0; }
+    jmethodID ctor = (*env)->GetMethodID(env, c, "<init>", "()V");
+    if (ctor == 0) { (*env)->ExceptionClear(env); return 0; }
+    jobject o = (*env)->NewObject(env, c, ctor);
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return 0; }
+    return o;
+}
+
+/* SHA-1, BoringSSL-compatible entry points. libincfs is the only consumer in the staged
+ * closure and it needs exactly these three; pulling in the real libcrypto for them costs
+ * a BoringSSL that crashes during its own load on this musl runtime (isolated by loading
+ * the chain one library at a time: everything up to wlz.so is fine, wlcrypto.so dies).
+ * This is the genuine algorithm, not a stub — a wrong digest would corrupt silently.
+ * The context must stay within BoringSSL's SHA_CTX (96 bytes) since callers allocate it. */
+struct wl_sha1_ctx { unsigned int h[5]; unsigned int nl, nh; unsigned char buf[64]; unsigned int n; };
+
+static void wl_sha1_block(struct wl_sha1_ctx *c, const unsigned char *p)
+{
+    unsigned int w[80], a, b, d, e, f, k, t;
+    int i;
+    unsigned int cc;
+    for (i = 0; i < 16; i++)
+        w[i] = ((unsigned int)p[i * 4] << 24) | ((unsigned int)p[i * 4 + 1] << 16) |
+               ((unsigned int)p[i * 4 + 2] << 8) | (unsigned int)p[i * 4 + 3];
+    for (i = 16; i < 80; i++) {
+        t = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+        w[i] = (t << 1) | (t >> 31);
+    }
+    a = c->h[0]; b = c->h[1]; cc = c->h[2]; d = c->h[3]; e = c->h[4];
+    for (i = 0; i < 80; i++) {
+        if (i < 20)      { f = (b & cc) | ((~b) & d);      k = 0x5A827999u; }
+        else if (i < 40) { f = b ^ cc ^ d;                 k = 0x6ED9EBA1u; }
+        else if (i < 60) { f = (b & cc) | (b & d) | (cc & d); k = 0x8F1BBCDCu; }
+        else             { f = b ^ cc ^ d;                 k = 0xCA62C1D6u; }
+        t = ((a << 5) | (a >> 27)) + f + e + k + w[i];
+        e = d; d = cc; cc = (b << 30) | (b >> 2); b = a; a = t;
+    }
+    c->h[0] += a; c->h[1] += b; c->h[2] += cc; c->h[3] += d; c->h[4] += e;
+}
+
+WL_EXPORT int SHA1_Init(void *ctx)
+{
+    struct wl_sha1_ctx *c = (struct wl_sha1_ctx *)ctx;
+    if (c == 0) return 0;
+    c->h[0] = 0x67452301u; c->h[1] = 0xEFCDAB89u; c->h[2] = 0x98BADCFEu;
+    c->h[3] = 0x10325476u; c->h[4] = 0xC3D2E1F0u;
+    c->nl = 0; c->nh = 0; c->n = 0;
+    return 1;
+}
+
+WL_EXPORT int SHA1_Update(void *ctx, const void *data, unsigned long len)
+{
+    struct wl_sha1_ctx *c = (struct wl_sha1_ctx *)ctx;
+    const unsigned char *p = (const unsigned char *)data;
+    unsigned long i;
+    if (c == 0 || (p == 0 && len != 0)) return 0;
+    for (i = 0; i < len; i++) {
+        c->buf[c->n++] = p[i];
+        if (c->n == 64) { wl_sha1_block(c, c->buf); c->n = 0; }
+        c->nl += 8;
+        if (c->nl < 8) c->nh++;
+    }
+    return 1;
+}
+
+WL_EXPORT int SHA1_Final(unsigned char *out, void *ctx)
+{
+    struct wl_sha1_ctx *c = (struct wl_sha1_ctx *)ctx;
+    unsigned int nl, nh;
+    int i;
+    if (c == 0 || out == 0) return 0;
+    nl = c->nl; nh = c->nh;
+    c->buf[c->n++] = 0x80;
+    if (c->n > 56) {
+        while (c->n < 64) c->buf[c->n++] = 0;
+        wl_sha1_block(c, c->buf); c->n = 0;
+    }
+    while (c->n < 56) c->buf[c->n++] = 0;
+    c->buf[56] = (unsigned char)(nh >> 24); c->buf[57] = (unsigned char)(nh >> 16);
+    c->buf[58] = (unsigned char)(nh >> 8);  c->buf[59] = (unsigned char)nh;
+    c->buf[60] = (unsigned char)(nl >> 24); c->buf[61] = (unsigned char)(nl >> 16);
+    c->buf[62] = (unsigned char)(nl >> 8);  c->buf[63] = (unsigned char)nl;
+    wl_sha1_block(c, c->buf);
+    for (i = 0; i < 5; i++) {
+        out[i * 4]     = (unsigned char)(c->h[i] >> 24);
+        out[i * 4 + 1] = (unsigned char)(c->h[i] >> 16);
+        out[i * 4 + 2] = (unsigned char)(c->h[i] >> 8);
+        out[i * 4 + 3] = (unsigned char)c->h[i];
+    }
+    return 1;
+}
+
+/* BSD fts(3): bionic ships it, musl does not, and libselinux imports it for recursive
+ * relabeling. Nothing on the resource path walks trees, so report an empty traversal.
+ * NOTE: an earlier attempt at this spun libselinux at 100% CPU — that was actually the
+ * un-renamed AOSP libs colliding with ART's own libbase, not fts. With the wl* renaming
+ * in place the collision is gone. */
+static int g_wl_fts_handle;
+WL_EXPORT void *fts_open(char *const *argv, int opts, void *cmp)
+{ (void)argv; (void)opts; (void)cmp; return &g_wl_fts_handle; }
+WL_EXPORT void *fts_read(void *ftsp) { (void)ftsp; return 0; }
+WL_EXPORT void *fts_children(void *ftsp, int opts) { (void)ftsp; (void)opts; return 0; }
+WL_EXPORT int fts_set(void *ftsp, void *f, int opts)
+{ (void)ftsp; (void)f; (void)opts; return 0; }
+WL_EXPORT int fts_close(void *ftsp) { (void)ftsp; return 0; }
+
+/* android::AndroidRuntime::getJNIEnv() — lives in libandroid_runtime.so, which this lane
+ * does not (and should not) carry. The resource JNI code only wants the calling thread's
+ * env, and the probe already owns the VM handle. */
+WL_EXPORT JNIEnv *_ZN7android14AndroidRuntime9getJNIEnvEv(void)
+{
+    JNIEnv *e = 0;
+    if (g_probe_vm == 0) return 0;
+    if ((*g_probe_vm)->GetEnv(g_probe_vm, (void **)&e, JNI_VERSION_1_6) != JNI_OK) return 0;
+    return e;
+}
+
+/* libincfs is the only consumer of libselinux in the staged closure, and it wants a
+ * single symbol. The real libselinux drags in BSD fts(3), which musl lacks; shimming
+ * fts makes libselinux spin (100% CPU, no progress) and replacing the whole library
+ * breaks other consumers. So libincfs's DT_NEEDED is repointed away from libselinux
+ * and the one symbol is served from here instead. Nothing on the resource/asset path
+ * relabels files. */
+WL_EXPORT int selinux_android_restorecon(const char *pathname, unsigned int flags)
+{ (void)pathname; (void)flags; return 0; }
+
+
+WL_EXPORT long __pread_chk(int fd, void *b, unsigned long n, long off, unsigned long z)
+{ (void)z; return pread(fd, b, n, off); }
+WL_EXPORT long __pread64_chk(int fd, void *b, unsigned long n, long off, unsigned long z)
+{ (void)z; return pread(fd, b, n, off); }
+WL_EXPORT int __snprintf_chk(char *s, unsigned long n, int flag, unsigned long b,
+                             const char *fmt, ...)
+{
+    __builtin_va_list ap; int r;
+    (void)flag; (void)b;
+    __builtin_va_start(ap, fmt);
+    r = vsnprintf(s, n, fmt, ap);
+    __builtin_va_end(ap);
+    return r;
+}
+WL_EXPORT int __vsprintf_chk(char *s, int flag, unsigned long b, const char *fmt,
+                             __builtin_va_list ap)
+{ (void)flag; (void)b; return vsprintf(s, fmt, ap); }
+WL_EXPORT int __sprintf_chk(char *s, int flag, unsigned long b, const char *fmt, ...)
+{
+    __builtin_va_list ap; int r;
+    (void)flag; (void)b;
+    __builtin_va_start(ap, fmt);
+    r = vsprintf(s, fmt, ap);
+    __builtin_va_end(ap);
+    return r;
+}
+WL_EXPORT int __poll_chk(struct pollfd *f, unsigned long n, int t, unsigned long b)
+{ (void)b; return poll(f, n, t); }
+#undef WL_EXPORT
+
 static jint westlake_native_append_apk_assets(JNIEnv *env, jclass clazz,
     jobject am, jbyteArray path_bytes)
 {
@@ -1829,21 +2231,166 @@ static const struct wl_hwui_table WL_HWUI_TABLES[] = {
      * full 12-class registration — bisect whether re-binding the bootstrap-stubbed
      * classes (Paint bootstrap / RenderNode minimal / Trace) destabilizes the VM.
      * The other classes are re-enabled by editing this table back. */
+    /* Harvested 2026-07-19 from register_android_view_ThreadedRenderer: the
+       RegisterMethodsOrDie call site loads x2 = 0x479000+312 and w3 = 72.
+       Needed once resources came alive -- initForSystemProcess() reaches
+       HardwareRenderer.nSetIsSystemOrPersistent, and calling the registrar
+       wholesale SIGTRAPs on the first bad entry. */
+    {"android/graphics/HardwareRenderer",    0x479138, 72},
     {"android/graphics/RenderNode",          0x47a210, 90},
     {"android/graphics/RecordingCanvas",     0x48a9e0, 12},
     {"android/graphics/Canvas",              0x478838, 33},
     {"android/graphics/BaseCanvas",          0x478b50, 32},
     {"android/graphics/BaseRecordingCanvas", 0x478b50, 32},
-#if 0
+    /* Re-enabled 2026-07-19: with MainActivity.onCreate through, TextView/Drawable
+       construction reaches Paint's natives. Unbound they warn ("unhandled
+       @CriticalNative shorty 'FJ' ... Paint.nGetTextSize") and return typed zeros, so
+       the Paint carries a null native pointer that a genuinely-bound Canvas native then
+       dereferences -> SIGSEGV. The binder skips absent classes/entries one by one, so
+       the two inner classes below cost nothing when framework.jar lacks them. */
     {"android/graphics/Paint",               0x477220, 85},
     {"android/graphics/Path",                0x477bf8, 43},
-    {"android/graphics/Matrix$ExtraNatives", 0x479c68, 2},
-    {"android/graphics/ColorSpace$Rgb$Native", 0x478e50, 2},
     {"android/graphics/Region",              0x478028, 23},
     {"android/graphics/Shader",              0x478370, 1},
-    /* Typeface EXCLUDED: clinit SIGSEGVs the VM on this substrate (Minikin). */
-#endif
+    /* Enabled 2026-07-19: Bitmap.createBitmap() goes through ColorSpace.get(SRGB), which
+       returns null with these unbound -> "can't create bitmap without a color space", and
+       that blocks the software-render path. The binder skips a class it cannot FindClass,
+       so leaving them listed costs nothing if framework.jar lacks them. */
+    /* Harvested 2026-07-20 from register_android_graphics_Bitmap (0x28adc4):
+         28ae10  adrp x2, 0x475000
+         28ae14  add  x2, x2, #3288      -> table 0x475cd8
+         28ae18  mov  w3, #46            -> 46 entries
+       Needed for the software-render path: Bitmap.nativeCreate is otherwise unregistered
+       and createBitmap dies with UnsatisfiedLinkError. */
+    {"android/graphics/Bitmap",              0x475cd8, 46},
+    {"android/graphics/Matrix$ExtraNatives", 0x479c68, 2},
+    {"android/graphics/ColorSpace$Rgb$Native", 0x478e50, 2},
+    /* Harvested 2026-07-20 from the four font registrars in libhwui. The older
+       "Typeface EXCLUDED: clinit SIGSEGVs (Minikin)" note referred to *calling*
+       register_android_graphics_Typeface, which drags in init_FontUtils and its
+       side effects. Per-entry binding off the harvested table does none of that,
+       and Typeface's Java clinit is already observed to complete cleanly on this
+       substrate (sDynamicTypefaceCache is non-null, sSystemFontMap is an empty map).
+       Needed because TextView inflation calls Typeface.create(null, style) and dies
+       on a null sDefaultTypeface -- this lane has no AOSP font assets and no system
+       server to push a font map, so we build the default from a board TTF instead.
+         register_android_graphics_Typeface           0x4784c0 x17
+         register_android_graphics_FontFamily         0x4768a8 x7   (legacy)
+         register_android_graphics_fonts_Font$Builder 0x47b6f0 x4
+         register_android_graphics_fonts_Font         0x47b750 x15
+         ..._fonts_FontFamily$Builder                 0x47b630 x4
+         ..._fonts_FontFamily                         0x47b690 x4  (count reuses w3=4) */
+    {"android/graphics/Typeface",                 0x4784c0, 17},
+    {"android/graphics/FontFamily",               0x4768a8, 7},
+    {"android/graphics/fonts/Font$Builder",       0x47b6f0, 4},
+    {"android/graphics/fonts/Font",               0x47b750, 15},
+    {"android/graphics/fonts/FontFamily$Builder", 0x47b630, 4},
+    {"android/graphics/fonts/FontFamily",         0x47b690, 4},
 };
+
+/* Call an AArch64 function that returns a non-trivially-destructible class by value
+ * (sk_sp<T>): AAPCS64 passes the return slot in x8, which C cannot express. The operands
+ * land in callee-saved registers because every caller-saved one is clobbered, so they
+ * survive the call. */
+static void *wl_call_sret_nullary(void *fn)
+{
+    void *out = 0;
+    void *outp = &out;
+    __asm__ volatile(
+        "mov x8, %[o]\n\t"
+        "blr %[f]\n\t"
+        :
+        : [f] "r"(fn), [o] "r"(outp)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+          "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x30", "memory", "cc");
+    return out;
+}
+
+/* Instruction-cache maintenance after writing code. __builtin___clear_cache emits a call to
+ * __clear_cache, which this sysroot's libc does not provide (the .so then fails to relocate
+ * at load time), so issue the architectural sequence directly. Line sizes come from CTR_EL0,
+ * which is readable at EL0. */
+static void wl_clear_icache(unsigned char *start, unsigned char *end)
+{
+    unsigned long ctr;
+    __asm__ volatile("mrs %0, ctr_el0" : "=r"(ctr));
+    unsigned long dline = 4UL << ((ctr >> 16) & 0xf);
+    unsigned long iline = 4UL << (ctr & 0xf);
+    unsigned long p;
+    for (p = (unsigned long)start & ~(dline - 1); p < (unsigned long)end; p += dline)
+        __asm__ volatile("dc cvau, %0" :: "r"(p) : "memory");
+    __asm__ volatile("dsb ish" ::: "memory");
+    for (p = (unsigned long)start & ~(iline - 1); p < (unsigned long)end; p += iline)
+        __asm__ volatile("ic ivau, %0" :: "r"(p) : "memory");
+    __asm__ volatile("dsb ish\n\tisb" ::: "memory");
+}
+
+/* Materialise a 64-bit constant into Xd as movz + 3x movk. */
+static void wl_emit_mov64(unsigned int *p, int rd, unsigned long long v)
+{
+    p[0] = 0xD2800000u | (0u << 21) | ((unsigned int)((v >>  0) & 0xffff) << 5) | (unsigned int)rd;
+    p[1] = 0xF2800000u | (1u << 21) | ((unsigned int)((v >> 16) & 0xffff) << 5) | (unsigned int)rd;
+    p[2] = 0xF2800000u | (2u << 21) | ((unsigned int)((v >> 32) & 0xffff) << 5) | (unsigned int)rd;
+    p[3] = 0xF2800000u | (3u << 21) | ((unsigned int)((v >> 48) & 0xffff) << 5) | (unsigned int)rd;
+}
+
+/* Reroute libhwui's SkFontMgr::makeFromStream to OHOS Skia's makeFromFile.
+ *
+ * The two libraries were built against different libc++ ABI namespaces (__n1 vs __h), so
+ * makeFromStream -- which takes std::unique_ptr<SkStreamAsset> and virtual-dispatches into
+ * the OHOS vtable -- cannot be called across the boundary; it is why every font comes back
+ * null even with a real font manager installed. makeFromFile takes only (const char*, int),
+ * so it crosses cleanly, and it is verified working on this board.
+ *
+ * The cost is that the stream argument is discarded: every font request resolves to the one
+ * file bound at /system/fonts/Roboto-Regular.ttf. That is enough for a default typeface --
+ * text renders in that face regardless of which family was asked for.
+ *
+ * this (x0) and the x8 return slot pass through untouched; only x1/x2 are rewritten. */
+static int wl_patch_make_from_stream(unsigned char *hbase, void *skia, const char *path,
+                                     unsigned long off)
+{
+    void *mff = dlsym(skia, "_ZNK9SkFontMgr12makeFromFileEPKci");
+    if (mff == 0) { log_text("fontpatch: makeFromFile missing"); return 0; }
+
+    unsigned char *target = hbase + off;
+    unsigned long pagesz = 4096;
+    unsigned char *page = (unsigned char *)((unsigned long)target & ~(pagesz - 1));
+    /* Two pages: the patch can straddle a boundary. */
+    if (mprotect(page, pagesz * 2, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+        log_text("fontpatch: mprotect failed");
+        return 0;
+    }
+    unsigned int code[10];
+    wl_emit_mov64(&code[0], 1, (unsigned long long)(unsigned long)path);  /* x1 = path   */
+    code[4] = 0xD2800002u;                                               /* movz x2, #0 */
+    wl_emit_mov64(&code[5], 16, (unsigned long long)(unsigned long)mff);  /* x16 = fn    */
+    code[9] = 0xD61F0200u;                                               /* br x16      */
+    for (int i = 0; i < 10; i++) ((unsigned int *)target)[i] = code[i];
+    wl_clear_icache(target, target + sizeof(code));
+    log_text("fontpatch: makeFromStream rerouted to makeFromFile");
+    hlog_sel("fontpatch: makeFromStream rerouted to makeFromFile");
+    return 1;
+}
+
+/* Same x8 return-slot convention, for a const member call with two arguments:
+ * this -> x0, args -> x1/x2. */
+static void *wl_call_sret_this2(void *fn, void *self, const void *a1, long a2)
+{
+    void *out = 0;
+    void *outp = &out;
+    __asm__ volatile(
+        "mov x8, %[o]\n\t"
+        "mov x0, %[s]\n\t"
+        "mov x1, %[p]\n\t"
+        "mov x2, %[i]\n\t"
+        "blr %[f]\n\t"
+        :
+        : [f] "r"(fn), [o] "r"(outp), [s] "r"(self), [p] "r"(a1), [i] "r"(a2)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+          "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x30", "memory", "cc");
+    return out;
+}
 
 static jint westlake_hwui_register_selective(JNIEnv *env)
 {
@@ -1853,6 +2400,108 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
         char *e = dlerror(); if (e != 0) log_text(e); hlog_sel(e);
         return -1;
     }
+    /* libhwui's JNI helpers reach back into the VM through GraphicsJNI::getJNIEnv(), which
+     * asserts on mJavaVM. Normally AndroidRuntime::startReg sets it while running the
+     * per-class registrars; we bind entries straight off the harvested tables and never
+     * call those, so it stays null and the first callback aborts the process:
+     *   Assertion failed: mJavaVM != nullptr (libs/hwui/jni/Graphics.cpp: getJNIEnv: 33)
+     * Hit first via the font path (minikin calls back into JNI), but it is a general
+     * precondition for any hwui native that touches the VM, so set it before binding. */
+    {
+        void (*set_java_vm)(JavaVM *) =
+            (void (*)(JavaVM *))dlsym(hwui, "_ZN11GraphicsJNI9setJavaVMEP7_JavaVM");
+        if (set_java_vm != 0 && g_probe_vm != 0) {
+            set_java_vm(g_probe_vm);
+            log_text("selective hwui: GraphicsJNI::setJavaVM done");
+            hlog_sel("selective hwui: GraphicsJNI::setJavaVM done");
+        } else {
+            log_text("selective hwui: setJavaVM unavailable");
+            hlog_sel("selective hwui: setJavaVM unavailable");
+        }
+    }
+
+    /* Give libhwui a font manager that can actually parse fonts.
+     * This libhwui was ported against OHOS's Skia, and its SkFontMgr_New_Custom_Empty()
+     * is a stub that forwards to SkFontMgr::RefEmpty() -- an *empty* manager whose
+     * makeFromStream() always returns null. That is why every font is rejected: minikin
+     * never gets a typeface, so FontFamily.nAddFontWeightStyle returns false and
+     * setRobotoTypefaceForTest asserts. OHOS's own Skia exports the real
+     * SkFontMgr::RefDefault(), so swap that into the function-local static that
+     * android::FreeTypeFontMgr() caches:
+     *   0x48d968  cached sk_sp<SkFontMgr>     0x48d970  its __cxa_guard byte
+     * Call FreeTypeFontMgr() first so the guard is set the normal way, then overwrite the
+     * pointer -- cheaper and less fragile than forging the guard ourselves. The ref we
+     * take is deliberately never released; the manager lives as long as the process. */
+    {
+        unsigned char *hbase = 0;
+        void *iso = dlsym(hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+        if (iso != 0) hbase = (unsigned char *)iso - 0x48b1e0UL;
+        void *ftm = dlsym(hwui, "_ZN7android15FreeTypeFontMgrEv");
+        void *skia = dlopen("libskia_canvaskit.z.so", RTLD_NOW | RTLD_GLOBAL);
+        void *refdef = skia != 0 ? dlsym(skia, "_ZN9SkFontMgr10RefDefaultEv") : 0;
+        if (hbase != 0 && ftm != 0 && refdef != 0) {
+            (void)wl_call_sret_nullary(ftm);          /* run the normal init path */
+            void *real = wl_call_sret_nullary(refdef);
+            void **slot = (void **)(hbase + 0x48d968UL);
+            log_int("selective hwui: fontmgr empty=", *slot != 0);
+            if (real != 0) {
+                /* Does an OHOS Skia object work at all when driven from libhwui? The two
+                 * were built against different libc++ ABI namespaces (__n1 vs __h), so any
+                 * call crossing a std type is undefined. makeFromFile takes a plain char*,
+                 * so it isolates the question "is this manager usable" from "does the std
+                 * ABI line up". If this returns null the Skia boundary is not viable. */
+                void *mff = dlsym(skia, "_ZNK9SkFontMgr12makeFromFileEPKci");
+                if (mff != 0) {
+                    void *tf = wl_call_sret_this2(mff, real,
+                            "/system/fonts/Roboto-Regular.ttf", 0);
+                    log_int("selective hwui: skia makeFromFile nonnull=", tf != 0);
+                    hlog_sel(tf != 0 ? "skia makeFromFile OK" : "skia makeFromFile NULL");
+                } else {
+                    log_text("selective hwui: makeFromFile symbol missing");
+                }
+                *slot = real;
+                /* Both overloads matter and they have different callers:
+                 *   0x3e9848  (..., const SkFontArguments&)  <- FontFamily.nAddFontWeightStyle
+                 *   0x3e97a8  (..., int ttcIndex)            <- Typeface::setRobotoTypefaceForTest
+                 * Argument shapes agree for our purposes: x1 and x2 are both overwritten. */
+                wl_patch_make_from_stream(hbase, skia,
+                        "/system/fonts/Roboto-Regular.ttf", 0x3e9848UL);
+                wl_patch_make_from_stream(hbase, skia,
+                        "/system/fonts/Roboto-Regular.ttf", 0x3e97a8UL);
+                log_text("selective hwui: fontmgr swapped to OHOS RefDefault");
+                hlog_sel("selective hwui: fontmgr swapped to OHOS RefDefault");
+            } else {
+                log_text("selective hwui: RefDefault returned null");
+                hlog_sel("selective hwui: RefDefault returned null");
+            }
+        } else {
+            log_int("selective hwui: fontmgr swap unavailable hbase=", hbase != 0);
+            log_int("  ftm=", ftm != 0); log_int("  refdef=", refdef != 0);
+        }
+    }
+
+    /* Install a native default typeface. Everything that rasterises or measures text calls
+     * Typeface::resolveDefault(), which is LOG_ALWAYS_FATAL when both the Paint's typeface
+     * and gDefaultTypeface are null -- that is the SIGTRAP that kills the run during
+     * TextView measurement. setRobotoTypefaceForTest() is the only exported entry that sets
+     * gDefaultTypeface; it opens a hardcoded /system/fonts/Roboto-Regular.ttf, which the
+     * runner bind-mounts into place. With this set, a Java-side Typeface carrying no native
+     * peer becomes harmless: every native call resolves to this default instead. */
+    if (getenv("WL_FONT_DEFAULT") != 0) {
+        void (*set_roboto)(void) =
+            (void (*)(void))dlsym(hwui, "_ZN7android8Typeface24setRobotoTypefaceForTestEv");
+        if (set_roboto != 0) {
+            log_text("selective hwui: setRobotoTypefaceForTest enter");
+            hlog_sel("selective hwui: setRobotoTypefaceForTest enter");
+            set_roboto();
+            log_text("selective hwui: setRobotoTypefaceForTest done");
+            hlog_sel("selective hwui: setRobotoTypefaceForTest done");
+        } else {
+            log_text("selective hwui: setRobotoTypefaceForTest missing");
+            hlog_sel("selective hwui: setRobotoTypefaceForTest missing");
+        }
+    }
+
     void *sym = dlsym(hwui, "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv");
     WlDlInfo di; di.dli_fname = 0; di.dli_fbase = 0; di.dli_sname = 0; di.dli_saddr = 0;
     if (sym == 0 || dladdr(sym, &di) == 0 || di.dli_fbase == 0) {
@@ -1936,6 +2585,776 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
     log_int("selective hwui total skipped=", total_skip);
     log_text("selective hwui RETURN");
     return total_skip;
+}
+
+/* [5583 2026-07-19] The frozen renderer sets android::uirenderer::Properties::isolatedProcess
+ * = true at the top of nativeInit. In hwui that flag is the "no GPU in this process" switch,
+ * and with it set the RenderThread never brings up a GL context, so syncAndDrawFrame produces
+ * no swap (board evidence: nativeLastSwapArgb stays -1 and the composited layer is empty even
+ * though the RSSurfaceNode is attached to display 0). The flag is an exported 1-byte global and
+ * the GL context is created lazily on the first frame, so flipping it back between nativeInit
+ * and nativeDrawFrame is enough. Returns 1 if it flipped, 0 if the symbol was not found. */
+#ifndef RTLD_NEXT
+/* musl only exposes RTLD_NEXT under _GNU_SOURCE; the value is fixed by the ABI. */
+#define RTLD_NEXT ((void *)-1L)
+#endif
+
+/* [5583 2026-07-19] EGL call tracing. hwui's RenderThread SIGTRAPs immediately after
+ * eglCreateContext and libhwui's own __android_log_assert writes the reason nowhere we can
+ * read. We are LD_PRELOADed, so libhwui's PLT calls to these bind here first; forward to the
+ * real implementation via RTLD_NEXT and log the outcome. Gated on WL_EGL_TRACE=1. */
+static int wl_egl_trace(void) {
+    static int t = -1;
+    if (t < 0) t = streq(getenv("WL_EGL_TRACE"), "1") ? 1 : 0;
+    return t;
+}
+
+/* [5583 2026-07-19] eglGetProcAddress with a dlsym fallback.
+ * Between eglMakeCurrent and eglCreateWindowSurface hwui runs GrGLMakeNativeInterface(),
+ * and RenderThread::requireGlContext asserts on it with LOG_ALWAYS_FATAL_IF(!glInterface)
+ * -- a message-less assert, which is exactly why the SIGTRAP reason appears in no log.
+ * Skia assembles that interface via eglGetProcAddress; OHOS's EGL wrapper is entitled to
+ * return NULL for CORE (non-extension) entry points, which sinks the whole interface.
+ * We are LD_PRELOADed, so libhwui's PLT call lands here: forward first, and on NULL fall
+ * back to dlsym'ing the GLES/EGL front-ends directly. */
+static void *wl_gl_handle(const char *soname)
+{
+    void *h = dlopen(soname, RTLD_NOW | RTLD_GLOBAL);
+    return h;
+}
+
+/* libhwui links the GL entry points directly (its UND list has glGetString/glGetIntegerv
+ * but no eglGetProcAddress), so Skia assembles its interface from these. A NULL from
+ * glGetString sinks GrGLMakeNativeInterface() and trips the message-less
+ * LOG_ALWAYS_FATAL_IF -- trace them to see whether GL is actually live on this thread. */
+/* Sequence-numbered trace of the remaining GL/EGL queries Skia makes while assembling its
+ * interface. The last one logged before the SIGTRAP is the frame we cannot otherwise see,
+ * because the assert that kills us carries no message. */
+static void wl_gl_seq(const char *what, unsigned int arg, long val)
+{
+    static int n;
+    if (!wl_egl_trace() || n >= 40) return;
+    n++;
+    static const char hx[] = "0123456789abcdef";
+    char m[160]; unsigned long p = 0;
+    append_text(m, sizeof(m), &p, "WLGL# ");
+    append_text(m, sizeof(m), &p, what);
+    append_text(m, sizeof(m), &p, " arg=0x");
+    for (int i = 7; i >= 0; i--) m[p++] = hx[(arg >> (i * 4)) & 0xf];
+    append_text(m, sizeof(m), &p, " val=");
+    if (val < 0) { m[p++] = '-'; val = -val; }
+    char d[24]; int di = 0;
+    do { d[di++] = (char)('0' + (val % 10)); val /= 10; } while (val > 0);
+    while (di > 0) m[p++] = d[--di];
+    m[p] = 0;
+    log_text(m); hlog_sel(m);
+}
+
+void glGetIntegerv(unsigned int pname, int *params)
+{
+    static void (*real)(unsigned int, int *);
+    if (real == 0) real = (void (*)(unsigned int, int *))dlsym(RTLD_NEXT, "glGetIntegerv");
+    if (real == 0) { if (params) *params = 0; return; }
+    real(pname, params);
+    wl_gl_seq("glGetIntegerv", pname, params ? (long)*params : -1);
+}
+
+const char *eglQueryString(void *dpy, int name)
+{
+    static const char *(*real)(void *, int);
+    if (real == 0) real = (const char *(*)(void *, int))dlsym(RTLD_NEXT, "eglQueryString");
+    if (real == 0) return 0;
+    const char *r = real(dpy, name);
+    wl_gl_seq("eglQueryString", (unsigned int)name, r ? (long)1 : (long)0);
+    return r;
+}
+
+const unsigned char *glGetString(unsigned int name)
+{
+    static const unsigned char *(*real)(unsigned int);
+    static int n;
+    if (real == 0) real = (const unsigned char *(*)(unsigned int))dlsym(RTLD_NEXT, "glGetString");
+    if (real == 0) {
+        if (wl_egl_trace()) { log_text("WLGL glGetString: no real impl"); hlog_sel("WLGL glGetString: no real impl"); }
+        return 0;
+    }
+    const unsigned char *r = real(name);
+    if (wl_egl_trace() && n < 8) {
+        n++;
+        char m[160]; unsigned long p = 0;
+        append_text(m, sizeof(m), &p, "WLGL glGetString(0x");
+        static const char hx[] = "0123456789abcdef";
+        for (int i = 7; i >= 0; i--) m[p++] = hx[(name >> (i * 4)) & 0xf];
+        append_text(m, sizeof(m), &p, ") = ");
+        append_text(m, sizeof(m), &p, r ? (const char *)r : "(null)");
+        m[p] = 0;
+        log_text(m); hlog_sel(m);
+    }
+    return r;
+}
+
+void *eglGetProcAddress(const char *name)
+{
+    static void *(*real)(const char *);
+    static void *g3, *g2, *eg;
+    static int misses, recovered;
+    if (real == 0) real = (void *(*)(const char *))dlsym(RTLD_NEXT, "eglGetProcAddress");
+    void *r = real ? real(name) : 0;
+    if (r != 0) return r;
+    if (g3 == 0) g3 = wl_gl_handle("libGLESv3.so");
+    if (g2 == 0) g2 = wl_gl_handle("libGLESv2.so");
+    if (eg == 0) eg = wl_gl_handle("libEGL.so");
+    if (g3) r = dlsym(g3, name);
+    if (r == 0 && g2) r = dlsym(g2, name);
+    if (r == 0 && eg) r = dlsym(eg, name);
+    if (wl_egl_trace()) {
+        if (r != 0) {
+            if (recovered < 12) {
+                recovered++;
+                char m[128]; unsigned long p = 0;
+                append_text(m, sizeof(m), &p, "WLEGL getProcAddress recovered via dlsym: ");
+                append_text(m, sizeof(m), &p, name);
+                log_text(m); hlog_sel(m);
+            }
+        } else if (misses < 12) {
+            misses++;
+            char m[128]; unsigned long p = 0;
+            append_text(m, sizeof(m), &p, "WLEGL getProcAddress MISS: ");
+            append_text(m, sizeof(m), &p, name);
+            log_text(m); hlog_sel(m);
+        }
+    }
+    return r;
+}
+
+void *eglCreatePbufferSurface(void *dpy, void *config, const int *attrib_list)
+{
+    static void *(*real)(void *, void *, const int *);
+    if (real == 0) real = (void *(*)(void *, void *, const int *))
+        dlsym(RTLD_NEXT, "eglCreatePbufferSurface");
+    if (real == 0) { if (wl_egl_trace()) hlog_sel("WLEGL pbuffer: no real impl"); return 0; }
+    void *r = real(dpy, config, attrib_list);
+    if (wl_egl_trace()) {
+        static int (*egl_err)(void);
+        if (egl_err == 0) egl_err = (int (*)(void))dlsym(RTLD_NEXT, "eglGetError");
+        log_int("WLEGL eglCreatePbufferSurface ok=", r != 0);
+        if (r == 0 && egl_err) log_int("WLEGL   eglGetError=", egl_err());
+        hlog_sel(r != 0 ? "WLEGL pbuffer OK" : "WLEGL pbuffer FAILED");
+    }
+    return r;
+}
+
+unsigned int eglMakeCurrent(void *dpy, void *draw, void *read, void *ctx)
+{
+    static unsigned int (*real)(void *, void *, void *, void *);
+    if (real == 0) real = (unsigned int (*)(void *, void *, void *, void *))
+        dlsym(RTLD_NEXT, "eglMakeCurrent");
+    if (real == 0) return 0;
+    unsigned int r = real(dpy, draw, read, ctx);
+    if (wl_egl_trace()) {
+        log_int("WLEGL eglMakeCurrent ok=", (int)r);
+        hlog_sel(r ? "WLEGL makeCurrent OK" : "WLEGL makeCurrent FAILED");
+    }
+    return r;
+}
+
+void *eglCreateWindowSurface(void *dpy, void *config, void *win, const int *attrib_list)
+{
+    static void *(*real)(void *, void *, void *, const int *);
+    if (real == 0) real = (void *(*)(void *, void *, void *, const int *))
+        dlsym(RTLD_NEXT, "eglCreateWindowSurface");
+    if (real == 0) return 0;
+    void *r = real(dpy, config, win, attrib_list);
+    if (wl_egl_trace()) {
+        log_int("WLEGL eglCreateWindowSurface ok=", r != 0);
+        hlog_sel(r != 0 ? "WLEGL windowSurface OK" : "WLEGL windowSurface FAILED");
+    }
+    return r;
+}
+
+/* [5583 2026-07-19] Own presentation path, bypassing hwui entirely.
+ *
+ * Both libhwui builds on this board are OFFSCREEN-ONLY: their UND tables have
+ * eglCreatePbufferSurface but NO eglCreateWindowSurface / eglCreatePlatformWindowSurface /
+ * eglSwapBuffers, and no OH_NativeWindow_* at all. RenderProxy::setSurface() therefore can
+ * never put a frame on a window -- no configuration fixes a missing code path.
+ *
+ * The renderer does export westlake_ohos_make_display_window (GLOBAL FUNC), which builds an
+ * RSSurfaceNode on display 0 and hands back an OHNativeWindow. From there the public OHOS NDK
+ * (OH_NativeWindow_NativeWindowRequestBuffer / GetBufferHandleFromNative / FlushBuffer) is
+ * enough to write pixels ourselves. This native takes an ARGB_8888 int[] -- the app's view
+ * tree rendered by a software Canvas -- and blits it. Passing a null array paints a test
+ * pattern instead, which proves the path without needing the Java side to work yet. */
+/* Mirrors BufferHandle from <native_window/buffer_handle.h>: six int32 then a uint64 usage
+ * (8-aligned, so it lands at 24) and virAddr at 32. Getting this wrong reads plausible-looking
+ * garbage -- the first attempt used a made-up prefix and saw width=1920/stride=9216000, i.e.
+ * the real height and size. */
+typedef struct {
+    int fd, width, stride, height, size, format;
+    unsigned long long usage;
+    void *virAddr;
+} wl_bh_head;
+
+static void *wl_display_window(int w, int h)
+{
+    static void *win;
+    if (win != 0) return win;
+    void *rend = dlopen("libwestlake_upscreen_renderer.so", RTLD_NOW | RTLD_GLOBAL);
+    if (rend == 0) {
+        rend = dlopen_exec("android/lib64/libwestlake_upscreen_renderer.so",
+                           "libwestlake_upscreen_renderer.so", RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (rend == 0) { log_text("blit: renderer dlopen failed"); return 0; }
+    void *(*mk)(int, int, int *, int *) = (void *(*)(int, int, int *, int *))
+        dlsym(rend, "westlake_ohos_make_display_window");
+    if (mk == 0) { log_text("blit: make_display_window not exported"); return 0; }
+    int ow = 0, oh = 0;
+    win = mk(w, h, &ow, &oh);
+    log_int("blit: make_display_window ow=", ow);
+    log_int("blit: make_display_window oh=", oh);
+    log_int("blit: window ptr nonnull=", win != 0);
+    return win;
+}
+
+/* Signature is ()I on purpose. The interpreter's static-JNI chain has no 'ILII' branch, so
+ * an (int[],int,int)I native is silently dropped and returns 0 -- indistinguishable from
+ * success. Inputs therefore travel through static fields on the probe class instead. */
+static jint westlake_native_blit_argb(JNIEnv *env, jclass clazz)
+{
+    jintArray pixels = 0;
+    jint w = 0, h = 0;
+    {
+        jfieldID fw = (*env)->GetStaticFieldID(env, clazz, "sBlitW", "I");
+        jfieldID fh = (*env)->GetStaticFieldID(env, clazz, "sBlitH", "I");
+        jfieldID fp = (*env)->GetStaticFieldID(env, clazz, "sBlitPixels", "[I");
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+        if (fw) w = (*env)->GetStaticIntField(env, clazz, fw);
+        if (fh) h = (*env)->GetStaticIntField(env, clazz, fh);
+        if (fp) pixels = (jintArray)(*env)->GetStaticObjectField(env, clazz, fp);
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+    }
+    log_int("blit: w=", (int)w);
+    log_int("blit: h=", (int)h);
+    log_int("blit: pixels nonnull=", pixels != 0);
+    if (w <= 0 || h <= 0) { w = 1200; h = 1920; }
+    void *win = wl_display_window(w, h);
+    if (win == 0) return 1;
+
+    int32_t (*req)(void *, void **, int *) = (int32_t (*)(void *, void **, int *))
+        dlsym(RTLD_DEFAULT, "OH_NativeWindow_NativeWindowRequestBuffer");
+    void *(*gethandle)(void *) = (void *(*)(void *))
+        dlsym(RTLD_DEFAULT, "OH_NativeWindow_GetBufferHandleFromNative");
+    /* Region is passed by value; it is two ints plus a pointer, and every field zero means
+     * "whole surface", so a zeroed 32-byte blob is a safe stand-in for the struct. */
+    int32_t (*flush)(void *, void *, int, void *, void *, void *, void *) =
+        (int32_t (*)(void *, void *, int, void *, void *, void *, void *))
+        dlsym(RTLD_DEFAULT, "OH_NativeWindow_NativeWindowFlushBuffer");
+    if (req == 0 || gethandle == 0 || flush == 0) { log_text("blit: NDK window symbols missing"); return 2; }
+
+    void *buf = 0;
+    int fence = -1;
+    int32_t rc = req(win, &buf, &fence);
+    log_int("blit: RequestBuffer rc=", (int)rc);
+    if (rc != 0 || buf == 0) return 3;
+
+    wl_bh_head *bh = (wl_bh_head *)gethandle(buf);
+    if (bh == 0) { log_text("blit: null buffer handle"); return 4; }
+    /* virAddr is only populated when the producer already mapped the buffer; for a freshly
+     * requested GPU buffer it is null and the CPU mapping has to be made from handle->fd. */
+    unsigned char *dst = (unsigned char *)bh->virAddr;
+    void *mapped = 0;
+    long map_len = 0;
+    if (dst == 0 && bh->fd >= 0 && bh->size > 0) {
+        map_len = bh->size;
+        mapped = mmap(0, (size_t)map_len, PROT_READ | PROT_WRITE, MAP_SHARED, bh->fd, 0);
+        if (mapped == MAP_FAILED) { mapped = 0; log_text("blit: mmap failed"); }
+        dst = (unsigned char *)mapped;
+        log_int("blit: mmap fd=", bh->fd);
+        log_int("blit: mmap ok=", dst != 0);
+    }
+    log_int("blit: bh.width=", bh->width);
+    log_int("blit: bh.height=", bh->height);
+    log_int("blit: bh.stride=", bh->stride);
+    log_int("blit: virAddr nonnull=", dst != 0);
+    if (dst == 0) return 5;
+
+    int bw = bh->width  > 0 ? bh->width  : w;
+    int bhh = bh->height > 0 ? bh->height : h;
+    int stride = bh->stride > 0 ? bh->stride : bw * 4;
+
+    if (pixels == 0) {
+        /* Test pattern: opaque vertical colour bands, so a screenshot shows unmistakably
+         * that WE wrote this buffer and it reached the panel. */
+        for (int y = 0; y < bhh; y++) {
+            unsigned char *row = dst + (long)y * stride;
+            for (int x = 0; x < bw; x++) {
+                unsigned char *px = row + (long)x * 4;
+                int band = (x * 6) / (bw > 0 ? bw : 1);
+                px[0] = (band & 1) ? 0xFF : 0x20;        /* B */
+                px[1] = (band & 2) ? 0xFF : 0x20;        /* G */
+                px[2] = (band & 4) ? 0xFF : 0x20;        /* R */
+                px[3] = 0xFF;                            /* A */
+            }
+        }
+    } else {
+        jint *src = (*env)->GetIntArrayElements(env, pixels, 0);
+        if (src == 0) { log_text("blit: GetIntArrayElements failed"); return 6; }
+        int rows = h < bhh ? h : bhh;
+        int cols = w < bw ? w : bw;
+        for (int y = 0; y < rows; y++) {
+            unsigned char *row = dst + (long)y * stride;
+            const jint *srow = src + (long)y * w;
+            for (int x = 0; x < cols; x++) {
+                unsigned int argb = (unsigned int)srow[x];
+                unsigned char *px = row + (long)x * 4;
+                px[0] = (unsigned char)(argb & 0xFF);          /* B */
+                px[1] = (unsigned char)((argb >> 8) & 0xFF);   /* G */
+                px[2] = (unsigned char)((argb >> 16) & 0xFF);  /* R */
+                px[3] = (unsigned char)((argb >> 24) & 0xFF);  /* A */
+            }
+        }
+        (*env)->ReleaseIntArrayElements(env, pixels, src, 0);
+    }
+
+    unsigned char region[32];
+    for (int i = 0; i < 32; i++) region[i] = 0;
+    rc = flush(win, buf, -1, (void *)region, 0, 0, 0);
+    log_int("blit: FlushBuffer rc=", (int)rc);
+    if (mapped != 0) munmap(mapped, (size_t)map_len);
+    return rc == 0 ? 0 : 7;
+}
+
+/* [5583 2026-07-20] Allocate a ColorSpace.Rgb WITHOUT running its constructor.
+ *
+ * On this substrate ColorSpace.get(Named.X) returns null for all 19 named spaces -- the
+ * backing table was never populated -- and building one by hand is circular: Rgb's
+ * constructor calls isSrgb(), which dereferences get(Named.SRGB) and NPEs on the null.
+ * JNI AllocObject creates the instance with no constructor at all, which is enough to put a
+ * non-null placeholder in the SRGB slot; the real Rgb can then be constructed normally
+ * (isSrgb() reads a null mOetf off the placeholder and simply answers "not sRGB", which is
+ * harmless) and swapped in over it.
+ *
+ * Signature is ()Ljava/lang/Object; -- shorty "L". Anything with a richer shorty risks being
+ * dropped by the interpreter's static-JNI chain and returning a typed zero, which reads
+ * exactly like success. */
+/* Generic constructor-less allocation. Class name comes from a static String field so the
+ * signature stays ()Ljava/lang/Object; -- richer shorties get dropped by the interpreter's
+ * static-JNI chain and silently return null, which is indistinguishable from a real failure. */
+/* [5583 2026-07-20] Mutable Bitmap.copy that bypasses the broken boolean marshal.
+ *
+ * Proven on-board: a boolean argument does not survive the interpreter's JNI marshal, so
+ * Bitmap.copy(cfg, true) always returns an IMMUTABLE bitmap and Canvas rejects it -- with no
+ * way to fix that from Java. The selective binder already harvested libhwui's Bitmap
+ * JNINativeMethod table (0x475cd8, 46 entries), which holds the real function pointers, so
+ * call nativeCopy from here with the C ABI and a hard-coded JNI_TRUE.
+ *
+ * Input: static field sCopySrc (the source Bitmap). Signature stays ()Ljava/lang/Object;. */
+static jobject westlake_native_mutable_copy(JNIEnv *env, jclass clazz)
+{
+    jfieldID sf = (*env)->GetStaticFieldID(env, clazz, "sCopySrc", "Ljava/lang/Object;");
+    if (sf == 0 || (*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return 0; }
+    jobject src = (*env)->GetStaticObjectField(env, clazz, sf);
+    if (src == 0) { log_text("mutCopy: no source bitmap"); return 0; }
+
+    jclass bmCls = (*env)->GetObjectClass(env, src);
+    jfieldID np = (*env)->GetFieldID(env, bmCls, "mNativePtr", "J");
+    if (np == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mutCopy: mNativePtr not found");
+        return 0;
+    }
+    jlong ptr = (*env)->GetLongField(env, src, np);
+    log_int("mutCopy: srcPtr nonzero=", ptr != 0);
+    if (ptr == 0) return 0;
+
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) { log_text("mutCopy: dlopen libhwui failed"); return 0; }
+    void *anchor = dlsym(hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+    if (anchor == 0) { log_text("mutCopy: cannot locate libhwui base"); return 0; }
+    unsigned char *base = (unsigned char *)anchor - 0x48b1e0UL;
+    JNINativeMethod *tab = (JNINativeMethod *)(base + 0x475cd8UL);
+
+    void *fn = 0;
+    for (int i = 0; i < 46; i++) {
+        if (tab[i].name != 0 && streq(tab[i].name, "nativeCopy")) { fn = tab[i].fnPtr; break; }
+    }
+    if (fn == 0) { log_text("mutCopy: nativeCopy not in harvested table"); return 0; }
+
+    /* nativeCopy(JNIEnv*, jclass, jlong nativeBitmap, jint dstConfig, jboolean isMutable) */
+    typedef jobject (*copy_fn)(JNIEnv *, jclass, jlong, jint, jboolean);
+    jobject out = ((copy_fn)fn)(env, bmCls, ptr, 5 /* ARGB_8888 */, JNI_TRUE);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "mutCopy nativeCopy threw");
+        (*env)->ExceptionClear(env);
+        out = 0;
+    }
+    log_int("mutCopy: result nonnull=", out != 0);
+    return out;
+}
+
+static jobject westlake_native_alloc_by_name(JNIEnv *env, jclass clazz)
+{
+    /* Take the Class object from Java, not a name: FindClass here resolves through the
+     * probe class's loader, which cannot see the app's dex (observed: "FindClass failed" for
+     * androidx.fragment.app.c0). The Java side resolves it with the right classloader. */
+    jfieldID cf = (*env)->GetStaticFieldID(env, clazz, "sAllocClass", "Ljava/lang/Class;");
+    if (cf == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("allocByName: sAllocClass field missing");
+        return 0;
+    }
+    jclass target = (jclass)(*env)->GetStaticObjectField(env, clazz, cf);
+    if (target == 0) { log_text("allocByName: sAllocClass not set"); return 0; }
+    jobject o = (*env)->AllocObject(env, target);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "allocByName AllocObject threw");
+        (*env)->ExceptionClear(env);
+        o = 0;
+    }
+    log_int("allocByName ok=", o != 0);
+    return o;
+}
+
+/* Font.Builder(ByteBuffer) insists on a *direct* buffer, and both Java routes to one are
+ * dead in this lane: Typeface.createFromFile goes through FileChannel.map, whose
+ * allocationGranularity is 0 here (divide by zero), and ByteBuffer.put(byte[]) needs
+ * libcore.io.Memory natives, which no library in this lane implements at all. Read the
+ * file here and hand back a NewDirectByteBuffer instead.
+ * The mapping is deliberately never freed: minikin keeps referencing the font bytes for
+ * the lifetime of the Typeface, so this allocation is owned by the process, not by us.
+ * Zero-arg like the other probe natives -- the interpreter's argument marshalling is not
+ * trustworthy for every shorty, so the path is passed through a static field. */
+static jobject westlake_native_direct_buffer_from_file(JNIEnv *env, jclass clazz)
+{
+    jfieldID pf = (*env)->GetStaticFieldID(env, clazz, "sDirectBufPath", "Ljava/lang/String;");
+    if (pf == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("dbuf: sDirectBufPath field missing");
+        return 0;
+    }
+    jstring js = (jstring)(*env)->GetStaticObjectField(env, clazz, pf);
+    if (js == 0) { log_text("dbuf: sDirectBufPath not set"); return 0; }
+    const char *path = (*env)->GetStringUTFChars(env, js, 0);
+    if (path == 0) { log_text("dbuf: GetStringUTFChars failed"); return 0; }
+
+    jobject out = 0;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        log_text("dbuf: open failed");
+        log_text(path);
+    } else {
+        off_t end = lseek(fd, 0, SEEK_END);
+        lseek(fd, 0, SEEK_SET);
+        if (end > 0) {
+            size_t len = (size_t)end;
+            unsigned char *mem = (unsigned char *)malloc(len);
+            if (mem != 0) {
+                size_t got = 0;
+                while (got < len) {
+                    ssize_t n = read(fd, mem + got, len - got);
+                    if (n <= 0) break;
+                    got += (size_t)n;
+                }
+                if (got == len) {
+                    out = (*env)->NewDirectByteBuffer(env, mem, (jlong)len);
+                    if ((*env)->ExceptionCheck(env)) {
+                        describe_pending_exception(env, "dbuf NewDirectByteBuffer");
+                        (*env)->ExceptionClear(env);
+                        out = 0;
+                    }
+                    log_int("dbuf: bytes=", (int)len);
+                } else {
+                    log_text("dbuf: short read");
+                    free(mem);
+                }
+            } else {
+                log_text("dbuf: malloc failed");
+            }
+        } else {
+            log_text("dbuf: empty file");
+        }
+        close(fd);
+    }
+    (*env)->ReleaseStringUTFChars(env, js, path);
+    log_int("dbuf ok=", out != 0);
+    return out;
+}
+
+/* FontFamily.nAddFontWeightStyle has shorty 'ZJLIII', which this interpreter has no
+ * hand-written branch for: the call is dropped and returns false, so every font is
+ * "rejected" before minikin ever sees it. Same escape as westlake_native_mutable_copy --
+ * take the function pointer straight out of the harvested libhwui table and call it with
+ * the real C ABI, bypassing the interpreter's JNI dispatch entirely.
+ * Zero-arg by convention; arguments arrive through static fields on the probe class. */
+static jint westlake_native_add_font_weight_style(JNIEnv *env, jclass clazz)
+{
+    jfieldID bf = (*env)->GetStaticFieldID(env, clazz, "sFfBuilderPtr", "J");
+    jfieldID qf = (*env)->GetStaticFieldID(env, clazz, "sFfBuffer", "Ljava/lang/Object;");
+    if (bf == 0 || qf == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("addFont: static fields missing");
+        return 0;
+    }
+    jlong builder = (*env)->GetStaticLongField(env, clazz, bf);
+    jobject buf = (*env)->GetStaticObjectField(env, clazz, qf);
+    if (builder == 0 || buf == 0) { log_text("addFont: builder or buffer not set"); return 0; }
+
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) { log_text("addFont: dlopen libhwui failed"); return 0; }
+    void *anchor2 = dlsym(hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+    if (anchor2 == 0) { log_text("addFont: cannot locate libhwui base"); return 0; }
+    unsigned char *base = (unsigned char *)anchor2 - 0x48b1e0UL;
+    /* register_android_graphics_FontFamily: table 0x4768a8, 7 entries. */
+    JNINativeMethod *tab = (JNINativeMethod *)(base + 0x4768a8UL);
+
+    void *fn = 0;
+    for (int i = 0; i < 7; i++) {
+        if (tab[i].name != 0 && streq(tab[i].name, "nAddFontWeightStyle")) { fn = tab[i].fnPtr; break; }
+    }
+    if (fn == 0) { log_text("addFont: nAddFontWeightStyle not in harvested table"); return 0; }
+
+    /* libhwui's own ALOGE diagnostics have no sink in this lane, so re-check here what the
+     * native would have complained about: a null direct-buffer address, a negative
+     * capacity, or font bytes that never arrived (sfnt magic). */
+    {
+        void *addr = (*env)->GetDirectBufferAddress(env, buf);
+        jlong cap = (*env)->GetDirectBufferCapacity(env, buf);
+        log_int("addFont: dbuf addr nonnull=", addr != 0);
+        log_int("addFont: dbuf capacity=", (int)cap);
+        if (addr != 0 && cap >= 4) {
+            unsigned char *m = (unsigned char *)addr;
+            log_int("addFont: magic0=", m[0]); log_int("addFont: magic1=", m[1]);
+            log_int("addFont: magic2=", m[2]); log_int("addFont: magic3=", m[3]);
+        }
+    }
+
+    /* nAddFontWeightStyle(JNIEnv*, jclass, jlong builderPtr, jobject buffer,
+                           jint ttcIndex, jint weight, jint italic) */
+    typedef jboolean (*add_fn)(JNIEnv *, jclass, jlong, jobject, jint, jint, jint);
+    jboolean ok = ((add_fn)fn)(env, clazz, builder, buf, 0, 400, 0);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "addFont nAddFontWeightStyle threw");
+        (*env)->ExceptionClear(env);
+        ok = JNI_FALSE;
+    }
+    log_int("addFont: ok=", ok != 0);
+    return ok ? 1 : 0;
+}
+
+static jobject westlake_native_alloc_colorspace_rgb(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    jclass rgb = (*env)->FindClass(env, "android/graphics/ColorSpace$Rgb");
+    if (rgb == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("allocCS: FindClass ColorSpace$Rgb failed");
+        return 0;
+    }
+    jobject o = (*env)->AllocObject(env, rgb);
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); o = 0; }
+    log_int("allocCS: alloc ok=", o != 0);
+    return o;
+}
+
+static void wl_install_segv_diag(void);
+
+/* No-op stand-in for natives whose only job is bookkeeping we do not need. */
+static void wl_vmruntime_noop(JNIEnv *env, jclass clazz) { (void)env; (void)clazz; }
+
+/* [5583 2026-07-20] Run libhwui's real Bitmap registrar.
+ *
+ * The selective binder registers method tables but never executes the registrar body, and
+ * that body is where the JNI globals live (gBitmap_class and friends). Binding alone
+ * therefore gets nativeCreate called and then killed by
+ * "JNI DETECTED ERROR IN APPLICATION: java_class == null ... in call to GetMethodID".
+ * Calling the exported registrar is safe here specifically because the selective pass already
+ * proved all 46 entries resolve (bound=46 skipped=0) -- the wholesale-registrar SIGTRAP only
+ * fires when an entry mismatches. */
+/* Probe shim: report a generous string-pool size (see note at the call site). */
+static jint wl_stringblock_get_size(JNIEnv *env, jclass clazz, jlong ptr)
+{
+    (void)env; (void)clazz; (void)ptr;
+    return 4096;
+}
+
+/* [5583 2026-07-20] Re-run wlresjni's real StringBlock registrar.
+ *
+ * OHBridge installs 4 StringBlock stubs at VM bring-up ("StringBlock stubs: 4/4"), and those
+ * land AFTER wlresjni's registrar, so the real implementations get overwritten and the ones
+ * OHBridge does not stub (nativeGetSize) end up unregistered. Re-running the registrar puts
+ * the real set back, which the layout re-inflate needs. */
+static jint westlake_native_register_stringblock(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    void *rj = dlopen("wlresjni.so", RTLD_NOW | RTLD_GLOBAL);
+    if (rj == 0) {
+        rj = dlopen_exec("android/lib64/wlresjni.so", "wlresjni.so", RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (rj == 0) { log_text("sbReg: dlopen wlresjni failed"); return 0; }
+    void (*reg)(JNIEnv *) = (void (*)(JNIEnv *))
+        dlsym(rj, "_ZN7android36register_android_content_StringBlockEP7_JNIEnv");
+    if (reg == 0) { log_text("sbReg: registrar symbol missing"); return 0; }
+    /* Do not swallow: if RegisterNatives inside the registrar failed, the reason is the whole
+     * answer to why nativeGetSize stays unresolved. */
+    reg(env);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "sbReg registrar threw");
+        (*env)->ExceptionClear(env);
+        log_text("sbReg: registrar raised (see above)");
+        return 2;
+    }
+    /* Probe the outcome directly: resolve the method and see whether ART now has code for it. */
+    {
+        jclass sb = (*env)->FindClass(env, "android/content/res/StringBlock");
+        if (sb == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            log_text("sbReg: FindClass StringBlock failed");
+        } else {
+            jmethodID mid = (*env)->GetStaticMethodID(env, sb, "nativeGetSize", "(J)I");
+            if (mid == 0 || (*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+                log_text("sbReg: nativeGetSize NOT declared static (J)I on this framework");
+                mid = (*env)->GetMethodID(env, sb, "nativeGetSize", "(J)I");
+                if (mid == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("sbReg: nativeGetSize not found as instance method either");
+                } else {
+                    log_text("sbReg: nativeGetSize is an INSTANCE method");
+                }
+            } else {
+                log_text("sbReg: nativeGetSize resolved as static (J)I");
+            }
+        }
+    }
+    /* wlresjni's registrar builds its table at runtime and does not include nativeGetSize
+     * (registrar ran, threw nothing, yet the call still ULEs). StringBlock uses this value for
+     * bounds checks and to size its string cache array, so a fixed generous value is enough to
+     * get inflate moving -- it is a PROBE shim, not a correct implementation: if anything ever
+     * iterates 0..size it will read past the real pool. Gated so it is easy to take back out. */
+    if (streq(getenv("WL_SB_SIZE_SHIM"), "1")) {
+        jclass sb2 = (*env)->FindClass(env, "android/content/res/StringBlock");
+        if (sb2 != 0 && !(*env)->ExceptionCheck(env)) {
+            JNINativeMethod nm2 = {"nativeGetSize", "(J)I", (void *)wl_stringblock_get_size};
+            jint rc2 = (*env)->RegisterNatives(env, sb2, &nm2, 1);
+            if (rc2 != 0 || (*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+                log_text("sbReg: nativeGetSize shim RegisterNatives failed");
+            } else {
+                log_text("sbReg: nativeGetSize shim installed");
+            }
+        } else {
+            (*env)->ExceptionClear(env);
+        }
+    }
+    log_text("sbReg: StringBlock registrar re-run");
+    return 1;
+}
+
+static jint westlake_native_register_bitmap_jni(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    static int done;
+    if (done) return 2;
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) { log_text("bitmapJni: dlopen libhwui failed"); return 0; }
+    void (*reg)(JNIEnv *) = (void (*)(JNIEnv *))
+        dlsym(hwui, "_Z32register_android_graphics_BitmapP7_JNIEnv");
+    if (reg == 0) { log_text("bitmapJni: registrar symbol missing"); return 0; }
+    /* [5583 2026-07-20] Give VMRuntime.notifyNativeAllocationsInternal a real entry.
+     *
+     * Bitmap.<init> -> NativeAllocationRegistry.registerNativeAllocation calls it, and its JNI
+     * entry is null on this substrate, so the interpreter branches to address 0
+     * (fault_addr=0 pc=0). Three attempts to guard that inside the interpreter all missed --
+     * the call takes a dispatch path none of the guards sit on. Registering a no-op is the
+     * same selective-binding trick the rest of this lane uses, needs no ART rebuild, and is
+     * semantically correct here: the notification only nudges the GC's native-allocation
+     * accounting, which this short-lived process does not depend on. */
+    {
+        jclass vmr = (*env)->FindClass(env, "dalvik/system/VMRuntime");
+        if (vmr == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            log_text("vmrNoop: FindClass VMRuntime failed");
+        } else {
+            JNINativeMethod nm = {"notifyNativeAllocationsInternal", "()V",
+                                  (void *)wl_vmruntime_noop};
+            jint rc = (*env)->RegisterNatives(env, vmr, &nm, 1);
+            if (rc != 0 || (*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+                log_text("vmrNoop: RegisterNatives failed");
+            } else {
+                log_text("vmrNoop: notifyNativeAllocationsInternal bound to no-op");
+            }
+        }
+    }
+
+    /* The blit path never calls nativeClearHwuiIsolated, so arm the trap/segv diagnostics
+     * here instead -- and it must happen after the VM is up, or ART's sigchain owns the
+     * handlers and ours is never dispatched. */
+    wl_install_segv_diag();
+    log_text("bitmapJni: calling real registrar");
+    reg(env);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "bitmapJni registrar threw");
+        (*env)->ExceptionClear(env);
+    }
+    log_text("bitmapJni: registrar returned");
+    done = 1;
+    return 1;
+}
+
+static jint westlake_native_clear_hwui_isolated(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    const jboolean isolated = 0;   /* only ever used to clear the flag */
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) {
+        hwui = dlopen_exec("android/lib64/libhwui.so", "libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (hwui == 0) { log_text("hwui isolated: dlopen failed"); hlog_sel("hwui isolated: dlopen failed"); return 2; }
+    unsigned char *flag = (unsigned char *)dlsym(
+        hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+    if (flag == 0) {
+        /* Fall back to a global-scope lookup: the lane loads libhwui through several
+         * paths and the handle we just got may not be the one carrying the symbol. */
+        flag = (unsigned char *)dlsym(RTLD_DEFAULT,
+            "_ZN7android10uirenderer10Properties15isolatedProcessE");
+    }
+    if (flag == 0) { log_text("hwui isolated: symbol not found"); hlog_sel("hwui isolated: symbol not found"); return 3; }
+    log_int("hwui isolatedProcess was=", (int)*flag);
+    *flag = isolated ? 1 : 0;
+    log_int("hwui isolatedProcess now=", (int)*flag);
+    /* DeviceInfo is the real reason the renderer sets isolatedProcess: updateDisplayInfo()
+     * starts with `if (Properties::isolatedProcess) return;` and otherwise goes to
+     * SurfaceComposerClient::getInternalDisplayToken(), which does not exist on OHOS
+     * (that is the LOG_ALWAYS_FATAL at DeviceInfo::updateDisplayInfo+0x70/+0x180, reached
+     * via getWideColorType()). Bailing out leaves DeviceInfo with zeroed display metrics,
+     * so nothing downstream has a sane size/refresh rate. Seed it by hand through the
+     * exported setters instead -- panel is 1200x1920@60 on this board. */
+    {
+        void (*set_w)(int)   = (void (*)(int))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo8setWidthEi");
+        void (*set_h)(int)   = (void (*)(int))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo9setHeightEi");
+        void (*set_rr)(float)= (void (*)(float))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo14setRefreshRateEf");
+        void (*set_de)(float)= (void (*)(float))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo10setDensityEf");
+        void (*set_mt)(int)  = (void (*)(int))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo17setMaxTextureSizeEi");
+        void (*set_vs)(long) = (void (*)(long))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo22setAppVsyncOffsetNanosEl");
+        void (*set_pd)(long) = (void (*)(long))dlsym(hwui, "_ZN7android10uirenderer10DeviceInfo28setPresentationDeadlineNanosEl");
+        int seeded = 0;
+        if (set_w)  { set_w(1200); seeded++; }
+        if (set_h)  { set_h(1920); seeded++; }
+        if (set_rr) { set_rr(60.0f); seeded++; }
+        if (set_de) { set_de(2.0f); seeded++; }
+        if (set_mt) { set_mt(16383); seeded++; }
+        if (set_vs) { set_vs(0L); seeded++; }
+        if (set_pd) { set_pd(16666666L); seeded++; }
+        log_int("hwui DeviceInfo seeded fields=", seeded);
+    }
+
+    /* Re-arm the trap diagnostics HERE, not at probe init: ART's sigchain takes over the
+     * signal handlers when the VM comes up, so a handler installed before that never runs.
+     * Installed at this point it is the one the chain dispatches to, which is what finally
+     * makes the message-less hwui assert visible (and, with WL_TRAP_SKIP=1, survivable). */
+    wl_install_segv_diag();
+    return 1;
 }
 
 static jint westlake_native_register_hwui_render(JNIEnv *env, jclass clazz)
@@ -3258,9 +4677,106 @@ static jint call_embedded_main_no_exit(JNIEnv *env, const char *stage,
     return rc;
 }
 
+/* [5583 2026-07-19] Late-stage SIGSEGV diagnostics. The render path (nativeInit ->
+ * RenderProxy) dies without a faultloggerd dump and without any handler output, so the
+ * crash site is invisible. Install an SA_SIGINFO handler that logs the fault address and
+ * PC, then restores the default disposition and re-raises so the normal dump still happens.
+ * Opt-in via WL_SEGV_DIAG=1 so ordinary runs are untouched. */
+static void wl_segv_diag(int sig, siginfo_t *si, void *ucv)
+{
+    static const char hexd[] = "0123456789abcdef";
+    char msg[128];
+    unsigned long p = 0;
+    const char *pre = "WLSEGV sig=";
+    for (int i = 0; pre[i]; i++) msg[p++] = pre[i];
+    msg[p++] = (char)('0' + (sig % 10));
+    const char *fa = " fault=0x";
+    for (int i = 0; fa[i]; i++) msg[p++] = fa[i];
+    unsigned long long addr = (unsigned long long)(uintptr_t)(si ? si->si_addr : 0);
+    for (int i = 15; i >= 0; i--) msg[p++] = hexd[(addr >> (i * 4)) & 0xf];
+    unsigned long long pc = 0, lr = 0;
+    if (ucv != 0) {
+        pc = (unsigned long long)((ucontext_t *)ucv)->uc_mcontext.pc;
+        lr = (unsigned long long)((ucontext_t *)ucv)->uc_mcontext.regs[30];
+    }
+    const char *pcs = " pc=0x";
+    for (int i = 0; pcs[i]; i++) msg[p++] = pcs[i];
+    for (int i = 15; i >= 0; i--) msg[p++] = hexd[(pc >> (i * 4)) & 0xf];
+    /* lr is the return address into the CALLER of __android_log_assert -- i.e. the actual
+     * LOG_ALWAYS_FATAL_IF site. Report it as a module-relative offset so it can be mapped
+     * straight onto libhwui.so with objdump/nm; the raw address is ASLR'd and useless. */
+    const char *lrs = " lr_off=0x";
+    for (int i = 0; lrs[i]; i++) msg[p++] = lrs[i];
+    /* Derive libhwui's load base from a symbol whose file offset is known
+     * (readelf: Properties::isolatedProcess @ 0x48b1e0) -- dladdr/Dl_info are not
+     * available in this freestanding build. */
+    unsigned long long lroff = lr;
+    {
+        void *hw = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+        void *anchor = hw ? dlsym(hw, "_ZN7android10uirenderer10Properties15isolatedProcessE") : 0;
+        if (anchor != 0) {
+            unsigned long long base = (unsigned long long)(uintptr_t)anchor - 0x48b1e0ULL;
+            if (lr > base) lroff = lr - base;
+        }
+    }
+    for (int i = 15; i >= 0; i--) msg[p++] = hexd[(lroff >> (i * 4)) & 0xf];
+    /* lr comes back equal to pc here: __android_log_assert saves and reuses x30, so the
+     * real call site lives on the stack. Walk the AArch64 frame chain from x29 --
+     * each frame is {saved_x29, saved_x30} -- and report two levels as module offsets. */
+    {
+        unsigned long long base = 0;
+        void *hw2 = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+        void *anchor2 = hw2 ? dlsym(hw2, "_ZN7android10uirenderer10Properties15isolatedProcessE") : 0;
+        if (anchor2 != 0) base = (unsigned long long)(uintptr_t)anchor2 - 0x48b1e0ULL;
+        unsigned long long fp = ucv ? (unsigned long long)((ucontext_t *)ucv)->uc_mcontext.regs[29] : 0;
+        for (int lvl = 0; lvl < 2 && fp != 0; lvl++) {
+            unsigned long long *frame = (unsigned long long *)(uintptr_t)fp;
+            unsigned long long ret = frame[1];
+            const char *tag = lvl == 0 ? " cal0raw=0x" : " cal1raw=0x";
+            for (int i = 0; tag[i]; i++) msg[p++] = tag[i];
+            for (int i = 15; i >= 0; i--) msg[p++] = hexd[(ret >> (i * 4)) & 0xf];
+            if (base != 0 && ret > base) {
+                const char *tag2 = lvl == 0 ? " cal0hwui=0x" : " cal1hwui=0x";
+                for (int i = 0; tag2[i]; i++) msg[p++] = tag2[i];
+                unsigned long long off = ret - base;
+                for (int i = 15; i >= 0; i--) msg[p++] = hexd[(off >> (i * 4)) & 0xf];
+            }
+            fp = frame[0];
+        }
+    }
+    msg[p] = 0;
+    log_text(msg);
+    hlog_sel(msg);
+    if (sig == SIGTRAP && streq(getenv("WL_TRAP_SKIP"), "1") && ucv != 0) {
+        /* libhwui's LOG_ALWAYS_FATAL compiles to a brk; several of them carry no message,
+         * so the only way to learn where we died is to record the PC. Stepping the PC past
+         * the 4-byte brk lets the thread continue, which both reveals the next failure and
+         * -- when the assert is not actually load-bearing -- can carry the frame through.
+         * Opt-in (WL_TRAP_SKIP=1): skipping an assert is a diagnostic act, not a fix. */
+        ((ucontext_t *)ucv)->uc_mcontext.pc += 4;
+        return;
+    }
+    struct sigaction dfl = { .sa_handler = SIG_DFL, .sa_flags = 0 };
+    sigaction(sig, &dfl, 0);
+    raise(sig);
+}
+
+static void wl_install_segv_diag(void)
+{
+    if (!streq(getenv("WL_SEGV_DIAG"), "1")) return;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = wl_segv_diag;
+    sa.sa_flags = SA_SIGINFO;
+    int sigs[] = { SIGSEGV, SIGBUS, SIGTRAP };
+    for (int i = 0; i < 3; i++) sigaction(sigs[i], &sa, 0);
+    log_text("WLSEGV diagnostics installed");
+}
+
 static int run_stage_probe(void *handle, void *create_vm_symbol, const char *stage_override)
 {
     log_text("RUN_STAGE_PROBE ENTERED");
+    wl_install_segv_diag();
     jni_create_java_vm_fn create_vm = (jni_create_java_vm_fn)create_vm_symbol;
     JavaVM *vm = 0;
     JNIEnv *env = 0;
@@ -3354,6 +4870,506 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
      * its JNI_OnLoad DIRECTLY, LAST (after ohbridge), so its RegisterNatives wins.
      * Evidence its parser works when reached: probe-logs/nativeload.txt shows
      * "[WL] LoadedArsc::Load => OK" for the assetProbe apk. */
+    /* [W-005 2026-07-19] Force <clinit> of the android.content.res.* stack BEFORE
+     * libandroidfw's JNI_OnLoad below. Same ordering rule the dex enforces in
+     * Dayu600ApkStageProbe.ensureArscNatives(): these classes' OHBridge stub natives
+     * must register FIRST so libandroidfw's RegisterNatives lands on top and wins.
+     * If ApkAssets.<clinit> instead runs later (lazily, on the first loadFromPath),
+     * OHBridge re-registers the stub AFTER libandroidfw and clobbers the real arsc
+     * parser -> addAssetPath still hands back a cookie but the resource table is not
+     * queryable (getResourceName fails even for framework ids). Only matters when we
+     * seed the system AssetManager from here; harmless otherwise. */
+    if (getenv("WESTLAKE_SEED_SYSASSETS") != 0) {
+        static const char *res_classes[] = {
+            "android.content.res.ApkAssets",
+            "android.content.res.AssetManager",
+            "android.content.res.XmlBlock",
+            "android.content.res.StringBlock",
+            "android.content.res.TypedArray",
+        };
+        /* AOSP's libc++.so (staged next to the AOSP libandroidfw chain) needs the
+         * C++ unwinder ABI (_Unwind_Resume &c). On this board only OHOS's
+         * libc++_shared.so exports those, and nothing pulls it in by itself — load it
+         * RTLD_GLOBAL first so the AOSP chain relocates against it. */
+        {
+            void *cxx = dlopen_exec("android/lib64/libc++_shared.so",
+                                    "libc++_shared.so", RTLD_NOW | RTLD_GLOBAL);
+            if (cxx == 0) cxx = dlopen("libc++_shared.so", RTLD_NOW | RTLD_GLOBAL);
+            log_text(cxx != 0 ? "unwinder: libc++_shared loaded global"
+                              : "unwinder: libc++_shared load FAILED");
+            if (cxx == 0) { char *ce = dlerror(); if (ce != 0) log_text(ce); }
+            /* The std::__1 <-> std::__n1 bridges are NOT dlopen'd here: OHOS musl does not
+             * feed RTLD_GLOBAL symbols into a later dlopen's resolution scope. They are
+             * wired in as DT_NEEDED instead — every staged AOSP lib has libc++.so
+             * rewritten to wlx.so (__1 -> __n1), and wlresjni.so goes through wlrev.so
+             * (__n1 -> __1) to reach libandroidfw. */
+        }
+        /* Preload the staged AOSP closure from android/lib64/aosp/ BY ABSOLUTE PATH,
+         * leaf-first, so libandroidfw's DT_NEEDED resolves against the already-loaded
+         * set. They deliberately do NOT live in android/lib64/ itself: with them on the
+         * general search path, ART and liboh_android_runtime pick them up too instead of
+         * taking their existing fallbacks, and the process then pins one thread at 100%
+         * CPU inside libbase and never finishes JNI_CreateJavaVM (measured; moving the
+         * directory aside makes the spin vanish). */
+        {
+            /* THE MISSING PIECE. libhwui c9ed61d0 supplies the android.graphics.*
+             * registrars; nothing in this lane ever supplied the android.content.res.*
+             * ones, so ApkAssets/AssetManager/StringBlock/XmlBlock natives stayed unbound
+             * and every resource lookup failed. wlresjni.so is those four registrars,
+             * built from AOSP 15 core/jni against the staged A15 libandroidfw.
+             * Its whole dependency chain is renamed wl* on purpose: under the original
+             * sonames ART and liboh_android_runtime pick the AOSP libs up too instead of
+             * their own fallbacks, and the process then pins a thread at 100% CPU inside
+             * libbase and never finishes JNI_CreateJavaVM. */
+            /* Load the chain one library at a time, logging before AND after each, so a
+             * crash names the exact culprit instead of just "somewhere under dlopen". */
+            {
+                static const char *chain[] = {
+                    "wlx.so", "wldl_android.so", "wllog.so", "wlz.so",
+                    "wlbase.so", "wlcutils.so", "wlutils.so",
+                    "wlselinux.so", "wlpackagelistparser.so", "wlvndksupport.so",
+                    "wlapexsupport.so", "wlbinder.so", "wlincfs.so",
+                    "wlandroidfw.so", "wlrev.so",
+                };
+                unsigned int ci2 = 0;
+                for (ci2 = 0; ci2 < sizeof(chain) / sizeof(chain[0]); ci2++) {
+                    char rel2[96];
+                    unsigned int k2 = 0, j3 = 0;
+                    const char *pre2 = "android/lib64/";
+                    while (pre2[k2] != 0) { rel2[k2] = pre2[k2]; k2++; }
+                    while (chain[ci2][j3] != 0 && k2 < sizeof(rel2) - 1) rel2[k2++] = chain[ci2][j3++];
+                    rel2[k2] = 0;
+                    log_text("chain try:"); log_text(chain[ci2]);
+                    void *hc = dlopen_exec(rel2, chain[ci2], RTLD_NOW | RTLD_GLOBAL);
+                    if (hc == 0) {
+                        log_text("chain FAIL:"); log_text(chain[ci2]);
+                        { char *e3 = dlerror(); if (e3 != 0) log_text(e3); }
+                    } else {
+                        log_text("chain ok:"); log_text(chain[ci2]);
+                    }
+                }
+            }
+            void *rj = dlopen_exec("android/lib64/wlresjni.so", "wlresjni.so",
+                                   RTLD_NOW | RTLD_GLOBAL);
+            if (rj == 0) {
+                log_text("resjni: load FAILED");
+                { char *e2 = dlerror(); if (e2 != 0) log_text(e2); }
+            } else {
+                static const char *regs[] = {
+                    "_ZN7android38register_android_content_res_ApkAssetsEP7_JNIEnv",
+                    "_ZN7android37register_android_content_AssetManagerEP7_JNIEnv",
+                    "_ZN7android36register_android_content_StringBlockEP7_JNIEnv",
+                    "_ZN7android33register_android_content_XmlBlockEP7_JNIEnv",
+                };
+                unsigned int ri = 0;
+                log_text("resjni: loaded");
+                for (ri = 0; ri < sizeof(regs) / sizeof(regs[0]); ri++) {
+                    int (*fn)(JNIEnv *) = (int (*)(JNIEnv *))dlsym(rj, regs[ri]);
+                    if (fn == 0) { log_text("resjni: MISSING"); log_text(regs[ri]); continue; }
+                    int rc2 = fn(env);
+                    if ((*env)->ExceptionCheck(env)) {
+                        describe_pending_exception(env, "resjni registrar threw");
+                        (*env)->ExceptionClear(env);
+                    }
+                    log_int("resjni registrar rc=", rc2);
+                    log_text(regs[ri]);
+                }
+            }
+            /* With resources alive, ThreadedRenderer.initForSystemProcess() gets past
+             * isHighEndGfx and then wants HardwareRenderer's natives, which nothing has
+             * bound (`nSetIsSystemOrPersistent` UnsatisfiedLinkError at
+             * ThreadedRenderer.java:221). The adapted libhwui does carry the registrar —
+             * but calling it WHOLESALE aborts with SIGTRAP (__android_log_assert): one
+             * bad entry in a RegisterNatives table takes the whole table down, which is
+             * exactly why this repo has a selective binder. Left opt-in behind
+             * WESTLAKE_HWUI_THREADEDRENDERER=1 so it cannot break the working path;
+             * the real fix is to harvest this table and bind it method-by-method the way
+             * nativeRegisterHwuiRender already does for the other hwui classes. */
+            /* ActivityThread.<init> builds its H handler, and Handler's constructor
+             * throws "Can't create handler inside thread ... that has not called
+             * Looper.prepare()". The dex stage does prepare the looper, but systemMain()
+             * runs before it gets there, so do it here. Idempotent: if a main looper
+             * already exists prepareMainLooper() throws and we simply clear it. */
+            {
+                jclass lp = streq(getenv("WESTLAKE_SYSMAIN_BOOTSTRAP"), "1")
+                    ? (*env)->FindClass(env, "android/os/Looper") : 0;
+                if (lp == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("looper: FindClass failed");
+                } else {
+                    jmethodID ml = (*env)->GetStaticMethodID(env, lp, "myLooper",
+                                                             "()Landroid/os/Looper;");
+                    jobject cur = ml ? (*env)->CallStaticObjectMethod(env, lp, ml) : 0;
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); cur = 0; }
+                    if (cur != 0) {
+                        log_text("looper: already prepared");
+                    } else {
+                        jmethodID pm = (*env)->GetStaticMethodID(env, lp,
+                                            "prepareMainLooper", "()V");
+                        if (pm == 0) {
+                            (*env)->ExceptionClear(env);
+                            log_text("looper: prepareMainLooper missing");
+                        } else {
+                            (*env)->CallStaticVoidMethod(env, lp, pm);
+                            if ((*env)->ExceptionCheck(env)) {
+                                (*env)->ExceptionClear(env);
+                                log_text("looper: prepareMainLooper threw (already set?)");
+                            } else {
+                                log_text("looper: main looper prepared");
+                            }
+                        }
+                    }
+                }
+            }
+
+            /* ActivityThread.attach() -> DisplayManagerGlobal.getInstance() ->
+             * ServiceManager.getService(), and ServiceManager's IServiceManager is null
+             * ("Attempt to invoke ... IServiceManager.getService2 on a null object").
+             * The dex stage installs westlake.adapter.OHServiceManager at its step 02,
+             * but systemMain() needs it earlier -- same pattern as the main looper. */
+            /* OHServiceManager.install() calls repairProxyCache()/repairProxyComparators()
+             * and then Proxy.newProxyInstance; in the dex flow it is preceded by
+             * repairMethodHandleStatics() + repairProxyCacheForInflate() (runNoiceApk
+             * steps before 02). Without those it NPEs at OHServiceManager.java:251.
+             * They are private statics on the probe dex class -> reflect them. */
+            {
+                static const char *repairs[] = {
+                    "repairMethodHandleStatics", "repairProxyCacheForInflate",
+                };
+                jclass probe_cls = streq(getenv("WESTLAKE_SYSMAIN_BOOTSTRAP"), "1")
+                    ? (*env)->FindClass(env, "Dayu600ApkStageProbe") : 0;
+                if (probe_cls == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("repairs: Dayu600ApkStageProbe not found");
+                } else {
+                    jclass cls_cls2 = (*env)->FindClass(env, "java/lang/Class");
+                    jmethodID gdm = (*env)->GetMethodID(env, cls_cls2, "getDeclaredMethod",
+                        "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+                    jclass mth_cls = (*env)->FindClass(env, "java/lang/reflect/Method");
+                    jmethodID setacc = (*env)->GetMethodID(env, mth_cls, "setAccessible", "(Z)V");
+                    jmethodID invk = (*env)->GetMethodID(env, mth_cls, "invoke",
+                        "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
+                    jclass objc2 = (*env)->FindClass(env, "java/lang/Object");
+                    unsigned int rq = 0;
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                    for (rq = 0; rq < sizeof(repairs) / sizeof(repairs[0]); rq++) {
+                        jstring nm3 = (*env)->NewStringUTF(env, repairs[rq]);
+                        jobjectArray noargs = (*env)->NewObjectArray(env, 0, cls_cls2, 0);
+                        jobject m = (*env)->CallObjectMethod(env, probe_cls, gdm, nm3, noargs);
+                        if ((*env)->ExceptionCheck(env) || m == 0) {
+                            (*env)->ExceptionClear(env);
+                            log_text("repairs: not found:"); log_text(repairs[rq]);
+                            continue;
+                        }
+                        (*env)->CallVoidMethod(env, m, setacc, JNI_TRUE);
+                        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                        jobjectArray noobj = (*env)->NewObjectArray(env, 0, objc2, 0);
+                        (*env)->CallObjectMethod(env, m, invk, (jobject)0, noobj);
+                        if ((*env)->ExceptionCheck(env)) {
+                            (*env)->ExceptionClear(env);
+                            log_text("repairs: threw:"); log_text(repairs[rq]);
+                        } else {
+                            log_text("repairs: ok:"); log_text(repairs[rq]);
+                        }
+                    }
+                }
+            }
+            /* OHServiceManager.install() swallows its own repair failures (they only
+             * log via System.err, which does not reach this lane) and then NPEs inside
+             * Proxy.newProxyInstance. Report the three statics it depends on directly,
+             * so the next step is a fact rather than a guess. */
+            {
+                static const char *pstat[][2] = {
+                    {"java/lang/reflect/Proxy",  "proxyClassCache"},
+                    {"java/lang/reflect/Proxy",  "ORDER_BY_SIGNATURE_AND_SUBTYPE"},
+                    {"java/lang/reflect/Method", "ORDER_BY_SIGNATURE"},
+                };
+                jclass clsc = (*env)->FindClass(env, "java/lang/Class");
+                jmethodID gdf3 = (*env)->GetMethodID(env, clsc, "getDeclaredField",
+                    "(Ljava/lang/String;)Ljava/lang/reflect/Field;");
+                jclass fldc = (*env)->FindClass(env, "java/lang/reflect/Field");
+                jmethodID sa3 = (*env)->GetMethodID(env, fldc, "setAccessible", "(Z)V");
+                jmethodID gv3 = (*env)->GetMethodID(env, fldc, "get",
+                    "(Ljava/lang/Object;)Ljava/lang/Object;");
+                unsigned int pi2 = 0;
+                if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                for (pi2 = 0; pi2 < sizeof(pstat) / sizeof(pstat[0]); pi2++) {
+                    jclass owner = (*env)->FindClass(env, pstat[pi2][0]);
+                    if (owner == 0 || (*env)->ExceptionCheck(env)) {
+                        (*env)->ExceptionClear(env);
+                        log_text("proxystat: owner missing:"); log_text(pstat[pi2][0]);
+                        continue;
+                    }
+                    jstring fn3 = (*env)->NewStringUTF(env, pstat[pi2][1]);
+                    jobject fo = (*env)->CallObjectMethod(env, owner, gdf3, fn3);
+                    if ((*env)->ExceptionCheck(env) || fo == 0) {
+                        (*env)->ExceptionClear(env);
+                        log_text("proxystat: field missing:"); log_text(pstat[pi2][1]);
+                        continue;
+                    }
+                    (*env)->CallVoidMethod(env, fo, sa3, JNI_TRUE);
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                    jobject val = (*env)->CallObjectMethod(env, fo, gv3, (jobject)0);
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); val = 0; }
+                    log_text(val ? "proxystat: SET " : "proxystat: NULL");
+                    log_text(pstat[pi2][1]);
+                }
+            }
+            /* Seed ServiceManager.sServiceManager WITHOUT java.lang.reflect.Proxy.
+             * OHServiceManager.install() builds a dynamic $Proxy for IServiceManager and
+             * NPEs doing it (its own repairs are fine -- proxyClassCache and both
+             * comparators read back non-null), and $Proxy synthesis has a long history of
+             * misbehaving in this runtime. IServiceManager$Stub$Proxy is a CONCRETE
+             * framework class taking an IBinder, so a plain Binder gets us a non-null
+             * IServiceManager with no code synthesis at all. Lookups then fail as
+             * "service not found" (null) instead of NPE, which is what
+             * DisplayManagerGlobal.getInstance() expects to handle. */
+            {
+                jclass smc = streq(getenv("WESTLAKE_SYSMAIN_BOOTSTRAP"), "1")
+                    ? (*env)->FindClass(env, "android/os/ServiceManager") : 0;
+                if (smc == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("sm-seed: ServiceManager not found");
+                } else {
+                    jfieldID ssm = (*env)->GetStaticFieldID(env, smc, "sServiceManager",
+                                        "Landroid/os/IServiceManager;");
+                    if (ssm == 0) { (*env)->ExceptionClear(env); }
+                    jobject cur2 = ssm ? (*env)->GetStaticObjectField(env, smc, ssm) : 0;
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); cur2 = 0; }
+                    if (ssm == 0) {
+                        log_text("sm-seed: sServiceManager field missing");
+                    } else if (cur2 != 0) {
+                        log_text("sm-seed: already set");
+                    } else {
+                        jclass bc = (*env)->FindClass(env, "android/os/Binder");
+                        jmethodID bctor = bc ? (*env)->GetMethodID(env, bc, "<init>", "()V") : 0;
+                        jobject binder = bctor ? (*env)->NewObject(env, bc, bctor) : 0;
+                        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); binder = 0; }
+                        jclass spc = (*env)->FindClass(env,
+                                        "android/os/IServiceManager$Stub$Proxy");
+                        if (spc == 0 || (*env)->ExceptionCheck(env)) {
+                            (*env)->ExceptionClear(env);
+                            log_text("sm-seed: IServiceManager$Stub$Proxy not found");
+                        } else if (binder == 0) {
+                            log_text("sm-seed: could not construct Binder");
+                        } else {
+                            jmethodID pctor = (*env)->GetMethodID(env, spc, "<init>",
+                                                  "(Landroid/os/IBinder;)V");
+                            if (pctor == 0) {
+                                (*env)->ExceptionClear(env);
+                                log_text("sm-seed: Stub$Proxy(IBinder) ctor missing");
+                            } else {
+                                jobject smp = (*env)->NewObject(env, spc, pctor, binder);
+                                if ((*env)->ExceptionCheck(env)) {
+                                    describe_pending_exception(env, "sm-seed Stub$Proxy ctor");
+                                    (*env)->ExceptionClear(env);
+                                } else if (smp != 0) {
+                                    (*env)->SetStaticObjectField(env, smc, ssm, smp);
+                                    if ((*env)->ExceptionCheck(env)) {
+                                        (*env)->ExceptionClear(env);
+                                        log_text("sm-seed: write threw");
+                                    } else {
+                                        log_text("sm-seed: sServiceManager SEEDED (no $Proxy)");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            /* Short-circuit DisplayManagerGlobal.getInstance(). It is what drags
+             * ActivityThread.attach() into ServiceManager, and going through a real
+             * binder is pointless here anyway (the seeded Stub$Proxy reaches
+             * Parcel.obtain() -> Parcel.nativeCreate(), which nothing binds). getInstance()
+             * returns sInstance immediately when it is non-null, so allocate one without
+             * running its constructor (Unsafe.allocateInstance, the same trick the dex
+             * uses for PhoneWindow) and park it there. */
+            {
+                jclass dmg = streq(getenv("WESTLAKE_SYSMAIN_BOOTSTRAP"), "1")
+                    ? (*env)->FindClass(env, "android/hardware/display/DisplayManagerGlobal") : 0;
+                if (dmg == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("dmg-seed: class not found");
+                } else {
+                    jfieldID si = (*env)->GetStaticFieldID(env, dmg, "sInstance",
+                                      "Landroid/hardware/display/DisplayManagerGlobal;");
+                    if (si == 0) { (*env)->ExceptionClear(env); }
+                    jobject have = si ? (*env)->GetStaticObjectField(env, dmg, si) : 0;
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); have = 0; }
+                    if (si == 0) {
+                        log_text("dmg-seed: sInstance field missing");
+                    } else if (have != 0) {
+                        log_text("dmg-seed: already set");
+                    } else {
+                        jclass uc = (*env)->FindClass(env, "jdk/internal/misc/Unsafe");
+                        if (uc == 0 || (*env)->ExceptionCheck(env)) {
+                            (*env)->ExceptionClear(env);
+                            uc = (*env)->FindClass(env, "sun/misc/Unsafe");
+                            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); uc = 0; }
+                        }
+                        jobject unsafe = 0;
+                        if (uc != 0) {
+                            jfieldID tu = (*env)->GetStaticFieldID(env, uc, "theUnsafe",
+                                              uc ? "Ljdk/internal/misc/Unsafe;" : "");
+                            if (tu == 0) { (*env)->ExceptionClear(env);
+                                tu = (*env)->GetStaticFieldID(env, uc, "theUnsafe",
+                                         "Lsun/misc/Unsafe;"); }
+                            if (tu == 0) { (*env)->ExceptionClear(env); }
+                            else { unsafe = (*env)->GetStaticObjectField(env, uc, tu);
+                                   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); unsafe = 0; } }
+                        }
+                        jmethodID ai = (uc && unsafe) ? (*env)->GetMethodID(env, uc,
+                            "allocateInstance", "(Ljava/lang/Class;)Ljava/lang/Object;") : 0;
+                        if (ai == 0) { (*env)->ExceptionClear(env); }
+                        jobject inst = ai ? (*env)->CallObjectMethod(env, unsafe, ai, dmg) : 0;
+                        if ((*env)->ExceptionCheck(env)) {
+                            describe_pending_exception(env, "dmg-seed allocateInstance");
+                            (*env)->ExceptionClear(env); inst = 0;
+                        }
+                        if (inst == 0) {
+                            log_text("dmg-seed: allocateInstance unavailable");
+                        } else {
+                            (*env)->SetStaticObjectField(env, dmg, si, inst);
+                            if ((*env)->ExceptionCheck(env)) {
+                                (*env)->ExceptionClear(env);
+                                log_text("dmg-seed: write threw");
+                            } else {
+                                log_text("dmg-seed: sInstance SEEDED (bypasses ServiceManager)");
+                                /* allocateInstance skips the constructor, so every field is
+                                 * null -- including the monitor getDisplayInfo() locks on
+                                 * ("synchronize operation on a null object" at
+                                 * DisplayManagerGlobal.java:207). Give every null Object-typed
+                                 * instance field a fresh Object so the locks are usable. */
+                                jclass clsc4 = (*env)->FindClass(env, "java/lang/Class");
+                                jmethodID gdfs = (*env)->GetMethodID(env, clsc4,
+                                    "getDeclaredFields", "()[Ljava/lang/reflect/Field;");
+                                jclass fldc4 = (*env)->FindClass(env, "java/lang/reflect/Field");
+                                jmethodID sa4 = (*env)->GetMethodID(env, fldc4, "setAccessible", "(Z)V");
+                                jmethodID gt4 = (*env)->GetMethodID(env, fldc4, "getType",
+                                                    "()Ljava/lang/Class;");
+                                jmethodID gm4 = (*env)->GetMethodID(env, fldc4, "getModifiers", "()I");
+                                jmethodID gv4 = (*env)->GetMethodID(env, fldc4, "get",
+                                                    "(Ljava/lang/Object;)Ljava/lang/Object;");
+                                jmethodID sv4 = (*env)->GetMethodID(env, fldc4, "set",
+                                                    "(Ljava/lang/Object;Ljava/lang/Object;)V");
+                                jclass objc4 = (*env)->FindClass(env, "java/lang/Object");
+                                jmethodID octor4 = (*env)->GetMethodID(env, objc4, "<init>", "()V");
+                                jobjectArray flds = (jobjectArray)(*env)->CallObjectMethod(env, dmg, gdfs);
+                                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); flds = 0; }
+                                jsize nf = flds ? (*env)->GetArrayLength(env, flds) : 0;
+                                int seeded_locks = 0;
+                                for (jsize fi = 0; fi < nf; fi++) {
+                                    jobject fo4 = (*env)->GetObjectArrayElement(env, flds, fi);
+                                    jint mod4 = (*env)->CallIntMethod(env, fo4, gm4);
+                                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); continue; }
+                                    if (mod4 & 8) continue;                 /* skip statics */
+                                    jclass ft = (jclass)(*env)->CallObjectMethod(env, fo4, gt4);
+                                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); continue; }
+                                    if (!(*env)->IsSameObject(env, ft, objc4)) continue; /* only Object */
+                                    (*env)->CallVoidMethod(env, fo4, sa4, JNI_TRUE);
+                                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); continue; }
+                                    jobject cv = (*env)->CallObjectMethod(env, fo4, gv4, inst);
+                                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); continue; }
+                                    if (cv != 0) continue;
+                                    jobject lock = (*env)->NewObject(env, objc4, octor4);
+                                    (*env)->CallVoidMethod(env, fo4, sv4, inst, lock);
+                                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                                    else seeded_locks++;
+                                }
+                                log_int("dmg-seed: null Object fields seeded=", seeded_locks);
+                            }
+                        }
+                    }
+                }
+            }
+            {
+                jclass ohsm = streq(getenv("WESTLAKE_SYSMAIN_BOOTSTRAP"), "1")
+                    ? (*env)->FindClass(env, "westlake/adapter/OHServiceManager") : 0;
+                if (ohsm == 0 || (*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("ohsm: class not found");
+                } else {
+                    jmethodID inst = (*env)->GetStaticMethodID(env, ohsm, "install", "()V");
+                    if (inst == 0) {
+                        (*env)->ExceptionClear(env);
+                        log_text("ohsm: install() missing");
+                    } else {
+                        (*env)->CallStaticVoidMethod(env, ohsm, inst);
+                        if ((*env)->ExceptionCheck(env)) {
+                            describe_pending_exception(env, "ohsm install threw");
+                            (*env)->ExceptionClear(env);
+                        } else {
+                            log_text("ohsm: installed");
+                        }
+                    }
+                }
+            }
+
+            /* Bind the hwui tables method-by-method. The wholesale registrar SIGTRAPs
+             * (__android_log_assert) the moment one entry mismatches; the selective
+             * binder skips those and keeps the rest, which is what gets
+             * HardwareRenderer.nSetIsSystemOrPersistent bound. Its own call site sits in
+             * a stage we do not go through, so drive it from here. */
+            if (streq(getenv("WESTLAKE_HWUI_SELECTIVE"), "1")) {
+                jint sel = westlake_hwui_register_selective(env);
+                if ((*env)->ExceptionCheck(env)) {
+                    describe_pending_exception(env, "selective hwui bind threw");
+                    (*env)->ExceptionClear(env);
+                }
+                log_int("selective hwui from resjni block rc=", (int)sel);
+            }
+            if (streq(getenv("WESTLAKE_HWUI_THREADEDRENDERER"), "1")) {
+                void *hw = dlopen_exec("android/lib64/libhwui.so", "libhwui.so",
+                                       RTLD_NOW | RTLD_GLOBAL);
+                if (hw == 0) {
+                    log_text("hwui: load FAILED for ThreadedRenderer registrar");
+                } else {
+                    int (*tr)(JNIEnv *) = (int (*)(JNIEnv *))dlsym(hw,
+                        "_ZN7android38register_android_view_ThreadedRendererEP7_JNIEnv");
+                    if (tr == 0) {
+                        log_text("hwui: register_android_view_ThreadedRenderer MISSING");
+                    } else {
+                        int rc3 = tr(env);
+                        if ((*env)->ExceptionCheck(env)) {
+                            describe_pending_exception(env, "ThreadedRenderer registrar threw");
+                            (*env)->ExceptionClear(env);
+                        }
+                        log_int("hwui ThreadedRenderer registrar rc=", rc3);
+                    }
+                }
+            }
+        }
+        jclass cls_cls = (*env)->FindClass(env, "java/lang/Class");
+        jmethodID for_name = cls_cls != 0 ? (*env)->GetStaticMethodID(env, cls_cls,
+            "forName", "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;") : 0;
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); for_name = 0; }
+        if (for_name == 0) {
+            log_text("arsc preinit: Class.forName unavailable");
+        } else {
+            /* WESTLAKE_ARSC_PREINIT_N caps how many of the five get force-initialised,
+             * so the one that SIGSEGVs can be bisected without rebuilding the list. */
+            unsigned int ci = 0;
+            unsigned int limit = sizeof(res_classes) / sizeof(res_classes[0]);
+            const char *lim_s = getenv("WESTLAKE_ARSC_PREINIT_N");
+            if (lim_s != 0 && lim_s[0] >= '0' && lim_s[0] <= '9') {
+                unsigned int v = (unsigned int)(lim_s[0] - '0');
+                if (v < limit) limit = v;
+            }
+            log_int("arsc preinit limit=", (int)limit);
+            for (ci = 0; ci < limit; ci++) {
+                jstring cn = (*env)->NewStringUTF(env, res_classes[ci]);
+                (void)(*env)->CallStaticObjectMethod(env, cls_cls, for_name, cn,
+                                                     JNI_TRUE, (jobject)0);
+                if ((*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    log_text("arsc preinit FAILED:");
+                } else {
+                    log_text("arsc preinit ok:");
+                }
+                log_text(res_classes[ci]);
+            }
+        }
+    }
     if (!streq(getenv("WESTLAKE_SKIP_ANDROIDFW_ONLOAD"), "1")) {
         void *fw_handle = dlopen_exec("android/lib64/libandroidfw.so",
             "libandroidfw.so", RTLD_NOW | 4 /*RTLD_NOLOAD*/);
@@ -3374,6 +5390,158 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     }
     log_int("register_system_natives rc=", register_system_natives(env));
     log_int("seed_system_properties rc=", seed_system_properties(env));
+    /* [W-005 2026-07-19] Seed AssetManager.sSystem BEFORE the dex runs.
+     * Resources.getSystem() -> AssetManager.getSystem() -> createSystemAssetsInZygoteLocked(),
+     * and that walks OverlayConfig -> PackagePartitions.<clinit> -> SystemProperties.digestOf
+     * -> MessageDigest.getInstance. In this imageless lane java.security.Security's <clinit>
+     * already died (root cause: java.nio.charset.Charset's statics are all null, so
+     * VMClassLoader.<clinit> NPEs on a null charset), leaving ZERO JCE providers -> that
+     * chain throws -> the system AssetManager never loads framework-res -> the first
+     * com.android.internal.R lookup (ActivityManager.isHighEndGfx -> getBoolean(0x1110040))
+     * raises Resources$NotFoundException with nobody to catch it and ART aborts.
+     * createSystemAssetsInZygoteLocked returns IMMEDIATELY when sSystem is already set,
+     * so seeding it here sidesteps that whole cascade. Must run after the libandroidfw
+     * JNI_OnLoad rebind above, otherwise ApkAssets.nativeLoad is still a no-op stub.
+     * Enable with WESTLAKE_SEED_SYSASSETS=<abs path to framework-res.apk>. */
+    {
+        const char *fwres = getenv("WESTLAKE_SEED_SYSASSETS");
+        if (fwres != 0 && fwres[0] != 0) {
+            jclass aa_cls = (*env)->FindClass(env, "android/content/res/ApkAssets");
+            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); aa_cls = 0; }
+            jobject apk = 0;
+            if (aa_cls != 0) {
+                jstring p = (*env)->NewStringUTF(env, fwres);
+                jmethodID lf = (*env)->GetStaticMethodID(env, aa_cls, "loadFromPath",
+                    "(Ljava/lang/String;)Landroid/content/res/ApkAssets;");
+                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); lf = 0; }
+                if (lf != 0) {
+                    apk = (*env)->CallStaticObjectMethod(env, aa_cls, lf, p);
+                } else {
+                    jmethodID lf2 = (*env)->GetStaticMethodID(env, aa_cls, "loadFromPath",
+                        "(Ljava/lang/String;I)Landroid/content/res/ApkAssets;");
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); lf2 = 0; }
+                    if (lf2 != 0) apk = (*env)->CallStaticObjectMethod(env, aa_cls, lf2, p, (jint)0);
+                }
+                if ((*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                    apk = 0;
+                    log_text("seed sysassets: ApkAssets.loadFromPath threw");
+                }
+            }
+            if (apk == 0) {
+                log_text("seed sysassets: FAILED (no ApkAssets)");
+            } else {
+                jclass am_cls = (*env)->FindClass(env, "android/content/res/AssetManager");
+                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); am_cls = 0; }
+                jobject am = 0;
+                if (am_cls != 0) {
+                    jmethodID ctor = (*env)->GetMethodID(env, am_cls, "<init>", "(Z)V");
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); ctor = 0; }
+                    if (ctor != 0) am = (*env)->NewObject(env, am_cls, ctor, JNI_TRUE);
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); am = 0; }
+                }
+                if (am == 0) {
+                    log_text("seed sysassets: FAILED (no AssetManager)");
+                } else {
+                    /* Mirror what the dex's own bootstrap does (Dayu600ApkStageProbe
+                     * runNoiceApk step 04): the (Z)V ctor leaves mApkAssets null, and
+                     * setApkAssets() then throws. Seed mApkAssets with an empty array
+                     * first, then go through addAssetPath(), which is the path that is
+                     * actually known to work in this lane. */
+                    jclass cls_cls = (*env)->FindClass(env, "java/lang/Class");
+                    jmethodID gdfld = cls_cls != 0 ? (*env)->GetMethodID(env, cls_cls,
+                        "getDeclaredField",
+                        "(Ljava/lang/String;)Ljava/lang/reflect/Field;") : 0;
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); gdfld = 0; }
+                    if (gdfld != 0) {
+                        jstring fname = (*env)->NewStringUTF(env, "mApkAssets");
+                        jobject fld = (*env)->CallObjectMethod(env, am_cls, gdfld, fname);
+                        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); fld = 0; }
+                        if (fld != 0) {
+                            jclass fcls = (*env)->GetObjectClass(env, fld);
+                            jmethodID sacc = (*env)->GetMethodID(env, fcls, "setAccessible", "(Z)V");
+                            if (sacc != 0) (*env)->CallVoidMethod(env, fld, sacc, JNI_TRUE);
+                            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                            jfieldID mfid = (*env)->FromReflectedField(env, fld);
+                            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mfid = 0; }
+                            if (mfid != 0) {
+                                jobjectArray empty = (*env)->NewObjectArray(env, 0, aa_cls, 0);
+                                (*env)->SetObjectField(env, am, mfid, empty);
+                                if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+                                else log_text("seed sysassets: mApkAssets primed");
+                            }
+                        }
+                    }
+                    /* Java's AssetManager.addAssetPath() goes through whichever native is
+                     * currently registered, which in this lane can still be the OHBridge
+                     * no-op stub: it hands back a cookie but leaves the resource table
+                     * unqueryable (getResourceName fails even for framework ids). The dex's
+                     * addAssetPathDirect() sidesteps that by calling nativeW001Append, i.e.
+                     * westlake_native_append_apk_assets — which lives in THIS .so. Call it
+                     * straight, no JNI registration or Java dispatch in the way. */
+                    {
+                        size_t plen = 0;
+                        while (fwres[plen] != 0) plen++;
+                        jbyteArray pb = (*env)->NewByteArray(env, (jsize)plen);
+                        if (pb != 0) {
+                            (*env)->SetByteArrayRegion(env, pb, 0, (jsize)plen,
+                                                       (const jbyte *)fwres);
+                            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); }
+                            jint cookie = westlake_native_append_apk_assets(env, am_cls, am, pb);
+                            if ((*env)->ExceptionCheck(env)) {
+                                (*env)->ExceptionClear(env);
+                                log_text("seed sysassets: w001Append threw");
+                            } else {
+                                log_int("seed sysassets: w001Append cookie=", (int)cookie);
+                            }
+                        } else {
+                            log_text("seed sysassets: NewByteArray failed");
+                        }
+                    }
+                    jfieldID ss = (*env)->GetStaticFieldID(env, am_cls, "sSystem",
+                        "Landroid/content/res/AssetManager;");
+                    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); ss = 0; }
+                    if (ss == 0) {
+                        log_text("seed sysassets: sSystem field not found");
+                    } else {
+                        (*env)->SetStaticObjectField(env, am_cls, ss, am);
+                        if ((*env)->ExceptionCheck(env)) {
+                            (*env)->ExceptionClear(env);
+                            log_text("seed sysassets: sSystem write threw");
+                        } else {
+                            log_text("seed sysassets: sSystem SEEDED");
+                            log_text(fwres);
+                            /* Prove the ARSC actually parsed: ask the AssetManager to
+                             * name the very resource that aborts the runtime
+                             * (com.android.internal.R.bool used by isHighEndGfx).
+                             * addAssetPath returning a cookie only means the file was
+                             * opened, not that the resource table is queryable. */
+                            jmethodID grn = (*env)->GetMethodID(env, am_cls,
+                                "getResourceName", "(I)Ljava/lang/String;");
+                            if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); grn = 0; }
+                            if (grn != 0) {
+                                jstring rn = (jstring)(*env)->CallObjectMethod(env, am, grn,
+                                    (jint)0x1110040);
+                                if ((*env)->ExceptionCheck(env)) {
+                                    describe_pending_exception(env,
+                                        "seed sysassets: getResourceName(0x1110040)");
+                                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                                } else if (rn == 0) {
+                                    log_text("seed sysassets: getResourceName(0x1110040) = NULL"
+                                             " (arsc not queryable)");
+                                } else {
+                                    const char *rnc = (*env)->GetStringUTFChars(env, rn, 0);
+                                    log_text("seed sysassets: resource 0x1110040 =");
+                                    log_text(rnc != 0 ? rnc : "?");
+                                    if (rnc != 0) (*env)->ReleaseStringUTFChars(env, rn, rnc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     /* [5583 post-reboot] BootClassLoader.getInstance() comes back NULL on some
      * boots, and the W001 Trace-rebind + the dex's AssetManager bootstrap then
      * die with "BootClassLoader.findLoadedClass on null" (rc=99). Force the
@@ -3474,9 +5642,16 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
 
     // Skip inputVerify for uptodownProbe — IVS class not on classpath.
     // Call Java DIRECTLY here (do not rely on fallthrough past the broken-brace IVS else).
-    if (streq(stage, "uptodownProbe")) {
-        log_text("inputVerify SKIPPED for uptodownProbe stage");
-        log_text("W001: uptodownProbe direct Java path");
+    /* noiceApk must skip the IVS bootstrap for the same reason uptodownProbe does.
+     * That bootstrap tries currentActivityThread() and, when it comes back null, falls
+     * back to ActivityThread.systemMain() to manufacture a system Context — the
+     * system_server entry path. noice is an ordinary app: runNoiceApk() builds its own
+     * AssetManager/Context and never needs it. Letting noiceApk fall into it is what put
+     * every noiceApk run into systemMain() -> attach() -> ResourcesManager ->
+     * DisplayManagerGlobal, i.e. a road noice should not be walking at all. */
+    if (streq(stage, "uptodownProbe") || streq(stage, "noiceApk")) {
+        log_text("inputVerify SKIPPED for stage:");
+        log_text(stage);
         goto call_java_probe;
     } else {
     // Agent-D3: inputVerify — call InputVerifyStage.run() via reflection
@@ -3771,23 +5946,39 @@ call_java_probe:
             (void *)westlake_native_w001_bind_trace};
         JNINativeMethod m7 = {"nativeRegisterHwuiRender", "()I",
             (void *)westlake_native_register_hwui_render};
-        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6, &m7 };
-        const char *names[] = {
-            "nativeFindClass", "nativeWriteText", "nativeRegisterTraceNatives",
-            "nativeCallAddAssetPath", "nativeAppendApkAssets", "nativeW001Append",
-            "nativeW001BindTrace", "nativeRegisterHwuiRender"
-        };
+        JNINativeMethod m8 = {"nativeClearHwuiIsolated", "()I",
+            (void *)westlake_native_clear_hwui_isolated};
+        JNINativeMethod m9 = {"nativeBlitArgb", "()I",
+            (void *)westlake_native_blit_argb};
+        JNINativeMethod m10 = {"nativeAllocColorSpaceRgb", "()Ljava/lang/Object;",
+            (void *)westlake_native_alloc_colorspace_rgb};
+        JNINativeMethod m11 = {"nativeRegisterBitmapJni", "()I",
+            (void *)westlake_native_register_bitmap_jni};
+        JNINativeMethod m12 = {"nativeRegisterStringBlock", "()I",
+            (void *)westlake_native_register_stringblock};
+        JNINativeMethod m13 = {"nativeAllocByName", "()Ljava/lang/Object;",
+            (void *)westlake_native_alloc_by_name};
+        JNINativeMethod m14 = {"nativeMutableCopy", "()Ljava/lang/Object;",
+            (void *)westlake_native_mutable_copy};
+        JNINativeMethod m15 = {"nativeDirectBufferFromFile", "()Ljava/lang/Object;",
+            (void *)westlake_native_direct_buffer_from_file};
+        JNINativeMethod m16 = {"nativeAddFontWeightStyle", "()I",
+            (void *)westlake_native_add_font_weight_style};
+        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6, &m7, &m8, &m9, &m10, &m11, &m12, &m13, &m14, &m15, &m16 };
         int i;
-        for (i = 0; i < 8; i++) {
+        /* names[] is only used for diagnostics, but it is indexed by the same loop -- keep the
+           bound tied to all[] so adding a method cannot walk off the end of names[]. */
+        const int all_n = (int)(sizeof(all) / sizeof(all[0]));
+        for (i = 0; i < all_n; i++) {
             jint register_rc = (*env)->RegisterNatives(env, probe_class, all[i], 1);
             if (register_rc != 0 || (*env)->ExceptionCheck(env)) {
                 log_text("RegisterNatives ONE failed:");
-                log_text(names[i]);
-                describe_pending_exception(env, names[i]);
+                log_text(all[i]->name);
+                describe_pending_exception(env, all[i]->name);
                 (*env)->ExceptionClear(env);
             } else {
                 log_text("RegisterNatives ONE ok:");
-                log_text(names[i]);
+                log_text(all[i]->name);
             }
         }
     }

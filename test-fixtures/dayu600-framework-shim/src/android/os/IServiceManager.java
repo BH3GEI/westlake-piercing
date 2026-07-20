@@ -2,6 +2,9 @@ package android.os;
 
 public interface IServiceManager extends IInterface {
     IBinder getService(String name) throws RemoteException;
+    /* A15 added this; a shim that omits it stays abstract and every lookup from
+       ViewConfiguration.get() onward dies with AbstractMethodError. */
+    Service getService2(String name) throws RemoteException;
     IBinder checkService(String name) throws RemoteException;
     void addService(String name, IBinder service, boolean allowIsolated, int dumpPriority)
             throws RemoteException;
