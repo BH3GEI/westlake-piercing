@@ -11,9 +11,9 @@
 
 CLI worker 的实际 binary、模型目录、已验证命令与退化通道在 `docs/reference/cli-fleet.md`；派工前可运行 `python3 -B oracle/verify/cli-fleet.py`，不要凭旧 alias、配置 model 或模型自报判断路由。
 
-任何写入型 worker 必须使用卡片独占的 sibling worktree/branch；canonical checkout 只由 thinker/dispatcher 管理。共享 checkout 只能跑只读顾问，禁止并发 writer。具体 claim→worktree→验收流程见 `protocol/DISPATCH.md`。
+**monobranch：只有 `main`,不开分支。** 所有改动直接落在 `main` 上。并发 writer 用 sibling worktree 隔离**工作目录**即可,不再各自开分支——分支是这套流程过去最大的熵源:同一条工作曾同时散在 `claude/w004-*`、`chore/*`、`codex/*` 和另一个 GitHub 仓库里,彼此看不见对方。具体 claim→worktree→验收流程见 `protocol/DISPATCH.md`(其中分支相关步骤已作废)。
 
-`handoff` 的 STRUCTURE PASS 只证明入口、state、卡和板锁自洽，不代表任何 oracle PASS。thinker 上岗先是 `inspect_only`：保护 dirty tree，不切分支，不 fetch/merge/push，不碰板；报告现场后再选班次。
+`handoff` 的 STRUCTURE PASS 只证明入口、state、卡和板锁自洽，不代表任何 oracle PASS。thinker 上岗先是 `inspect_only`：保护 dirty tree，不碰板；报告现场后再选班次。(原文此处还写着"不切分支、不 fetch/merge/push"——前者随 monobranch 作废,后者与"commit 即 push"冲突,已删。)
 
 ## 状态在哪(事实源)
 
@@ -55,7 +55,11 @@ archive/     ← 史料,默认不读(白板时代 COORD/CHAT 等)
 
 不要声称本仓库 clone-and-run：需 DAYU600/uis7885 板 + 重建/替换全部 arm 运行时产物。
 大型生成二进制不进 git(.gitignore 排除)：来源和 hash 记 `REPO_LOCK.toml` + `ARTIFACT-INVENTORY.txt`。
-任何 agent 不得自动合并 `main` 或 push；先报告 branch、upstream、ahead/behind、dirty tree 和 oracle 结果，由用户决定发布动作。
+**每次 commit 之后必须 push。** 不攒本地提交,不等用户点头——旧规则要求 agent 先报告再由用户决定发布,结果是几十个提交烂在本地、多台机器各推各的仓库。现在的规则相反:落盘即 commit,commit 即 push 到 `origin/main`。
+
+**monorepo：一个仓库,`a2hlab/harmony`。** 不再有嵌套的独立仓库。`westlake-piercing/` 于 2026-07-20 以 subtree 方式并入(保留全部 270 个提交历史),此前它是被 `.gitignore` 屏蔽的独立仓库、推往另一个账号下的 `BH3GEI/westlake-piercing`,导致同一条工作的两半互不可见。新增子项目一律直接放进本仓,不要再建嵌套仓库。
+
+push 前仍要看一眼 `ahead/behind` 与 dirty tree;远端若已前进,rebase 后再推,不要 force。
 
 ## 遗留(短期过渡)
 
