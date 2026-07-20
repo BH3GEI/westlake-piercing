@@ -260,8 +260,15 @@ public final class Dayu600ApkStageProbe {
         // reflective path mangles booleans. The same reflective call is what passed `true` to
         // copy(), so the copy came back immutable.
         String copyHow;
-        Object bmPreCopy = bm;   // 10r3p reports this one mutable; kept as a Canvas fallback
+        Object bmPreCopy = bm;   // 10r3p reports this one mutable
+        /* The mutable-copy step existed only to satisfy Canvas(Bitmap)'s isMutable() gate.
+         * The canvas is now built natively and never consults Java, while the copy itself
+         * comes back immutable -- Skia will not paint into it, which is why draw() produced
+         * an entirely transparent frame even with a solid background forced onto the root.
+         * Keep the source bitmap, which 10r3p reports mutable. */
+        boolean wantCopy = System.getenv("WL_BITMAP_COPY") != null;
         try {
+            if (!wantCopy) throw new IllegalStateException("copy-disabled");
             // Java cannot get a mutable copy at all here (the boolean argument never reaches the
             // native), so go through libhwui's own nativeCopy pointer instead.
             sCopySrc = bm;
@@ -278,7 +285,9 @@ public final class Dayu600ApkStageProbe {
         } catch (Throwable ct) {
             Throwable cc2 = ct instanceof java.lang.reflect.InvocationTargetException
                     && ct.getCause() != null ? ct.getCause() : ct;
-            copyHow = "throw:" + cc2.getClass().getSimpleName() + ":" + cc2.getMessage();
+            copyHow = wantCopy
+                    ? "throw:" + cc2.getClass().getSimpleName() + ":" + cc2.getMessage()
+                    : "skipped(using source)";
         }
         out.append("10r3c copy=").append(copyHow).append('\n');
         writeText(log, out.toString());
@@ -3998,6 +4007,45 @@ public final class Dayu600ApkStageProbe {
     }
 
     /** Field-poke layout bounds — avoid View.layout → RelativeLayout.onMeasure NPE. */
+    /* draw() completes over a 44-node tree yet every pixel comes back transparent. Before
+     * guessing between "nothing has size" and "nothing has a background", measure it: per
+     * node report the laid-out rect, visibility and whether a background is attached. */
+    private static String wlDumpNodes(android.view.View v) {
+        StringBuilder o = new StringBuilder();
+        wlDumpNodesInto(v, 0, o, new int[] { 0 });
+        return o.toString();
+    }
+
+    private static void wlDumpNodesInto(android.view.View v, int depth, StringBuilder o, int[] n) {
+        if (v == null || n[0] > 60) return;
+        n[0]++;
+        for (int i = 0; i < depth; i++) o.append(' ');
+        // The compile-time framework shim omits most View getters; go through reflection so
+        // this dumper does not depend on which ones it happens to declare.
+        o.append(v.getClass().getSimpleName()).append(' ');
+        String[] geom = { "getLeft", "getTop", "getRight", "getBottom", "getVisibility" };
+        for (int i = 0; i < geom.length; i++) {
+            try {
+                Object r = android.view.View.class.getMethod(geom[i]).invoke(v);
+                o.append(geom[i].substring(3)).append('=').append(String.valueOf(r)).append(' ');
+            } catch (Throwable t) { o.append(geom[i].substring(3)).append("=? "); }
+        }
+        try {
+            Object bg = android.view.View.class.getMethod("getBackground").invoke(v);
+            o.append("bg=").append(bg == null ? "null" : bg.getClass().getSimpleName());
+        } catch (Throwable t) { o.append("bg=?"); }
+        if (v instanceof android.widget.TextView) {
+            try {
+                Object cs = android.widget.TextView.class.getMethod("getText").invoke(v);
+                o.append(" textLen=").append(cs == null ? -1
+                        : ((CharSequence) cs).length());
+            } catch (Throwable t) { o.append(" textLen=?"); }
+        }
+        o.append('\n');
+        int c = viewChildCount(v);
+        for (int i = 0; i < c; i++) wlDumpNodesInto(viewChildAt(v, i), depth + 1, o, n);
+    }
+
     private static void wlForceViewBounds(android.view.View v, int l, int t, int r, int b) {
         if (v == null) return;
         String[] names = { "mLeft", "mTop", "mRight", "mBottom" };
@@ -5024,6 +5072,24 @@ public final class Dayu600ApkStageProbe {
                    .append(" children=").append(String.valueOf(viewChildCount(root)))
                    .append(" realNodes=").append(String.valueOf(realNodes)).append('\n');
                 writeText(log, out.toString());
+                try { writeText("/data/local/tmp/noice-nodes.txt", wlDumpNodes(root)); }
+                catch (Throwable ig) {}
+                /* Diagnostic only, never on by default: the node dump shows bg=null on almost
+                 * every node, so a transparent frame is the expected result and says nothing
+                 * about whether draw -> bitmap -> blit paints at all. Painting the root proves
+                 * that half. Gated so a diagnostic colour can never be mistaken for noice's
+                 * own UI. */
+                if (System.getenv("WL_PAINT_PROBE") != null) {
+                    try {
+                        android.view.View.class.getMethod("setBackgroundColor", int.class)
+                                .invoke(root, Integer.valueOf(0xFF204060));
+                        out.append("10b0p paintProbe=applied\n");
+                    } catch (Throwable pt) {
+                        out.append("10b0p paintProbe=fail:")
+                           .append(pt.getClass().getSimpleName()).append('\n');
+                    }
+                    writeText(log, out.toString());
+                }
 
                 // WL_BLIT owns the panel: the renderer's nativeInit creates its own opaque
                 // full-screen RSSurfaceNode, and an empty one on top of ours would hide the blit.
