@@ -217,6 +217,48 @@ public final class Dayu600ApkStageProbe {
            .append(" seed=").append(sSrgbSeedResult).append('\n');
         writeText(log, out.toString());
 
+        /* ColorSpace.sNamedColorSpaces is empty on this substrate (that is what
+         * "seed=get-still-null" above has been reporting), so ColorSpace.get(id) throws
+         * "Invalid ID: 0" for every id. Any Drawable that paints reaches it --
+         * Paint.setAlpha -> Color.colorSpace -> ColorSpace.get -- so every Material drawable
+         * in the tree throws the moment it draws, which is why the frame stayed empty while
+         * the canvas, View.draw and the tree itself were all fine.
+         * Seed the table with the sRGB instance we can already build. Entries other than
+         * SRGB get the same instance: nothing here renders in another space, and returning
+         * sRGB is far better than throwing out of every draw call. */
+        String csSeed = "skipped";
+        try {
+            if (srgb != null) {
+                /* This build keeps the named spaces in a HashMap keyed by id, not in an
+                 * array (field dump: sNamedColorSpaceMap). ColorSpace.get(id) looks the id up
+                 * and throws "Invalid ID" on a miss, and the map is empty here -- so every
+                 * Paint.setAlpha -> Color.colorSpace -> ColorSpace.get throws, which is what
+                 * kills every Material drawable the moment it paints. Fill the ids with the
+                 * sRGB instance we can build; nothing in this app renders in another space,
+                 * and returning sRGB beats throwing out of every draw call. */
+                java.lang.reflect.Field nf = null;
+                for (java.lang.reflect.Field cf : csCls.getDeclaredFields()) {
+                    if (!java.lang.reflect.Modifier.isStatic(cf.getModifiers())) continue;
+                    if (java.util.Map.class.isAssignableFrom(cf.getType())) { nf = cf; break; }
+                }
+                if (nf == null) throw new NoSuchFieldException("no static Map on ColorSpace");
+                nf.setAccessible(true);
+                Object[] named = (Object[]) namedCls.getMethod("values").invoke(null);
+                java.util.Map<Object, Object> m5m = (java.util.Map<Object, Object>) nf.get(null);
+                int before = m5m.size();
+                for (int i = 0; i < named.length; i++) {
+                    if (!m5m.containsKey(Integer.valueOf(i))) m5m.put(Integer.valueOf(i), srgb);
+                }
+                csSeed = "map " + before + "->" + m5m.size() + " via " + nf.getName();
+            }
+        } catch (Throwable cst) {
+            Throwable cc4 = cst instanceof java.lang.reflect.InvocationTargetException
+                    && cst.getCause() != null ? cst.getCause() : cst;
+            csSeed = "fail:" + cc4.getClass().getSimpleName() + ":" + cc4.getMessage();
+        }
+        out.append("10r2n namedColorSpaces=").append(csSeed).append('\n');
+        writeText(log, out.toString());
+
         Object bm;
         String bmHow = "plain";
         try {
@@ -386,8 +428,24 @@ public final class Dayu600ApkStageProbe {
         // Is there anything on the view to paint at the moment draw() runs?
         try {
             Object curBg = android.view.View.class.getMethod("getBackground").invoke(v);
-            out.append("10r4b drawTargetBg=")
+            // Identify the object actually being drawn: the node dump at 10b reports real
+            // laid-out rects while the walk sees zeros, so confirm they are the same tree.
+            StringBuilder idb = new StringBuilder();
+            idb.append(v.getClass().getSimpleName()).append('#')
+               .append(Integer.toHexString(System.identityHashCode(v)));
+            try {
+                idb.append(" rect=[")
+                   .append(android.view.View.class.getMethod("getLeft").invoke(v)).append(',')
+                   .append(android.view.View.class.getMethod("getTop").invoke(v)).append('-')
+                   .append(android.view.View.class.getMethod("getRight").invoke(v)).append(',')
+                   .append(android.view.View.class.getMethod("getBottom").invoke(v)).append(']');
+            } catch (Throwable t6) { idb.append(" rect=?"); }
+            out.append("10r4b drawTarget=").append(idb).append(" bg=")
                .append(curBg == null ? "null" : curBg.getClass().getSimpleName()).append('\n');
+            // Dump the tree that is actually drawn, not the one that happened to be around at
+            // 10b -- those turned out to be different objects.
+            try { writeText("/data/local/tmp/noice-drawn-nodes.txt", wlDumpNodes(v)); }
+            catch (Throwable ig) {}
         } catch (Throwable bt2) { out.append("10r4b drawTargetBg=?\n"); }
         writeText(log, out.toString());
 
@@ -434,13 +492,38 @@ public final class Dayu600ApkStageProbe {
             } catch (Throwable bp) {
                 Throwable bc3 = bp instanceof java.lang.reflect.InvocationTargetException
                         && bp.getCause() != null ? bp.getCause() : bp;
-                bgHow = "fail:" + bc3.getClass().getSimpleName() + ":" + bc3.getMessage();
+                StringBuilder fr = new StringBuilder();
+                try {
+                    StackTraceElement[] st3 = bc3.getStackTrace();
+                    for (int i = 0; i < st3.length && i < 8; i++) {
+                        fr.append(" @").append(st3[i].getClassName()).append('.')
+                          .append(st3[i].getMethodName()).append(':')
+                          .append(st3[i].getLineNumber());
+                    }
+                } catch (Throwable ig) {}
+                bgHow = "fail:" + bc3.getClass().getSimpleName() + ":" + bc3.getMessage() + fr;
             }
             out.append("10r4g bgProbe=").append(bgHow).append('\n');
             writeText(log, out.toString());
         }
-        android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
-        out.append("10r5 draw-done\n"); writeText(log, out.toString());
+        /* ViewGroup's own child dispatch contributes nothing on this substrate: root.draw()
+         * completes and leaves the bitmap untouched, while drawing a descendant's background
+         * by hand paints fine (10r4g). Rather than chase drawChild's internals, walk the tree
+         * and call the public draw(Canvas) on every node: each node then paints its own
+         * background and, for leaves, its content. Positions are already absolute here
+         * because every node was forced to the full frame. */
+        String drawHow;
+        if (System.getenv("WL_TREE_DRAW_OFF") != null) {
+            android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
+            drawHow = "root-only";
+        } else {
+            int[] n = new int[] { 0, 0, 0, 0, 0, 0, 0, 0 };
+            wlDrawTree(v, canvas, canvasCls, n);
+            drawHow = "drawn=" + n[0] + " visited=" + n[1] + " withBg=" + n[2]
+                    + " firstRect=[" + n[4] + "," + n[5] + "-" + n[6] + "," + n[7] + "]";
+        }
+        out.append("10r5 draw-done ").append(drawHow).append('\n');
+        writeText(log, out.toString());
         int[] px = new int[w * h];
         // Read the pixels BEFORE measuring them. This used to sit after the statistics block,
         // so every 10r6 line was computed over a freshly allocated (all-zero) array and could
@@ -4147,6 +4230,94 @@ public final class Dayu600ApkStageProbe {
     /* draw() completes over a 44-node tree yet every pixel comes back transparent. Before
      * guessing between "nothing has size" and "nothing has a background", measure it: per
      * node report the laid-out rect, visibility and whether a background is attached. */
+    private static void wlDrawTree(android.view.View v, Object canvas, Class<?> canvasCls,
+                                   int[] n) {
+        wlDrawTreeAt(v, canvas, canvasCls, n, 0, 0);   // n[0]=drawn n[1]=visited n[2]=withBg
+    }
+
+    /* View.draw() paints nothing for noice's views on this substrate, while handing a
+     * Drawable to the canvas directly does paint (10r4g). So walk the tree and draw each
+     * node's background ourselves at its real laid-out position -- with force-bounds off the
+     * layout is genuine, so these positions are the ones the app intended. */
+    private static void wlDrawTreeAt(android.view.View v, Object canvas, Class<?> canvasCls,
+                                     int[] n, int ox, int oy) {
+        if (v == null || n[1] > 400) return;
+        n[1]++;
+        int left = 0, top = 0, right = 0, bottom = 0;
+        try {
+            Object vis = android.view.View.class.getMethod("getVisibility").invoke(v);
+            if (vis instanceof Integer && ((Integer) vis).intValue() != 0) return;
+        } catch (Throwable ig) {}
+        // Geometry in its own try: sharing one with the visibility read meant a single
+        // failing getter left every bound at zero and silently skipped the whole node.
+        try {
+            left = ((Integer) android.view.View.class.getMethod("getLeft").invoke(v)).intValue();
+            top = ((Integer) android.view.View.class.getMethod("getTop").invoke(v)).intValue();
+            right = ((Integer) android.view.View.class.getMethod("getRight").invoke(v)).intValue();
+            bottom = ((Integer) android.view.View.class.getMethod("getBottom").invoke(v)).intValue();
+        } catch (Throwable ig) {}
+        if (right <= left || bottom <= top) {
+            // Fall back to the measured size when the laid-out rect is degenerate.
+            try {
+                int mw = ((Integer) android.view.View.class.getMethod("getMeasuredWidth")
+                        .invoke(v)).intValue();
+                int mh = ((Integer) android.view.View.class.getMethod("getMeasuredHeight")
+                        .invoke(v)).intValue();
+                if (mw > 0 && mh > 0) { right = left + mw; bottom = top + mh; }
+            } catch (Throwable ig) {}
+        }
+        if (n[3] == 0 && right > left) { n[3] = 1; n[4] = left; n[5] = top; n[6] = right; n[7] = bottom; }
+        int ax = ox + left, ay = oy + top;
+        try {
+            Object bg = android.view.View.class.getMethod("getBackground").invoke(v);
+            if (bg != null) n[2]++;
+            if (bg != null && right > left && bottom > top) {
+                Class<?> drC = Class.forName("android.graphics.drawable.Drawable");
+                drC.getMethod("setBounds", int.class, int.class, int.class, int.class)
+                   .invoke(bg, Integer.valueOf(ax), Integer.valueOf(ay),
+                           Integer.valueOf(ax + (right - left)),
+                           Integer.valueOf(ay + (bottom - top)));
+                drC.getMethod("draw", canvasCls).invoke(bg, canvas);
+                n[0]++;
+            }
+        } catch (Throwable ig) {}
+        int cc = viewChildCount(v);
+        for (int i = 0; i < cc; i++) {
+            wlDrawTreeAt(viewChildAt(v, i), canvas, canvasCls, n, ax, ay);
+        }
+    }
+
+    private static void wlDrawTreeUnused(android.view.View v, Object canvas, Class<?> canvasCls,
+                                   int[] n) {
+        if (v == null || n[0] > 400) return;
+        try {
+            Object vis = android.view.View.class.getMethod("getVisibility").invoke(v);
+            if (vis instanceof Integer && ((Integer) vis).intValue() != 0) return;
+        } catch (Throwable ig) {}
+        /* View.draw() computes
+         *     dirtyOpaque = (mPrivateFlags & PFLAG_DIRTY_MASK) == PFLAG_DIRTY_OPAQUE
+         *                   && (mAttachInfo == null || !mAttachInfo.mIgnoreDirtyState)
+         * and skips BOTH the background and onDraw when it holds. mAttachInfo is null here,
+         * so the second half is always true, and any view carrying the opaque-dirty bit from
+         * layout/invalidate draws nothing at all. That is the difference between noice's
+         * views and the freshly constructed probe View that paints fine. Clear the dirty bits
+         * so each node actually paints itself. */
+        try {
+            java.lang.reflect.Field pf = android.view.View.class.getDeclaredField("mPrivateFlags");
+            pf.setAccessible(true);
+            pf.setInt(v, pf.getInt(v) & ~0x00600000);
+        } catch (Throwable ig) {}
+        try {
+            android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
+            n[0]++;
+        } catch (Throwable dt) {
+            // One bad node must not abort the whole frame; the rest of the tree still paints.
+            n[0]++;
+        }
+        int c = viewChildCount(v);
+        for (int i = 0; i < c; i++) wlDrawTree(viewChildAt(v, i), canvas, canvasCls, n);
+    }
+
     private static Object wlFirstBackground(android.view.View v) {
         if (v == null) return null;
         try {
@@ -5216,15 +5387,26 @@ public final class Dayu600ApkStageProbe {
                 // (noice's content is fragment-hosted and the nav host never inflated), so
                 // skipping this draws an entirely transparent frame. Forcing the bounds is what
                 // makes the one thing that does exist -- the theme background -- paintable.
-                wlForceViewBounds(root, 0, 0, w, h);
-                out.append("10b0f forceBounds=applied\n");
+                /* Forcing every descendant to the full frame was a workaround from when the
+                 * tree was empty and real layout left children at zero size. The tree is real
+                 * now (fragment content included), so the forcing is worth switching off:
+                 * it also flattens everything into one overlapping full-screen stack, which
+                 * cannot produce a recognisable UI even when drawing works. */
+                boolean forceBounds = System.getenv("WL_NO_FORCE_BOUNDS") == null;
+                if (forceBounds) wlForceViewBounds(root, 0, 0, w, h);
+                out.append("10b0f forceBounds=").append(forceBounds ? "applied" : "skipped")
+                   .append('\n');
                 writeText(log, out.toString());
                 out.append("10b root=").append(root.getClass().getName())
                    .append(" children=").append(String.valueOf(viewChildCount(root)))
                    .append(" realNodes=").append(String.valueOf(realNodes)).append('\n');
                 writeText(log, out.toString());
-                try { writeText("/data/local/tmp/noice-nodes.txt", wlDumpNodes(root)); }
-                catch (Throwable ig) {}
+                try {
+                    writeText("/data/local/tmp/noice-nodes.txt",
+                            "ROOT " + root.getClass().getSimpleName() + "#"
+                            + Integer.toHexString(System.identityHashCode(root)) + "\n"
+                            + wlDumpNodes(root));
+                } catch (Throwable ig) {}
                 /* Diagnostic only, never on by default: the node dump shows bg=null on almost
                  * every node, so a transparent frame is the expected result and says nothing
                  * about whether draw -> bitmap -> blit paints at all. Painting the root proves
@@ -5553,7 +5735,40 @@ public final class Dayu600ApkStageProbe {
                            .append(nr == null ? "null" : nr.getClass().getSimpleName())
                            .append(" kids=").append(String.valueOf(nk))
                            .append(" fragKids=").append(String.valueOf(fragKids)).append('\n');
-                        if (nr != null && fragKids > 0) { root = nr; }
+                        if (nr != null && fragKids > 0) {
+                            root = nr;
+                            /* The measure/layout pass at 10b0 ran on the previous root; this
+                             * replacement tree has never been sized, so every node sits at
+                             * [0,0-0,0] and nothing can paint. (That mismatch is exactly what
+                             * 10r4b caught: the laid-out tree and the drawn tree were two
+                             * different LinearLayouts.) Size it here, right where it is
+                             * swapped in. */
+                            String reMeasure;
+                            try {
+                                Class<?> msC = Class.forName("android.view.View$MeasureSpec");
+                                int wSpec = ((Integer) msC.getMethod("makeMeasureSpec",
+                                        int.class, int.class).invoke(null, Integer.valueOf(w),
+                                        Integer.valueOf(1073741824))).intValue();
+                                int hSpec = ((Integer) msC.getMethod("makeMeasureSpec",
+                                        int.class, int.class).invoke(null, Integer.valueOf(h),
+                                        Integer.valueOf(1073741824))).intValue();
+                                android.view.View.class.getMethod("measure", int.class, int.class)
+                                        .invoke(root, Integer.valueOf(wSpec), Integer.valueOf(hSpec));
+                                android.view.View.class.getMethod("layout", int.class, int.class,
+                                        int.class, int.class)
+                                        .invoke(root, Integer.valueOf(0), Integer.valueOf(0),
+                                                Integer.valueOf(w), Integer.valueOf(h));
+                                reMeasure = android.view.View.class.getMethod("getWidth")
+                                        .invoke(root) + "x"
+                                        + android.view.View.class.getMethod("getHeight").invoke(root);
+                            } catch (Throwable mt) {
+                                Throwable mc = mt instanceof java.lang.reflect.InvocationTargetException
+                                        && mt.getCause() != null ? mt.getCause() : mt;
+                                reMeasure = "fail:" + mc.getClass().getSimpleName() + ":"
+                                        + mc.getMessage();
+                            }
+                            out.append("09h reinflate-layout=").append(reMeasure).append('\n');
+                        }
                     }
                 } catch (Throwable ht) {
                     Throwable hc = ht instanceof java.lang.reflect.InvocationTargetException
