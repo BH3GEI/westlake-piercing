@@ -261,11 +261,12 @@ public final class Dayu600ApkStageProbe {
         // copy(), so the copy came back immutable.
         String copyHow;
         Object bmPreCopy = bm;   // 10r3p reports this one mutable
-        /* The mutable-copy step existed only to satisfy Canvas(Bitmap)'s isMutable() gate.
-         * The canvas is now built natively and never consults Java, while the copy itself
-         * comes back immutable -- Skia will not paint into it, which is why draw() produced
-         * an entirely transparent frame even with a solid background forced onto the root.
-         * Keep the source bitmap, which 10r3p reports mutable. */
+        /* The mutable-copy step existed only to satisfy Canvas(Bitmap)'s isMutable() gate,
+         * and the canvas is now built natively without consulting Java at all. The copy also
+         * comes back reporting immutable while its source reports mutable (10r3p), so keeping
+         * the source removes a step that can only lose. This is a simplification, not a fix
+         * for a diagnosed defect -- the earlier "draw paints nothing" reading came from a
+         * broken readback, not from the copy. */
         boolean wantCopy = System.getenv("WL_BITMAP_COPY") != null;
         try {
             if (!wantCopy) throw new IllegalStateException("copy-disabled");
@@ -322,6 +323,16 @@ public final class Dayu600ApkStageProbe {
         android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
         out.append("10r5 draw-done\n"); writeText(log, out.toString());
         int[] px = new int[w * h];
+        // Read the pixels BEFORE measuring them. This used to sit after the statistics block,
+        // so every 10r6 line was computed over a freshly allocated (all-zero) array and could
+        // only ever report sampledNonZero=0 / distinct=1 -- no matter what had been drawn.
+        // The "frame is entirely transparent" readings, and the paint-probe A/B built on top
+        // of them, were measuring that empty array, not the bitmap.
+        bmCls.getMethod("getPixels", int[].class, int.class, int.class,
+                        int.class, int.class, int.class, int.class)
+             .invoke(bm, px, Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(0),
+                     Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(h));
+
         // Report what we are actually about to blit. Judging success from a screenshot alone
         // is unsafe -- a transient system frame can look like a plausible app background.
         int nonZero = 0, distinct = 0;
@@ -338,10 +349,6 @@ public final class Dayu600ApkStageProbe {
            .append(" sampledNonZero=").append(String.valueOf(nonZero))
            .append(" distinct=").append(String.valueOf(distinct)).append('\n');
         writeText(log, out.toString());
-        bmCls.getMethod("getPixels", int[].class, int.class, int.class,
-                        int.class, int.class, int.class, int.class)
-             .invoke(bm, px, Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(0),
-                     Integer.valueOf(0), Integer.valueOf(w), Integer.valueOf(h));
         return px;
     }
 
