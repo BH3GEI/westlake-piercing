@@ -2306,6 +2306,38 @@ static void *wl_call_sret_nullary(void *fn)
     return out;
 }
 
+/* VMRuntime.notifyNativeAllocationsInternal() resolves to a NULL entry point on this
+ * substrate, and the interpreter calls it anyway -- the jump to 0 shows up as
+ * "SIGBUS fault_addr=0, pc=0". Paint.<init> reaches it on every construction via
+ * NativeAllocationRegistry.registerNativeAllocation -> VMRuntime.notifyNativeAllocation,
+ * so the first TextView inflated kills the process. The method only hints to the GC that
+ * native memory was allocated; dropping the hint costs nothing but GC timing accuracy. */
+static void westlake_stub_notify_native_alloc(JNIEnv *env, jobject self)
+{
+    (void)env; (void)self;
+}
+
+static void westlake_neutralise_notify_native_allocations(JNIEnv *env)
+{
+    jclass vmr = (*env)->FindClass(env, "dalvik/system/VMRuntime");
+    if (vmr == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("vmrt: FindClass VMRuntime failed");
+        return;
+    }
+    JNINativeMethod m = {"notifyNativeAllocationsInternal", "()V",
+                         (void *)westlake_stub_notify_native_alloc};
+    jint rc = (*env)->RegisterNatives(env, vmr, &m, 1);
+    if (rc != 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("vmrt: notifyNativeAllocationsInternal stub FAILED");
+        hlog_sel("vmrt: notifyNativeAllocationsInternal stub FAILED");
+    } else {
+        log_text("vmrt: notifyNativeAllocationsInternal stubbed");
+        hlog_sel("vmrt: notifyNativeAllocationsInternal stubbed");
+    }
+}
+
 /* Instruction-cache maintenance after writing code. __builtin___clear_cache emits a call to
  * __clear_cache, which this sysroot's libc does not provide (the .so then fails to relocate
  * at load time), so issue the architectural sequence directly. Line sizes come from CTR_EL0,
@@ -2501,6 +2533,8 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
             hlog_sel("selective hwui: setRobotoTypefaceForTest missing");
         }
     }
+
+    westlake_neutralise_notify_native_allocations(env);
 
     void *sym = dlsym(hwui, "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv");
     WlDlInfo di; di.dli_fname = 0; di.dli_fbase = 0; di.dli_sname = 0; di.dli_saddr = 0;
@@ -3139,6 +3173,89 @@ static jint westlake_native_add_font_weight_style(JNIEnv *env, jclass clazz)
     }
     log_int("addFont: ok=", ok != 0);
     return ok ? 1 : 0;
+}
+
+/* Build a Canvas for a bitmap without going through Java at all.
+ * Canvas(Bitmap) and Canvas.setBitmap() both refuse unless bitmap.isMutable() is true, and
+ * on this substrate that call always returns false through the interpreter's direct-call
+ * boolean marshal -- reflection on the same method returns true, and Bitmap carries no
+ * mIsMutable field to settle it, so the bitmap is mutable and only the dispatch lies. The
+ * no-arg Canvas() constructor is not a way out either (it dies before returning). So
+ * allocate the object without a constructor and give it a native peer straight from
+ * libhwui's nInitRaster, which does the real work the constructor would have done. */
+static jobject westlake_native_make_canvas(JNIEnv *env, jclass clazz)
+{
+    jfieldID bf = (*env)->GetStaticFieldID(env, clazz, "sCanvasBitmap", "Ljava/lang/Object;");
+    if (bf == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mkCanvas: sCanvasBitmap field missing");
+        return 0;
+    }
+    jobject bitmap = (*env)->GetStaticObjectField(env, clazz, bf);
+    if (bitmap == 0) { log_text("mkCanvas: bitmap not set"); return 0; }
+
+    jclass cCls = (*env)->FindClass(env, "android/graphics/Canvas");
+    if (cCls == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mkCanvas: FindClass Canvas failed");
+        return 0;
+    }
+
+    void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
+    if (hwui == 0) { log_text("mkCanvas: dlopen libhwui failed"); return 0; }
+    void *anchor3 = dlsym(hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+    if (anchor3 == 0) { log_text("mkCanvas: cannot locate libhwui base"); return 0; }
+    unsigned char *base = (unsigned char *)anchor3 - 0x48b1e0UL;
+    JNINativeMethod *tab = (JNINativeMethod *)(base + 0x478838UL);   /* Canvas, 33 entries */
+
+    void *fn = 0;
+    for (int i = 0; i < 33; i++) {
+        if (tab[i].name != 0 && streq(tab[i].name, "nInitRaster")) { fn = tab[i].fnPtr; break; }
+    }
+    if (fn == 0) { log_text("mkCanvas: nInitRaster not in harvested table"); return 0; }
+
+    /* Harvested signature is nInitRaster(J)J -- it takes the bitmap's native handle, not
+     * the Bitmap object. Passing the jobject dereferences garbage and SIGSEGVs. */
+    jclass bmCls = (*env)->GetObjectClass(env, bitmap);
+    jfieldID bnp = (*env)->GetFieldID(env, bmCls, "mNativePtr", "J");
+    if (bnp == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mkCanvas: Bitmap.mNativePtr not found");
+        return 0;
+    }
+    jlong bmptr = (*env)->GetLongField(env, bitmap, bnp);
+    log_int("mkCanvas: bitmap handle nonzero=", bmptr != 0);
+    if (bmptr == 0) return 0;
+
+    typedef jlong (*init_fn)(JNIEnv *, jclass, jlong);
+    jlong ptr = ((init_fn)fn)(env, cCls, bmptr);
+    if ((*env)->ExceptionCheck(env)) {
+        describe_pending_exception(env, "mkCanvas nInitRaster threw");
+        (*env)->ExceptionClear(env);
+        return 0;
+    }
+    log_int("mkCanvas: nInitRaster nonzero=", ptr != 0);
+    if (ptr == 0) return 0;
+
+    jobject canvas = (*env)->AllocObject(env, cCls);
+    if (canvas == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mkCanvas: AllocObject failed");
+        return 0;
+    }
+    jfieldID nw = (*env)->GetFieldID(env, cCls, "mNativeCanvasWrapper", "J");
+    if (nw == 0 || (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        log_text("mkCanvas: mNativeCanvasWrapper not found");
+        return 0;
+    }
+    (*env)->SetLongField(env, canvas, nw, ptr);
+    /* Density 0 means "no scaling", which is what we want for a raw off-screen blit. */
+    jfieldID df = (*env)->GetFieldID(env, cCls, "mDensity", "I");
+    if (df != 0) (*env)->SetIntField(env, canvas, df, 0);
+    (*env)->ExceptionClear(env);
+    log_text("mkCanvas: ok");
+    return canvas;
 }
 
 static jobject westlake_native_alloc_colorspace_rgb(JNIEnv *env, jclass clazz)
@@ -5964,7 +6081,9 @@ call_java_probe:
             (void *)westlake_native_direct_buffer_from_file};
         JNINativeMethod m16 = {"nativeAddFontWeightStyle", "()I",
             (void *)westlake_native_add_font_weight_style};
-        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6, &m7, &m8, &m9, &m10, &m11, &m12, &m13, &m14, &m15, &m16 };
+        JNINativeMethod m17 = {"nativeMakeCanvas", "()Ljava/lang/Object;",
+            (void *)westlake_native_make_canvas};
+        JNINativeMethod *all[] = { &m0, &m1, &m2, &m3, &m4, &m5, &m6, &m7, &m8, &m9, &m10, &m11, &m12, &m13, &m14, &m15, &m16, &m17 };
         int i;
         /* names[] is only used for diagnostics, but it is indexed by the same loop -- keep the
            bound tied to all[] so adding a method cannot walk off the end of names[]. */

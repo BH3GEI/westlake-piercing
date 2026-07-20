@@ -49,6 +49,10 @@ public final class Dayu600ApkStageProbe {
     static String sDirectBufPath;
     /* Arguments for nativeAddFontWeightStyle(); see sDirectBufPath for why they travel
      * as statics rather than as native parameters. */
+
+    /* Argument for nativeMakeCanvas(). */
+    static Object sCanvasBitmap;
+    static native Object nativeMakeCanvas();
     static long sFfBuilderPtr;
     static Object sFfBuffer;
     static native int nativeAddFontWeightStyle();
@@ -256,6 +260,7 @@ public final class Dayu600ApkStageProbe {
         // reflective path mangles booleans. The same reflective call is what passed `true` to
         // copy(), so the copy came back immutable.
         String copyHow;
+        Object bmPreCopy = bm;   // 10r3p reports this one mutable; kept as a Canvas fallback
         try {
             // Java cannot get a mutable copy at all here (the boolean argument never reaches the
             // native), so go through libhwui's own nativeCopy pointer instead.
@@ -286,8 +291,25 @@ public final class Dayu600ApkStageProbe {
            .append(" fields=[").append(mutFields).append("]\n");
         writeText(log, out.toString());
         Class<?> canvasCls = Class.forName("android.graphics.Canvas");
-        Object canvas = canvasCls.getConstructor(bmCls).newInstance(bm);
-        out.append("10r4 canvas-ready\n"); writeText(log, out.toString());
+        Object canvas;
+        String canvasHow;
+        try {
+            canvas = canvasCls.getConstructor(bmCls).newInstance(bm);
+            canvasHow = "ctor";
+        } catch (Throwable ce) {
+            /* Canvas(Bitmap) gates on bitmap.isMutable(). The copy reports false there while
+             * reflection on the same method reports true, and Bitmap has no mIsMutable field
+             * to settle it -- the interpreter's direct-call boolean marshal is unreliable.
+             * The pre-copy bitmap reports mutable through both paths, so use it directly
+             * rather than fighting the copy. */
+            sCanvasBitmap = bm;
+            Object nc = nativeMakeCanvas();
+            if (nc == null) throw ce;
+            canvas = nc;
+            canvasHow = "native-raster";
+        }
+        out.append("10r4 canvas-ready how=").append(canvasHow).append('\n');
+        writeText(log, out.toString());
         android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
         out.append("10r5 draw-done\n"); writeText(log, out.toString());
         int[] px = new int[w * h];
@@ -441,6 +463,25 @@ public final class Dayu600ApkStageProbe {
                     return (android.content.res.XmlResourceParser) open.invoke(
                             super.getAssets(), "res/navigation/main.xml");
                 } catch (Throwable ignored) {}
+            }
+            /* Record the id before calling through: super.getXml() reaches
+             * AssetManager.nativeGetResourceValue in wlresjni, and one of these requests
+             * SIGSEGVs while the bottom navigation resolves a menu item's vector-drawable
+             * icon. A signal cannot be caught in Java, so the last id written here is the
+             * only way to learn which resource does it. */
+            try {
+                writeText("/data/local/tmp/noice-getxml-last.txt",
+                        "id=0x" + Integer.toHexString(id));
+            } catch (Throwable ig) {}
+            /* id 0 is not a resource. Real Resources throws NotFoundException here; wlresjni
+             * instead walks into nativeGetResourceValue and SIGSEGVs, killing the process
+             * while the bottom navigation resolves a menu item icon. The zero arrives because
+             * this bridge's TypedArray support returns 0 for an unresolved attribute, so the
+             * icon genuinely is not available -- throwing lets MenuItemImpl.getIcon() return
+             * null and the item builds without an icon, which is the correct outcome. */
+            if (id == 0) {
+                throw new android.content.res.Resources.NotFoundException(
+                        "Resource ID #0x0 (unresolved attribute)");
             }
             return super.getXml(id);
         }
@@ -988,7 +1029,15 @@ public final class Dayu600ApkStageProbe {
                         "/system/fonts/Roboto-Regular.ttf",
                     };
                     Object tf = null;
-                    for (int i = 0; i < cand.length && tf == null; i++) {
+                    /* Off by default. The native default typeface is installed straight into
+                     * libhwui (gDefaultTypeface), which is what every measure/draw actually
+                     * resolves to, so the Java-side font chain buys nothing -- and it leaves
+                     * half-built FontFamily/Font objects on the heap whose native free
+                     * functions run at the next GC. Paint.<init> triggers exactly that GC via
+                     * NativeAllocationRegistry, and the process dies there. Set WL_JAVA_FONT
+                     * to re-enable when investigating the Java chain itself. */
+                    boolean tryJavaFonts = System.getenv("WL_JAVA_FONT") != null;
+                    for (int i = 0; tryJavaFonts && i < cand.length && tf == null; i++) {
                         try {
                             tf = wlTypefaceFromFile(cand[i]);
                             o.append("build ").append(cand[i]).append(" -> ")
