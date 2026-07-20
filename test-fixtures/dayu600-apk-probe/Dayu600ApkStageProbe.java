@@ -414,6 +414,31 @@ public final class Dayu600ApkStageProbe {
             }
             writeText(log, out.toString());
         }
+        /* The root has no background, but the node dump shows descendants that do (bg=i on
+         * BottomNavigationView and some Views). Draw the first such drawable straight onto the
+         * canvas: if pixels change, the drawables are fine and the question is why
+         * dispatchDraw contributes nothing; if they do not, the drawables themselves are
+         * empty -- which is what unresolved theme attributes would produce. */
+        if (System.getenv("WL_BG_PROBE") != null) {
+            String bgHow = "none-found";
+            try {
+                Object found = wlFirstBackground(v);
+                if (found != null) {
+                    Class<?> drC = Class.forName("android.graphics.drawable.Drawable");
+                    drC.getMethod("setBounds", int.class, int.class, int.class, int.class)
+                       .invoke(found, Integer.valueOf(0), Integer.valueOf(0),
+                               Integer.valueOf(w), Integer.valueOf(h));
+                    drC.getMethod("draw", canvasCls).invoke(found, canvas);
+                    bgHow = "drew:" + found.getClass().getName();
+                }
+            } catch (Throwable bp) {
+                Throwable bc3 = bp instanceof java.lang.reflect.InvocationTargetException
+                        && bp.getCause() != null ? bp.getCause() : bp;
+                bgHow = "fail:" + bc3.getClass().getSimpleName() + ":" + bc3.getMessage();
+            }
+            out.append("10r4g bgProbe=").append(bgHow).append('\n');
+            writeText(log, out.toString());
+        }
         android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
         out.append("10r5 draw-done\n"); writeText(log, out.toString());
         int[] px = new int[w * h];
@@ -4122,6 +4147,20 @@ public final class Dayu600ApkStageProbe {
     /* draw() completes over a 44-node tree yet every pixel comes back transparent. Before
      * guessing between "nothing has size" and "nothing has a background", measure it: per
      * node report the laid-out rect, visibility and whether a background is attached. */
+    private static Object wlFirstBackground(android.view.View v) {
+        if (v == null) return null;
+        try {
+            Object bg = android.view.View.class.getMethod("getBackground").invoke(v);
+            if (bg != null) return bg;
+        } catch (Throwable ig) {}
+        int c = viewChildCount(v);
+        for (int i = 0; i < c; i++) {
+            Object r = wlFirstBackground(viewChildAt(v, i));
+            if (r != null) return r;
+        }
+        return null;
+    }
+
     private static String wlDumpNodes(android.view.View v) {
         StringBuilder o = new StringBuilder();
         wlDumpNodesInto(v, 0, o, new int[] { 0 });
