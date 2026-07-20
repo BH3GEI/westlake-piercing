@@ -2292,6 +2292,76 @@ static const struct wl_hwui_table WL_HWUI_TABLES[] = {
  * (sk_sp<T>): AAPCS64 passes the return slot in x8, which C cannot express. The operands
  * land in callee-saved registers because every caller-saved one is clobbered, so they
  * survive the call. */
+/* Force the harness surface above the system UI.
+ *
+ * On this board nothing the lane draws reaches the screen -- not noice, and not the
+ * triangle reference that historically produced full-screen evidence -- even though the
+ * render service accepts the node (CreateNodeAndSurface + "attach to display, screen id: 0")
+ * and the blit flushes 2.3M pixels with rc=0. The occlusion list puts our node next to
+ * SCBWallpaper/SCBDesktop, so the likely difference is z-order, not compositing.
+ *
+ * The renderer that creates the node is prebuilt, but it reaches RSNode::SetPositionZ
+ * through the dynamic symbol table, and this probe is LD_PRELOADed -- so interpose it and
+ * hand the real implementation a much larger Z. Off unless WL_FORCE_Z is set, and the value
+ * is taken from the variable so it can be swept without a rebuild.
+ *
+ * The mangled name is a valid C identifier, so it can be defined directly. */
+/* Give the harness surface a size before it is attached.
+ *
+ * The prebuilt renderer creates the node, sets Z and attaches it, but its dynamic symbol
+ * table shows no SetBounds/SetFrame call -- so the node reaches the compositor with no
+ * geometry, which matches the symptom exactly: the render service accepts the node and
+ * lists it in the occlusion set, the blit flushes a full buffer with rc=0, and nothing
+ * appears (not for noice, and not for the triangle reference either).
+ *
+ * AttachToDisplay is a member function, so interposing it hands us the node pointer that
+ * the renderer never exposes. Set bounds and frame from the real buffer size, then chain to
+ * the real implementation so the whole thing rides the same implicit transaction. */
+__attribute__((visibility("default")))
+void _ZN4OHOS5Rosen13RSSurfaceNode15AttachToDisplayEm(void *self, unsigned long screen)
+{
+    static void (*real)(void *, unsigned long);
+    static void (*set_bounds)(void *, float, float, float, float);
+    static void (*set_frame)(void *, float, float, float, float);
+    if (real == 0) {
+        real = (void (*)(void *, unsigned long))dlsym((void *)-1L,
+                "_ZN4OHOS5Rosen13RSSurfaceNode15AttachToDisplayEm");
+        set_bounds = (void (*)(void *, float, float, float, float))dlsym(RTLD_DEFAULT,
+                "_ZN4OHOS5Rosen6RSNode9SetBoundsEffff");
+        set_frame = (void (*)(void *, float, float, float, float))dlsym(RTLD_DEFAULT,
+                "_ZN4OHOS5Rosen6RSNode8SetFrameEffff");
+    }
+    float bw = 1200.0f, bh = 1920.0f;
+    const char *ws = getenv("WL_SURFACE_W");
+    const char *hs = getenv("WL_SURFACE_H");
+    if (ws != 0 && ws[0] != 0) { float t = 0; for (const char *p = ws; *p >= '0' && *p <= '9'; p++) t = t * 10 + (*p - '0'); if (t > 0) bw = t; }
+    if (hs != 0 && hs[0] != 0) { float t = 0; for (const char *p = hs; *p >= '0' && *p <= '9'; p++) t = t * 10 + (*p - '0'); if (t > 0) bh = t; }
+    if (set_bounds != 0) { set_bounds(self, 0.0f, 0.0f, bw, bh); log_text("attach: SetBounds applied"); }
+    else log_text("attach: SetBounds symbol missing");
+    if (set_frame != 0) set_frame(self, 0.0f, 0.0f, bw, bh);
+    log_int("attach: screen=", (int)screen);
+    if (real != 0) real(self, screen);
+}
+
+__attribute__((visibility("default")))
+void _ZN4OHOS5Rosen6RSNode12SetPositionZEf(void *self, float z)
+{
+    static void (*real)(void *, float);
+    /* RTLD_NEXT needs _GNU_SOURCE, which this sysroot's headers do not tolerate here; the
+     * value is stable on aarch64 musl/bionic, so use it directly. */
+    if (real == 0) real = (void (*)(void *, float))dlsym((void *)-1L,
+            "_ZN4OHOS5Rosen6RSNode12SetPositionZEf");
+    const char *forced = getenv("WL_FORCE_Z");
+    if (forced != 0 && forced[0] != 0) {
+        float nz = 0.0f;
+        for (const char *p = forced; *p >= '0' && *p <= '9'; p++) nz = nz * 10.0f + (*p - '0');
+        log_int("setPositionZ: forced from/to(int)=", (int)z);
+        log_int("  ->", (int)nz);
+        z = nz;
+    }
+    if (real != 0) real(self, z);
+}
+
 static void *wl_call_sret_nullary(void *fn)
 {
     void *out = 0;
