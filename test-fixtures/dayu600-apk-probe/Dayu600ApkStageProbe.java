@@ -320,6 +320,100 @@ public final class Dayu600ApkStageProbe {
         }
         out.append("10r4 canvas-ready how=").append(canvasHow).append('\n');
         writeText(log, out.toString());
+        /* A real Window paints its theme's windowBackground before any View draws; this lane
+         * never builds a DecorView (a synthetic FrameLayout stands in for it), so that step
+         * was simply missing and the frame stayed transparent. Resolve the app's own
+         * windowBackground and put it on the view being drawn. What it resolved to is logged,
+         * so this can never be confused with a hardcoded colour. */
+        String wbHow = "skipped";
+        try {
+            Object vctx = android.view.View.class.getMethod("getContext").invoke(v);
+            Object theme = vctx.getClass().getMethod("getTheme").invoke(vctx);
+            android.util.TypedValue tv = new android.util.TypedValue();
+            Boolean ok = (Boolean) theme.getClass()
+                    .getMethod("resolveAttribute", int.class, android.util.TypedValue.class,
+                               boolean.class)
+                    .invoke(theme, Integer.valueOf(android.R.attr.windowBackground), tv,
+                            Boolean.TRUE);
+            if (Boolean.TRUE.equals(ok)) {
+                if (tv.type >= 28 && tv.type <= 31) {          // TYPE_FIRST_COLOR_INT..LAST
+                    android.view.View.class.getMethod("setBackgroundColor", int.class)
+                            .invoke(v, Integer.valueOf(tv.data));
+                    wbHow = "color=0x" + Integer.toHexString(tv.data);
+                } else if (tv.resourceId != 0) {
+                    Object res = vctx.getClass().getMethod("getResources").invoke(vctx);
+                    Object dr = res.getClass()
+                            .getMethod("getDrawable", int.class,
+                                       Class.forName("android.content.res.Resources$Theme"))
+                            .invoke(res, Integer.valueOf(tv.resourceId), theme);
+                    android.view.View.class
+                            .getMethod("setBackground",
+                                       Class.forName("android.graphics.drawable.Drawable"))
+                            .invoke(v, dr);
+                    wbHow = "drawable=" + (dr == null ? "null" : dr.getClass().getSimpleName())
+                            + " id=0x" + Integer.toHexString(tv.resourceId);
+                } else {
+                    wbHow = "unresolved type=" + tv.type;
+                }
+            } else {
+                wbHow = "attr-absent";
+            }
+        } catch (Throwable wb) {
+            Throwable wc = wb instanceof java.lang.reflect.InvocationTargetException
+                    && wb.getCause() != null ? wb.getCause() : wb;
+            wbHow = "fail:" + wc.getClass().getSimpleName() + ":" + wc.getMessage();
+        }
+        out.append("10r4w windowBackground=").append(wbHow).append('\n');
+        writeText(log, out.toString());
+
+        /* Diagnostic, off by default. The honest 10r6 reading (getPixels now runs before the
+         * statistics) says the bitmap is all zeros after View.draw, and the screenshot shows
+         * the launcher rather than noice. That leaves two very different causes: the natively
+         * built Canvas is not actually bound to this bitmap's pixels, or the binding is fine
+         * and View.draw is the one contributing nothing. Painting the canvas directly
+         * separates them -- if these pixels survive to 10r6, the canvas is sound. */
+        if (System.getenv("WL_CANVAS_PROBE") != null) {
+            try {
+                canvasCls.getMethod("drawColor", int.class)
+                         .invoke(canvas, Integer.valueOf(0xFFFF0000));
+                out.append("10r4p canvasProbe=drawColor-applied\n");
+            } catch (Throwable cp) {
+                out.append("10r4p canvasProbe=fail:").append(cp.getClass().getSimpleName())
+                   .append('\n');
+            }
+            writeText(log, out.toString());
+        }
+        // Is there anything on the view to paint at the moment draw() runs?
+        try {
+            Object curBg = android.view.View.class.getMethod("getBackground").invoke(v);
+            out.append("10r4b drawTargetBg=")
+               .append(curBg == null ? "null" : curBg.getClass().getSimpleName()).append('\n');
+        } catch (Throwable bt2) { out.append("10r4b drawTargetBg=?\n"); }
+        writeText(log, out.toString());
+
+        /* Isolate View.draw itself from noice's tree: a bare View with a solid background,
+         * bounds forced the same way, drawn onto the same canvas. If this paints, the draw
+         * path works and the empty frame is a property of the tree; if it does not, the
+         * problem is View.draw on this substrate. Gated so the colour can never be mistaken
+         * for noice's UI. */
+        if (System.getenv("WL_SYNTH_VIEW") != null) {
+            try {
+                Object vctx2 = android.view.View.class.getMethod("getContext").invoke(v);
+                android.view.View probe = new android.view.View(
+                        (android.content.Context) vctx2);
+                android.view.View.class.getMethod("setBackgroundColor", int.class)
+                        .invoke(probe, Integer.valueOf(0xFF00C000));
+                wlForceViewBounds(probe, 0, 0, w, h);
+                android.view.View.class.getMethod("draw", canvasCls).invoke(probe, canvas);
+                out.append("10r4s synthView=drawn\n");
+            } catch (Throwable st) {
+                Throwable sc = st instanceof java.lang.reflect.InvocationTargetException
+                        && st.getCause() != null ? st.getCause() : st;
+                out.append("10r4s synthView=fail:").append(sc.getClass().getSimpleName())
+                   .append(':').append(String.valueOf(sc.getMessage())).append('\n');
+            }
+            writeText(log, out.toString());
+        }
         android.view.View.class.getMethod("draw", canvasCls).invoke(v, canvas);
         out.append("10r5 draw-done\n"); writeText(log, out.toString());
         int[] px = new int[w * h];
