@@ -1379,6 +1379,17 @@ public final class Dayu600ApkStageProbe {
                 // MainActivity can immediately resolve getFragment()/NavController.
                 Object existing = fm.getClass().getMethod("C", int.class)
                         .invoke(fm, Integer.valueOf(0x7f090167));
+                /* The whole NavHost install below is gated on there being no fragment at this
+                 * id yet. When an earlier transaction has already put one there, the block --
+                 * including the step that builds the destination's View and adds it to the
+                 * container -- is skipped silently, which matches what the node dump shows:
+                 * both FragmentContainerViews present and empty, and noice-fragview.txt never
+                 * written (not even by its catch). Record which way this went. */
+                try {
+                    writeText("/data/local/tmp/noice-navhost-gate.txt",
+                            "existing=" + (existing == null ? "null(install runs)"
+                                    : existing.getClass().getName() + "(install SKIPPED)"));
+                } catch (Throwable ig) {}
                 if (existing == null) {
                     Class<?> fragmentCls = Class.forName("androidx.fragment.app.Fragment", true, cl);
                     Class<?> navHostCls = Class.forName(
