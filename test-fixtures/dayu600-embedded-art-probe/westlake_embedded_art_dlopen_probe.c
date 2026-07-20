@@ -2339,6 +2339,60 @@ void _ZN4OHOS5Rosen13RSSurfaceNode15AttachToDisplayEm(void *self, unsigned long 
     if (set_bounds != 0) { set_bounds(self, 0.0f, 0.0f, bw, bh); log_text("attach: SetBounds applied"); }
     else log_text("attach: SetBounds symbol missing");
     if (set_frame != 0) set_frame(self, 0.0f, 0.0f, bw, bh);
+    /* Two more properties the prebuilt renderer never sets, either of which makes a node
+     * that is present in the scene graph draw nothing: visibility and alpha. Both are
+     * cheap to assert, so do not leave them to whatever the default happens to be. */
+    {
+        static void (*set_visible)(void *, unsigned char);
+        static void (*set_alpha)(void *, float);
+        if (set_visible == 0) {
+            set_visible = (void (*)(void *, unsigned char))dlsym(RTLD_DEFAULT,
+                    "_ZN4OHOS5Rosen6RSNode10SetVisibleEb");
+            set_alpha = (void (*)(void *, float))dlsym(RTLD_DEFAULT,
+                    "_ZN4OHOS5Rosen6RSNode8SetAlphaEf");
+        }
+        if (set_visible != 0) { set_visible(self, 1); log_text("attach: SetVisible(true)"); }
+        else log_text("attach: SetVisible symbol missing");
+        if (set_alpha != 0) { set_alpha(self, 1.0f); log_text("attach: SetAlpha(1.0)"); }
+
+        /* RSSurfaceNode carries two independent "present but do not draw" switches. Neither
+         * is set by the prebuilt renderer, so both are left at whatever the node was
+         * constructed with -- and either one alone reproduces exactly what we see: the node
+         * is created, attached and listed in the occlusion set, yet nothing is composited. */
+        static void (*mark_ui_hidden)(void *, unsigned char);
+        static void (*set_skip_draw)(void *, unsigned char);
+        static int resolved;
+        if (!resolved) {
+            resolved = 1;
+            mark_ui_hidden = (void (*)(void *, unsigned char))dlsym(RTLD_DEFAULT,
+                    "_ZN4OHOS5Rosen13RSSurfaceNode12MarkUIHiddenEb");
+            set_skip_draw = (void (*)(void *, unsigned char))dlsym(RTLD_DEFAULT,
+                    "_ZN4OHOS5Rosen13RSSurfaceNode11SetSkipDrawEb");
+        }
+        if (mark_ui_hidden != 0) { mark_ui_hidden(self, 0); log_text("attach: MarkUIHidden(false)"); }
+        else log_text("attach: MarkUIHidden symbol missing");
+        if (set_skip_draw != 0) { set_skip_draw(self, 0); log_text("attach: SetSkipDraw(false)"); }
+        else log_text("attach: SetSkipDraw symbol missing");
+
+        /* RS also has an explicit "composite as a top layer" path (the mechanism behind
+         * always-on-top overlays). Our node attaches to displayRenderNodeTop but is never
+         * composited, so ask for that path directly. The enum value is not documented here,
+         * so it is swept from the environment rather than guessed once. */
+        const char *cl = getenv("WL_COMPOSITE_LAYER");
+        if (cl != 0 && cl[0] != 0) {
+            static void (*set_composite)(void *, int);
+            if (set_composite == 0) set_composite = (void (*)(void *, int))dlsym(RTLD_DEFAULT,
+                    "_ZN4OHOS5Rosen13RSSurfaceNode17SetCompositeLayerENS0_14TopLayerZOrderE");
+            if (set_composite != 0) {
+                int cv = 0;
+                for (const char *p = cl; *p >= '0' && *p <= '9'; p++) cv = cv * 10 + (*p - '0');
+                set_composite(self, cv);
+                log_int("attach: SetCompositeLayer=", cv);
+            } else {
+                log_text("attach: SetCompositeLayer symbol missing");
+            }
+        }
+    }
     log_int("attach: screen=", (int)screen);
     if (real != 0) real(self, screen);
 }
