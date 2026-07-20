@@ -2526,6 +2526,14 @@ static void westlake_neutralise_notify_native_allocations(JNIEnv *env)
  * __clear_cache, which this sysroot's libc does not provide (the .so then fails to relocate
  * at load time), so issue the architectural sequence directly. Line sizes come from CTR_EL0,
  * which is readable at EL0. */
+static int wl_file_exists(const char *path)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return 0;
+    close(fd);
+    return 1;
+}
+
 static void wl_clear_icache(unsigned char *start, unsigned char *end)
 {
     unsigned long ctr;
@@ -2608,6 +2616,67 @@ static void *wl_call_sret_this2(void *fn, void *self, const void *a1, long a2)
     return out;
 }
 
+/* Interpose ApkAssets.nativeLoad to see its arguments.
+ *
+ * The HAP takes a SIGBUS the first time this is called (shell lane calls it three times
+ * without trouble), with fault_addr = 0xa9bf7bfd_d61f01e8 -- two real aarch64 instructions
+ * read as an address. Seven candidate causes have been ruled out with evidence; what has
+ * never been looked at is the call itself. ART resolves this method by dlsym across loaded
+ * libraries, so defining the symbol here lets us record the arguments and then hand the
+ * call to wlresjni's real implementation.
+ *
+ * Signature per AOSP: nativeLoad(int format, String path, int flags, AssetsProvider) -> long
+ * which matches the observed shorty JILIL. */
+JNIEXPORT jlong JNICALL Java_android_content_res_ApkAssets_nativeLoad(
+        JNIEnv *env, jclass clazz, jint format, jstring path, jint flags, jobject provider)
+{
+    const char *p = 0;
+    if (path != 0) p = (*env)->GetStringUTFChars(env, path, 0);
+    log_text("apkLoad: path =");
+    log_text(p ? p : "(null)");
+    log_int("apkLoad: format=", (int)format);
+    log_int("apkLoad: flags=", (int)flags);
+    log_int("apkLoad: provider nonnull=", provider != 0);
+
+    /* Forward with RTLD_NEXT, not dlopen-by-soname.
+     * dlopen("wlresjni.so") fails in both lanes (HAP: namespace; shell: it is loaded but the
+     * soname lookup does not resolve from here), so the previous version could never reach
+     * the real implementation and returned 0 -- which silently broke the seeding in BOTH
+     * lanes and made the comparison worthless. RTLD_NEXT is the correct idiom: it skips our
+     * own definition and finds the next one in load order. */
+    static jlong (*real)(JNIEnv *, jclass, jint, jstring, jint, jobject);
+    static int looked;
+    if (!looked) {
+        looked = 1;
+        /* Neither dlopen-by-soname nor RTLD_NEXT reaches it (measured, both lanes), so use
+         * the repo's own helper: it resolves lane-relative paths against the exec root. */
+        real = (jlong (*)(JNIEnv *, jclass, jint, jstring, jint, jobject))
+                dlsym((void *)-1L, "Java_android_content_res_ApkAssets_nativeLoad");
+        if (real == 0) {
+            void *rj = dlopen_exec("android/lib64/wlresjni.so", "wlresjni.so",
+                                   RTLD_NOW | RTLD_GLOBAL);
+            log_int("apkLoad: wlresjni handle=", rj != 0);
+            if (rj != 0) {
+                real = (jlong (*)(JNIEnv *, jclass, jint, jstring, jint, jobject))
+                        dlsym(rj, "Java_android_content_res_ApkAssets_nativeLoad");
+            }
+        }
+        log_int("apkLoad: real impl found=", real != 0);
+    }
+    jlong rc = 0;
+    if (real != 0) {
+        rc = real(env, clazz, format, path, flags, provider);
+        log_int("apkLoad: real returned nonzero=", rc != 0);
+    } else {
+        log_text("apkLoad: no real implementation -- returning 0");
+    }
+    if (p != 0) (*env)->ReleaseStringUTFChars(env, path, p);
+    return rc;
+}
+
+JNIEXPORT jlong JNICALL Java_android_content_res_ApkAssets_nativeLoad(
+        JNIEnv *env, jclass clazz, jint format, jstring path, jint flags, jobject provider);
+
 static jint westlake_hwui_register_selective(JNIEnv *env)
 {
     void *hwui = dlopen("libhwui.so", RTLD_NOW | RTLD_GLOBAL);
@@ -2633,6 +2702,44 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
         } else {
             log_text("selective hwui: setJavaVM unavailable");
             hlog_sel("selective hwui: setJavaVM unavailable");
+        }
+    }
+
+    /* Validate the harvested-table base before anything uses it.
+     *
+     * Every table offset here (WL_HWUI_TABLES, nativeCopy, nAddFontWeightStyle,
+     * nInitRaster) is a fixed vaddr added to a base derived from one anchor symbol. If that
+     * arithmetic is off in this process's layout, the "function pointers" read out of the
+     * table are just neighbouring code bytes -- and jumping to one produces exactly the
+     * fault seen in the HAP: fault_addr = 0xa9bf7bfd_d61f01e8, which is
+     * `stp x29,x30,[sp,#-16]!` followed by `br x15`, i.e. two real instructions read as an
+     * address. So check that a derived table address still resolves back to libhwui before
+     * trusting any of it. */
+    {
+        void *iso0 = dlsym(hwui, "_ZN7android10uirenderer10Properties15isolatedProcessE");
+        if (iso0 == 0) {
+            log_text("tablecheck: anchor symbol missing -- harvested offsets unusable");
+            hlog_sel("tablecheck: anchor symbol missing");
+        } else {
+            unsigned char *b0 = (unsigned char *)iso0 - 0x48b1e0UL;
+            void *probe_addr = (void *)(b0 + 0x475cd8UL);      /* Bitmap table */
+            WlDlInfo di0; di0.dli_fname = 0; di0.dli_fbase = 0;
+            di0.dli_sname = 0; di0.dli_saddr = 0;
+            int ok = dladdr(probe_addr, &di0) != 0 && di0.dli_fname != 0;
+            log_int("tablecheck: derived table resolves=", ok);
+            if (ok) {
+                log_text("tablecheck: table module =");
+                log_text(di0.dli_fname);
+                hlog_sel(di0.dli_fname);
+            } else {
+                log_text("tablecheck: derived table address does NOT map to any module");
+                hlog_sel("tablecheck: derived table address unmapped");
+            }
+            WlDlInfo da; da.dli_fname = 0;
+            if (dladdr(iso0, &da) != 0 && da.dli_fname != 0) {
+                log_text("tablecheck: anchor module =");
+                log_text(da.dli_fname);
+            }
         }
     }
 
@@ -2668,8 +2775,21 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
                  * ABI line up". If this returns null the Skia boundary is not viable. */
                 void *mff = dlsym(skia, "_ZNK9SkFontMgr12makeFromFileEPKci");
                 if (mff != 0) {
-                    void *tf = wl_call_sret_this2(mff, real,
-                            "/system/fonts/Roboto-Regular.ttf", 0);
+                    /* Test the font this process will actually use, not a hardcoded path:
+                     * inside a HAP /system/fonts is not readable by the sandbox, so the
+                     * bundled copy (WL_FONT_FILE) is the only one that can work. Testing
+                     * the wrong path made this diagnostic report a failure that said
+                     * nothing about the real configuration. */
+                    const char *envf = getenv("WL_FONT_FILE");
+                    log_text("fontcheck: WL_FONT_FILE =");
+                    log_text(envf != 0 && envf[0] != 0 ? envf : "(unset)");
+                    const char *testf = (envf != 0 && envf[0] != 0)
+                            ? envf
+                            : (wl_file_exists("/system/fonts/Roboto-Regular.ttf")
+                                    ? "/system/fonts/Roboto-Regular.ttf"
+                                    : "/system/fonts/HarmonyOS_Sans.ttf");
+                    log_int("fontcheck: readable=", wl_file_exists(testf));
+                    void *tf = wl_call_sret_this2(mff, real, testf, 0);
                     log_int("selective hwui: skia makeFromFile nonnull=", tf != 0);
                     hlog_sel(tf != 0 ? "skia makeFromFile OK" : "skia makeFromFile NULL");
                 } else {
@@ -2680,10 +2800,20 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
                  *   0x3e9848  (..., const SkFontArguments&)  <- FontFamily.nAddFontWeightStyle
                  *   0x3e97a8  (..., int ttcIndex)            <- Typeface::setRobotoTypefaceForTest
                  * Argument shapes agree for our purposes: x1 and x2 are both overwritten. */
-                wl_patch_make_from_stream(hbase, skia,
-                        "/system/fonts/Roboto-Regular.ttf", 0x3e9848UL);
-                wl_patch_make_from_stream(hbase, skia,
-                        "/system/fonts/Roboto-Regular.ttf", 0x3e97a8UL);
+                /* The shell lane bind-mounts a font onto /system/fonts/Roboto-Regular.ttf
+                 * inside its private mount namespace. A HAP has no such namespace, so that
+                 * path does not exist there -- fall back to a font the board really ships.
+                 * WL_FONT_FILE overrides both. */
+                const char *fontf = getenv("WL_FONT_FILE");
+                if (fontf == 0 || fontf[0] == 0) {
+                    fontf = wl_file_exists("/system/fonts/Roboto-Regular.ttf")
+                          ? "/system/fonts/Roboto-Regular.ttf"
+                          : "/system/fonts/HarmonyOS_Sans.ttf";
+                }
+                log_text("fontpatch: source font =");
+                log_text(fontf);
+                wl_patch_make_from_stream(hbase, skia, fontf, 0x3e9848UL);
+                wl_patch_make_from_stream(hbase, skia, fontf, 0x3e97a8UL);
                 log_text("selective hwui: fontmgr swapped to OHOS RefDefault");
                 hlog_sel("selective hwui: fontmgr swapped to OHOS RefDefault");
             } else {
@@ -2706,7 +2836,13 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
     if (getenv("WL_FONT_DEFAULT") != 0) {
         void (*set_roboto)(void) =
             (void (*)(void))dlsym(hwui, "_ZN7android8Typeface24setRobotoTypefaceForTestEv");
-        if (set_roboto != 0) {
+        /* setRobotoTypefaceForTest open()s /system/fonts/Roboto-Regular.ttf itself and
+         * LOG_ALWAYS_FATALs when that fails, so it is only safe where the shell lane's bind
+         * mount put a file there. Inside a HAP it would abort the runtime. */
+        if (set_roboto != 0 && !wl_file_exists("/system/fonts/Roboto-Regular.ttf")) {
+            log_text("selective hwui: setRobotoTypefaceForTest SKIPPED (no Roboto path)");
+            hlog_sel("selective hwui: setRobotoTypefaceForTest SKIPPED (no Roboto path)");
+        } else if (set_roboto != 0) {
             log_text("selective hwui: setRobotoTypefaceForTest enter");
             hlog_sel("selective hwui: setRobotoTypefaceForTest enter");
             set_roboto();
@@ -2719,6 +2855,30 @@ static jint westlake_hwui_register_selective(JNIEnv *env)
     }
 
     westlake_neutralise_notify_native_allocations(env);
+
+    /* Force our nativeLoad interposer to win. Defining the JNI symbol was not enough: ART
+     * resolved the method by dlsym and picked wlresjni's copy (WLDLADDR shows
+     * mod=.../wlresjni.so), so the interposer never ran. RegisterNatives overrides that
+     * resolution outright. Opt-in, because this changes who services a real method. */
+    if (getenv("WL_TRACE_APKLOAD") != 0) {
+        jclass aa = (*env)->FindClass(env, "android/content/res/ApkAssets");
+        if (aa == 0 || (*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            log_text("apkLoad: FindClass ApkAssets failed");
+        } else {
+            JNINativeMethod m = {"nativeLoad",
+                "(ILjava/lang/String;ILandroid/content/res/loader/AssetsProvider;)J",
+                (void *)Java_android_content_res_ApkAssets_nativeLoad};
+            jint rc = (*env)->RegisterNatives(env, aa, &m, 1);
+            if (rc != 0 || (*env)->ExceptionCheck(env)) {
+                describe_pending_exception(env, "apkLoad RegisterNatives");
+                (*env)->ExceptionClear(env);
+                log_text("apkLoad: RegisterNatives FAILED");
+            } else {
+                log_text("apkLoad: interposer registered");
+            }
+        }
+    }
 
     void *sym = dlsym(hwui, "_ZN7android32register_android_graphics_CanvasEP7_JNIEnv");
     WlDlInfo di; di.dli_fname = 0; di.dli_fbase = 0; di.dli_sname = 0; di.dli_saddr = 0;
@@ -3542,11 +3702,55 @@ static jint wl_stringblock_get_size(JNIEnv *env, jclass clazz, jlong ptr)
 static jint westlake_native_register_stringblock(JNIEnv *env, jclass clazz)
 {
     (void)clazz;
+    /* Pull our libandroid.so shim into the GLOBAL scope first.
+     * wlresjni.so has a DT_NEEDED on libandroid.so and imports AFileDescriptor_getFd from
+     * it. Inside a HAP the loader resolves the NDK soname "libandroid.so" from the system
+     * ndk namespace, not from the bundle, so the bundle copy that actually defines that
+     * symbol is never consulted and wlresjni fails to relocate -- which leaves
+     * AssetManager.nativeApplyStyle unregistered (the stub registrar reports 10/11 in both
+     * lanes; the shell lane fills the 11th because wlresjni IS loaded there). Loading the
+     * shim by explicit path with RTLD_GLOBAL puts the symbol in the global scope before
+     * wlresjni is relocated. */
+    {
+        void *la = dlopen_exec("android/lib64/libandroid.so", "libandroid.so",
+                               RTLD_NOW | RTLD_GLOBAL);
+        log_int("sbReg: preload libandroid shim ok=", la != 0);
+        if (la != 0) {
+            log_int("sbReg: AFileDescriptor_getFd now global=",
+                    dlsym(la, "AFileDescriptor_getFd") != 0);
+        } else {
+            const char *e = dlerror();
+            if (e != 0) log_text(e);
+        }
+    }
     void *rj = dlopen("wlresjni.so", RTLD_NOW | RTLD_GLOBAL);
     if (rj == 0) {
         rj = dlopen_exec("android/lib64/wlresjni.so", "wlresjni.so", RTLD_NOW | RTLD_GLOBAL);
     }
-    if (rj == 0) { log_text("sbReg: dlopen wlresjni failed"); return 0; }
+    if (rj == 0) {
+        log_text("sbReg: dlopen wlresjni failed");
+        /* Establish, from inside the process, which libandroid.so is actually loaded and
+         * whether the symbol wlresjni needs is in it. The sandbox lib dir is not visible to
+         * a shell `ls`, and hilog gets flushed, so this is the only trustworthy channel --
+         * every previous attempt to answer this from outside was misleading. */
+        {
+            void *la = dlopen("libandroid.so", RTLD_NOW | RTLD_GLOBAL);
+            log_int("sbReg: libandroid dlopen ok=", la != 0);
+            if (la == 0) { const char *e = dlerror(); if (e) log_text(e); }
+            else {
+                void *sym = dlsym(la, "AFileDescriptor_getFd");
+                log_int("sbReg: AFileDescriptor_getFd resolved=", sym != 0);
+                WlDlInfo di2; di2.dli_fname = 0; di2.dli_fbase = 0;
+                di2.dli_sname = 0; di2.dli_saddr = 0;
+                void *anchor = sym ? sym : dlsym(la, "ANativeWindow_acquire");
+                if (anchor != 0 && dladdr(anchor, &di2) != 0 && di2.dli_fname != 0) {
+                    log_text("sbReg: libandroid resolved from:");
+                    log_text(di2.dli_fname);
+                }
+            }
+        }
+        return 0;
+    }
     void (*reg)(JNIEnv *) = (void (*)(JNIEnv *))
         dlsym(rj, "_ZN7android36register_android_content_StringBlockEP7_JNIEnv");
     if (reg == 0) { log_text("sbReg: registrar symbol missing"); return 0; }
@@ -5788,7 +5992,222 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
                     "(Ljava/lang/String;)Landroid/content/res/ApkAssets;");
                 if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); lf = 0; }
                 if (lf != 0) {
+                    /* Bracket the call without replacing it. If the process dies inside
+                     * ApkAssets.loadFromPath, the "returned" line simply never appears --
+                     * which localises the fault without changing who services the native
+                     * (the earlier RegisterNatives interposer could not forward at all and
+                     * broke both lanes equally, making its comparison worthless). */
+                    /* Before handing the file to the real loader, prove the sandbox can do
+                     * what that loader needs: open it, mmap the whole thing, touch both ends.
+                     * If the app process cannot map a 35MB file (rlimit, el2 mount options,
+                     * address space), this fails here with a readable reason instead of
+                     * dying inside libandroidfw. */
+                    {
+                        int tfd = open(fwres, O_RDONLY);
+                        log_int("seedAssets: selftest open fd>=0=", tfd >= 0);
+                        if (tfd >= 0) {
+                            off_t sz = lseek(tfd, 0, SEEK_END);
+                            lseek(tfd, 0, SEEK_SET);
+                            log_int("seedAssets: selftest size(KiB)=", (int)(sz / 1024));
+                            void *m = mmap(0, (size_t)sz, PROT_READ, MAP_SHARED, tfd, 0);
+                            log_int("seedAssets: selftest mmap ok=", m != MAP_FAILED && m != 0);
+                            if (m != MAP_FAILED && m != 0) {
+                                volatile unsigned char first = ((unsigned char *)m)[0];
+                                volatile unsigned char last  = ((unsigned char *)m)[sz - 1];
+                                log_int("seedAssets: selftest first byte=", (int)first);
+                                log_int("seedAssets: selftest last byte=", (int)last);
+                                munmap(m, (size_t)sz);
+                            }
+                            close(tfd);
+                        }
+                    }
+                    /* Binary-search the failure: run the SAME loadFromPath on a much
+                     * smaller archive first (noice.apk, ~5MB, sits next to it in the
+                     * substrate). If the small one loads and framework-res does not, the
+                     * fault depends on size/content; if both fail, it is the library's state
+                     * in this process and has nothing to do with the file. */
+                    {
+                        const char *root = getenv("WESTLAKE_ROOT");
+                        if (root != 0 && root[0] != 0) {
+                            char small[1300];
+                            unsigned long sp2 = 0;
+                            append_text(small, sizeof(small), &sp2, root);
+                            append_text(small, sizeof(small), &sp2, "/apks/noice.apk");
+                            if (wl_file_exists(small)) {
+                                log_text("seedAssets: probing small archive");
+                                log_text(small);
+                                jstring sj = (*env)->NewStringUTF(env, small);
+                                jobject sa = (*env)->CallStaticObjectMethod(env, aa_cls, lf, sj);
+                                int threw = (*env)->ExceptionCheck(env);
+                                if (threw) (*env)->ExceptionClear(env);
+                                log_int("seedAssets: small archive nonnull=", sa != 0);
+                                log_int("seedAssets: small archive threw=", threw);
+                            }
+                        }
+                    }
+                    /* Binary-search the failure: run the SAME loadFromPath on a much
+                     * smaller archive first (noice.apk, ~5MB, sits next to it in the
+                     * substrate). If the small one loads and framework-res does not, the
+                     * fault depends on size/content; if both fail, it is the library's state
+                     * in this process and has nothing to do with the file. */
+                    {
+                        const char *root = getenv("WESTLAKE_ROOT");
+                        if (root != 0 && root[0] != 0) {
+                            char small[1300];
+                            unsigned long sp2 = 0;
+                            append_text(small, sizeof(small), &sp2, root);
+                            append_text(small, sizeof(small), &sp2, "/apks/noice.apk");
+                            if (wl_file_exists(small)) {
+                                log_text("seedAssets: probing small archive");
+                                log_text(small);
+                                jstring sj = (*env)->NewStringUTF(env, small);
+                                jobject sa = (*env)->CallStaticObjectMethod(env, aa_cls, lf, sj);
+                                int threw = (*env)->ExceptionCheck(env);
+                                if (threw) (*env)->ExceptionClear(env);
+                                log_int("seedAssets: small archive nonnull=", sa != 0);
+                                log_int("seedAssets: small archive threw=", threw);
+                            }
+                        }
+                    }
+                    /* Are two copies of the same library mapped?
+                     * That would explain a crash on the very first call regardless of input:
+                     * the registrar caches JNI ids in ITS globals, and a native running from
+                     * the other copy sees them as zero. The HAP payload ships wlresjni and
+                     * wlandroidfw in both the flat bundle lib dir and android/lib64, so this
+                     * is self-inflicted if it happens.
+                     * /proc/self/maps is not readable inside the app sandbox (it is in the
+                     * shell lane), so compare dlopen handles instead: RTLD_NOLOAD returns a
+                     * handle only for something already mapped, and two different handles for
+                     * the same soname means two copies. */
+                    {
+                        const char *lr = getenv("WESTLAKE_LIB_DIR");
+                        void *h_flat = dlopen("wlresjni.so", RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+                        void *h_sub  = dlopen_exec("android/lib64/wlresjni.so", "wlresjni.so",
+                                                   RTLD_NOW | 4 /*RTLD_NOLOAD*/);
+                        log_int("dupcheck: resjni flat handle=", h_flat != 0);
+                        log_int("dupcheck: resjni sub handle=", h_sub != 0);
+                        log_int("dupcheck: resjni same handle=", h_flat == h_sub);
+                        void *f_flat = dlopen("wlandroidfw.so", RTLD_NOW | 4);
+                        void *f_sub  = dlopen_exec("android/lib64/wlandroidfw.so",
+                                                   "wlandroidfw.so", RTLD_NOW | 4);
+                        log_int("dupcheck: androidfw same handle=", f_flat == f_sub);
+                        (void)lr;
+                    }
+
+                    /* Before handing the file to the real loader, prove the sandbox can do
+                     * what that loader needs: open it, mmap the whole thing, touch both ends.
+                     * If the app process cannot map a 35MB file (rlimit, el2 mount options,
+                     * address space), this fails here with a readable reason instead of
+                     * dying inside libandroidfw. */
+                    {
+                        int tfd = open(fwres, O_RDONLY);
+                        log_int("seedAssets: selftest open fd>=0=", tfd >= 0);
+                        if (tfd >= 0) {
+                            off_t sz = lseek(tfd, 0, SEEK_END);
+                            lseek(tfd, 0, SEEK_SET);
+                            log_int("seedAssets: selftest size(KiB)=", (int)(sz / 1024));
+                            void *m = mmap(0, (size_t)sz, PROT_READ, MAP_SHARED, tfd, 0);
+                            log_int("seedAssets: selftest mmap ok=", m != MAP_FAILED && m != 0);
+                            if (m != MAP_FAILED && m != 0) {
+                                volatile unsigned char first = ((unsigned char *)m)[0];
+                                volatile unsigned char last  = ((unsigned char *)m)[sz - 1];
+                                log_int("seedAssets: selftest first byte=", (int)first);
+                                log_int("seedAssets: selftest last byte=", (int)last);
+                                munmap(m, (size_t)sz);
+                            }
+                            close(tfd);
+                        }
+                    }
+                    /* Binary-search the failure: run the SAME loadFromPath on a much
+                     * smaller archive first (noice.apk, ~5MB, sits next to it in the
+                     * substrate). If the small one loads and framework-res does not, the
+                     * fault depends on size/content; if both fail, it is the library's state
+                     * in this process and has nothing to do with the file. */
+                    {
+                        const char *root = getenv("WESTLAKE_ROOT");
+                        if (root != 0 && root[0] != 0) {
+                            char small[1300];
+                            unsigned long sp2 = 0;
+                            append_text(small, sizeof(small), &sp2, root);
+                            append_text(small, sizeof(small), &sp2, "/apks/noice.apk");
+                            if (wl_file_exists(small)) {
+                                log_text("seedAssets: probing small archive");
+                                log_text(small);
+                                jstring sj = (*env)->NewStringUTF(env, small);
+                                jobject sa = (*env)->CallStaticObjectMethod(env, aa_cls, lf, sj);
+                                int threw = (*env)->ExceptionCheck(env);
+                                if (threw) (*env)->ExceptionClear(env);
+                                log_int("seedAssets: small archive nonnull=", sa != 0);
+                                log_int("seedAssets: small archive threw=", threw);
+                            }
+                        }
+                    }
+                    /* Binary-search the failure: run the SAME loadFromPath on a much
+                     * smaller archive first (noice.apk, ~5MB, sits next to it in the
+                     * substrate). If the small one loads and framework-res does not, the
+                     * fault depends on size/content; if both fail, it is the library's state
+                     * in this process and has nothing to do with the file. */
+                    {
+                        const char *root = getenv("WESTLAKE_ROOT");
+                        if (root != 0 && root[0] != 0) {
+                            char small[1300];
+                            unsigned long sp2 = 0;
+                            append_text(small, sizeof(small), &sp2, root);
+                            append_text(small, sizeof(small), &sp2, "/apks/noice.apk");
+                            if (wl_file_exists(small)) {
+                                log_text("seedAssets: probing small archive");
+                                log_text(small);
+                                jstring sj = (*env)->NewStringUTF(env, small);
+                                jobject sa = (*env)->CallStaticObjectMethod(env, aa_cls, lf, sj);
+                                int threw = (*env)->ExceptionCheck(env);
+                                if (threw) (*env)->ExceptionClear(env);
+                                log_int("seedAssets: small archive nonnull=", sa != 0);
+                                log_int("seedAssets: small archive threw=", threw);
+                            }
+                        }
+                    }
+                    /* Two copies of the same library in one process would explain a crash
+                     * on the very first call regardless of input: the registrar caches JNI
+                     * field/method IDs in ITS globals, and if the native that actually runs
+                     * lives in the other copy, those globals are zero. The HAP payload ships
+                     * wlresjni/wlandroidfw in both the flat bundle lib dir and android/lib64
+                     * (added so the loader could resolve them), so this is self-inflicted if
+                     * it happens. Count distinct mapped paths from /proc/self/maps. */
+                    {
+                        FILE *mf = fopen("/proc/self/maps", "r");
+                        if (mf != 0) {
+                            char line[512];
+                            char seen[8][256];
+                            int nseen = 0;
+                            while (fgets(line, (int)sizeof(line), mf) != 0) {
+                                char *sl = strstr(line, "/");
+                                if (sl == 0) continue;
+                                if (strstr(sl, "wlresjni.so") == 0
+                                    && strstr(sl, "wlandroidfw.so") == 0) continue;
+                                char *nl = strchr(sl, '\n'); if (nl) *nl = 0;
+                                int dup = 0;
+                                for (int i = 0; i < nseen; i++)
+                                    if (streq(seen[i], sl)) { dup = 1; break; }
+                                if (!dup && nseen < 8) {
+                                    unsigned long cp = 0;
+                                    seen[nseen][0] = 0;
+                                    append_text(seen[nseen], sizeof(seen[0]), &cp, sl);
+                                    log_text("maps: ");
+                                    log_text(seen[nseen]);
+                                    nseen++;
+                                }
+                            }
+                            fclose(mf);
+                            log_int("maps: distinct resjni/androidfw paths=", nseen);
+                        }
+                    }
+                    log_text("seedAssets: loadFromPath enter");
+                    log_text(fwres);
                     apk = (*env)->CallStaticObjectMethod(env, aa_cls, lf, p);
+                    log_int("seedAssets: loadFromPath returned nonnull=", apk != 0);
+                    if ((*env)->ExceptionCheck(env)) {
+                        describe_pending_exception(env, "seedAssets loadFromPath");
+                    }
                 } else {
                     jmethodID lf2 = (*env)->GetStaticMethodID(env, aa_cls, "loadFromPath",
                         "(Ljava/lang/String;I)Landroid/content/res/ApkAssets;");
@@ -5949,8 +6368,17 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     {
         struct sigaction sa_old[5];
         struct sigaction sa_new = { .sa_handler = g_crash_handler, .sa_flags = 0 };
-        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGABRT, SIGFPE };
-        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
+        /* SIGABRT is deliberately NOT caught. An ART Runtime abort is terminal -- the
+         * runtime has already decided its invariants are broken -- so longjmping out of it
+         * and carrying on re-enters the same code, aborts again, and self-amplifies.
+         * Measured on the HAP lane: 152,259 stage re-entries in 45s inside ONE process
+         * (~3400/s), 24.7M log lines, and >500k "Runtime aborting --- recursively" lines,
+         * all from a single genuine failure. That storm buried every real signal and is why
+         * several rounds of changes here appeared to "have no effect".
+         * The other four stay: they guard genuinely recoverable native faults. */
+        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGFPE };
+        const int nsigs = (int)(sizeof(sigs) / sizeof(sigs[0]));
+        for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
         g_in_crash_region = 1;
         int saved_sig = sigsetjmp(g_crash_jmp, 1);
         if (saved_sig == 0) {
@@ -5977,7 +6405,7 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
             log_text(buf);
         }
         g_in_crash_region = 0;
-        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+        for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
     }
     if (start_reg_rc == 0) {
         log_text("android runtime startReg returned 0 (skipped/ok)");
@@ -6035,8 +6463,17 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
     {
         struct sigaction sa_old[5];
         struct sigaction sa_new = { .sa_handler = g_crash_handler, .sa_flags = 0 };
-        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGABRT, SIGFPE };
-        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
+        /* SIGABRT is deliberately NOT caught. An ART Runtime abort is terminal -- the
+         * runtime has already decided its invariants are broken -- so longjmping out of it
+         * and carrying on re-enters the same code, aborts again, and self-amplifies.
+         * Measured on the HAP lane: 152,259 stage re-entries in 45s inside ONE process
+         * (~3400/s), 24.7M log lines, and >500k "Runtime aborting --- recursively" lines,
+         * all from a single genuine failure. That storm buried every real signal and is why
+         * several rounds of changes here appeared to "have no effect".
+         * The other four stay: they guard genuinely recoverable native faults. */
+        int sigs[] = { SIGTRAP, SIGSEGV, SIGBUS, SIGFPE };
+        const int nsigs = (int)(sizeof(sigs) / sizeof(sigs[0]));
+        for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_new, &sa_old[i]);
         g_in_crash_region = 1;
         int ivs_saved_sig = sigsetjmp(g_crash_jmp, 1);
         if (ivs_saved_sig == 0) {
@@ -6047,7 +6484,7 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
             if (probe_cls == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "FindClass Dayu600ApkStageProbe failed");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 100;
             }
             jmethodID target_cl_m = (*env)->GetStaticMethodID(env, probe_cls,
@@ -6055,14 +6492,14 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
             if (target_cl_m == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "targetClassLoader not found");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 101;
             }
             jobject app_cl_obj = (*env)->CallStaticObjectMethod(env, probe_cls, target_cl_m);
             if ((*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "targetClassLoader threw");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 102;
             }
 
@@ -6071,7 +6508,7 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
             if (at_cls == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "ActivityThread class failed");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 103;
             }
             // Try ActivityThread.currentActivityThread() first (returns sCurrentActivityThread static)
@@ -6087,14 +6524,14 @@ static int run_stage_probe(void *handle, void *create_vm_symbol, const char *sta
                     if (get_ctx == 0 || (*env)->ExceptionCheck(env)) {
                         describe_pending_exception(env, "getSystemContext not found");
                         g_in_crash_region = 0;
-                        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                        for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                         return 106;
                     }
                     jobject sys_ctx = (*env)->CallObjectMethod(env, at, get_ctx);
                     if (sys_ctx == 0 || (*env)->ExceptionCheck(env)) {
                         describe_pending_exception(env, "getSystemContext returned null");
                         g_in_crash_region = 0;
-                        for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                        for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                         return 107;
                     }
                     log_text("got system context from currentActivityThread");
@@ -6137,7 +6574,7 @@ load_ivs_no_context:
                 if (cls_cls == 0 || (*env)->ExceptionCheck(env)) {
                     describe_pending_exception(env, "Class class failed");
                     g_in_crash_region = 0;
-                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                     return 108;
                 }
                 jmethodID forname_m = (*env)->GetStaticMethodID(env, cls_cls,
@@ -6145,14 +6582,14 @@ load_ivs_no_context:
                 if (forname_m == 0 || (*env)->ExceptionCheck(env)) {
                     describe_pending_exception(env, "Class.forName(Str,bool,CL) not found");
                     g_in_crash_region = 0;
-                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                     return 109;
                 }
                 jstring ivs_name = (*env)->NewStringUTF(env, "adapter.window.InputVerifyStage");
                 if (ivs_name == 0 || (*env)->ExceptionCheck(env)) {
                     describe_pending_exception(env, "NewStringUTF failed");
                     g_in_crash_region = 0;
-                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                     return 110;
                 }
                 jclass ivs_cls = (*env)->CallStaticObjectMethod(env, cls_cls, forname_m,
@@ -6160,7 +6597,7 @@ load_ivs_no_context:
                 if (ivs_cls == 0 || (*env)->ExceptionCheck(env)) {
                     describe_pending_exception(env, "InputVerifyStage.forName failed");
                     g_in_crash_region = 0;
-                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                     return 114;
                 }
                 log_text("IVS class loaded (no-context path)");
@@ -6172,7 +6609,7 @@ load_ivs_no_context:
                     describe_pending_exception(env, "InputVerifyStage.run not found");
                     (*env)->DeleteLocalRef(env, ivs_cls);
                     g_in_crash_region = 0;
-                    for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                    for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                     return 115;
                 }
                 log_text("calling InputVerifyStage.run(null,null)...");
@@ -6183,7 +6620,7 @@ load_ivs_no_context:
                 }
                 (*env)->DeleteLocalRef(env, ivs_cls);
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 log_text("inputVerify: IVS.run done, exiting");
                 return 0;
             }
@@ -6194,7 +6631,7 @@ load_ivs_with_context:
             if (g_ivs_ctx == 0) {
                 log_text("load_ivs_with_context: g_ivs_ctx == null");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 117;
             }
             log_text("load_ivs_with_context: g_ivs_ctx available, calling IVS.run(ctx, null)...");
@@ -6203,7 +6640,7 @@ load_ivs_with_context:
             if (cls_cls == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "Class class failed");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 108;
             }
             jmethodID forname_m = (*env)->GetStaticMethodID(env, cls_cls,
@@ -6211,21 +6648,21 @@ load_ivs_with_context:
             if (forname_m == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "Class.forName not found");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 109;
             }
             jstring ivs_name = (*env)->NewStringUTF(env, "adapter.window.InputVerifyStage");
             if (ivs_name == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "NewStringUTF failed");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 110;
             }
             jclass ivs_cls = (*env)->CallStaticObjectMethod(env, cls_cls, forname_m, ivs_name);
             if (ivs_cls == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "InputVerifyStage.forName failed");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 114;
             }
             jmethodID run_m = (*env)->GetStaticMethodID(env, ivs_cls,
@@ -6233,7 +6670,7 @@ load_ivs_with_context:
             if (run_m == 0 || (*env)->ExceptionCheck(env)) {
                 describe_pending_exception(env, "IVS.run not found");
                 g_in_crash_region = 0;
-                for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+                for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
                 return 115;
             }
             log_text("calling InputVerifyStage.run(g_ivs_ctx, null)...");
@@ -6243,7 +6680,7 @@ load_ivs_with_context:
                 (*env)->ExceptionClear(env);
             }
             g_in_crash_region = 0;
-            for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa_old[i], 0);
+            for (int i = 0; i < nsigs; i++) sigaction(sigs[i], &sa_old[i], 0);
             log_text("load_ivs_with_context: IVS.run done, exiting");
             return 0;
             }  // end if (g_ivs_ctx == 0) early-return block
